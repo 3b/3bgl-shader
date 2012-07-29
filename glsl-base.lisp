@@ -223,10 +223,10 @@
 
 (3bgl-shaders::defwalker glsl-walker (defun name lambda-list &body body+d)
   (multiple-value-bind (body declare doc) (alexandria:parse-body body+d)
-    (`(:function ,name :lambda-list ,lambda-list
-       :declare ,@(when declare (list declare))
-       :doc ,@(when doc (list doc))
-       :body ,@(3bgl-shaders::@@ body)))))
+    `(:function ,name :lambda-list ,lambda-list
+      :declare ,@(when declare (list declare))
+      :doc ,@(when doc (list doc))
+      :body ,@(3bgl-shaders::@@ body))))
 
 (3bgl-shaders::defwalker glsl-walker (:function name &rest args &key body &allow-other-keys)
   (let ((walked (3bgl-shaders::@ body)))

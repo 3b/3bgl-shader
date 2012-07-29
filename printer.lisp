@@ -68,7 +68,7 @@
   (let ((*in-expression* t))
     (with-standard-io-syntax
       (format *debug-io* ":var ~s ~s ~s ~s~%" name init qualifiers type))
-    (format t "~{~a ~}~{~a ~}~a~@[ = ~a~]" qualifiers type name init)))
+    (format t "~{~a ~}~@[a ~]~a~@[ = ~a~]" qualifiers type name init)))
 
 
 #++
@@ -129,8 +129,8 @@
 (defprint-binop + "+" 0.0 t)
 (defprint-binop * "*" 1.0 t)
 (defprint-binop / "/" 1.0 (format t "(1.0 / ~a)" (car args)))
-(defprint-binop OR "||" 0 t)
-(defprint-binop AND "&&" 1 t) ;; should this b1 #xffffffff instead of 1 for t?
+(defprint-binop or "||" 0 t)
+(defprint-binop and "&&" 1 t) ;; should this be #xffffffff instead of 1 for t?
 (defprint-binop logior "|" 0 t)
 (defprint-binop logand "&" #xffffffff t) ;; fixme: how many bits is -1?
 (defprint-binop logxor "^" 0 t)
@@ -175,7 +175,7 @@
                            ,(let ((*in-expression* t))
                               (format nil "(~a << ~a)" i c))))))) 
 
-(defprint)
+
 
 
 

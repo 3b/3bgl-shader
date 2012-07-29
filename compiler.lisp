@@ -8,7 +8,7 @@
 ;;; +extract top-level definitions
 ;;; +inline local functions?
 ;;;  alpha conversion?
-;;;    (including resolving comflicts between fn/var/etc namespaces?)
+;;;    (including resolving conflicts between fn/var/etc namespaces?)
 
 ;;;  convert into some less-cl form?
 ;;;    tree of objects (or just plists)?
@@ -162,6 +162,9 @@
                  (defun main ()
                    (declare (:int e))
                    "do baz stuff"
+                   #++(flet ((a (b)
+                            (+ 1 b)))
+                     (a 2))
                    (:var e :type :int)
                    (:var f :type :float)
                    (if e
