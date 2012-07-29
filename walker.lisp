@@ -50,9 +50,9 @@
   (setf (gethash name (variable-bindings env))
         (list :symbol-macro expansion)))
 
-(defmethod add-variable-to-env ((env cl-environment) name x)
+(defmethod add-variable-to-env ((env cl-environment) name x type)
   (setf (gethash name (variable-bindings env))
-        (list :variable)))
+        (list type)))
 
 (defmethod add-function-to-env ((env cl-environment) type name lambda-list body
                                 &optional declarations doc-strings)
@@ -108,8 +108,8 @@
 (defun add-symbol-macro (name expansion)
   (add-symbol-macro-to-env *environment* name expansion))
 
-(defun add-variable (name x)
-  (add-variable-to-env *environment* name x))
+(defun add-variable (name x &optional (type :local-binding))
+  (add-variable-to-env *environment* name x type))
 
 (defun add-function (type name lambda-list body &optional declarations docs)
   (add-function-to-env *environment*

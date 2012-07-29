@@ -213,14 +213,17 @@
 ;;; extra 'special forms' for GLSL stuff
 ;;;   probably expanded directly by compiler
 
+#++
 (3bgl-shaders::defwalker glsl-walker (defparameter name value &optional docs)
   (declare (ignore docs))
   `(:var ,name :init ,(3bgl-shaders::@ value)))
 
+#++
 (3bgl-shaders::defwalker glsl-walker (defconstant name value  &optional docs)
   (declare (ignore docs))
   `(:var ,name :init ,(3bgl-shaders::@ value) :qualifiers ,(list :const)))
 
+#++
 (3bgl-shaders::defwalker glsl-walker (defun name lambda-list &body body+d)
   (multiple-value-bind (body declare doc) (alexandria:parse-body body+d)
     `(:function ,name :lambda-list ,lambda-list
@@ -228,6 +231,7 @@
       :doc ,@(when doc (list doc))
       :body ,@(3bgl-shaders::@@ body))))
 
+#++
 (3bgl-shaders::defwalker glsl-walker (:function name &rest args &key body &allow-other-keys)
   (let ((walked (3bgl-shaders::@ body)))
     (when (not (equal walked body))
@@ -235,6 +239,7 @@
       (setf (getf args :body) walked)))
   `(:var ,name ,@args))
 
+#++
 (3bgl-shaders::defwalker glsl-walker (:var name &rest args &key init &allow-other-keys)
   (let ((walked (3bgl-shaders::@ init)))
     (when (not (equal walked init))
@@ -242,6 +247,37 @@
       (setf (getf args :init) walked)))
   `(:var ,name ,@args))
 
+
+;;; translate into IR
+
+
+(3bgl-shaders::defwalker glsl-walker (defparameter name value &optional docs)
+  (declare (ignore docs))
+  ;; fixme: add this directly rather than side effecting the returned
+  ;; cons like this...
+  (setf (getf (cdr (3bgl-shaders::add-variable name nil :top-level)) :binding)
+        (make-instance 'binding
+                       :name name
+                       :value-type t
+                       :binding-type :global
+                       :init value)))
+
+(3bgl-shaders::defwalker glsl-walker (defun name lambda-list &body body+d)
+  (multiple-value-bind (body declare doc) (alexandria:parse-body body+d)
+    (multiple-value-bind (req opt rest keys aux)
+        (alexandria:parse-ordinary-lambda-list lambda-list)
+      ;; fixme: add this directly rather than side effecting the returned
+      ;; cons like this...
+      (setf (getf (cdr (3bgl-shaders::add-function :toplevel-function name lambda-list body)) :binding)
+            (make-instance 'binding
+                           :name name
+                          :value-type t
+                          :binding-type :global
+                          :init value)))
+    `(:function ,name :lambda-list ,lambda-list
+      :declare ,@(when declare (list declare))
+      :doc ,@(when doc (list doc))
+      :body ,@(3bgl-shaders::@@ body))))
 
 
 #++
