@@ -21,109 +21,162 @@
 (defparameter *environment* nil)
 
 ;; todo: store declarations somewhere in env, and parse them when walking code?
-(defclass cl-environment ()
+(defclass environment ()
   ((parent-scope :reader parent-scope :initarg :parent :initform nil)
-   ;; map of name -> (type . args)
-   ;; where TYPE is :macro or :function
-   ;;  if :function, args is lambda-list
-   ;;  if :macro, args is (lambda compiled-function)
-   ;;    where lambda is a LAMBDA form to be compiled to get compiled-function
-   ;;    and compiled-function might be NIL if not compiled yet
+   ;; map of name -> FUNCTION-BINDING instance
    (function-bindings :reader function-bindings :initform (make-hash-table))
-   ;; map of name -> (type . args)
-   ;; where TYPE is :symbol-macro or :variable
-   ;;   if :symbol-macro, args is expansion
+   ;; map of name -> BINDING instance
    (variable-bindings :reader variable-bindings :initform (make-hash-table))))
 
-(defparameter *cl-environment* (make-instance 'cl-environment))
+(defparameter *cl-environment* (make-instance 'environment))
 
-;; these leave existing values, in case we already added some metadata
-;; to them (mainly for globals, which might reasonably be processed
-;; multiple times in the same scope)
-(defmethod add-macro-to-env ((env cl-environment) name lambda)
-  ;; todo: complain about existing bindings in this scope?
-  ;; (but don't want to complain about redefining globals)
+(defun get-variable-binding (name &key (env *environment*))
+  (and env
+       (or (gethash name (variable-bindings env))
+           (get-variable-binding name :env (parent-scope env)))))
+
+(defun get-function-binding (name &key (env *environment*))
+  (and env
+       (or (gethash name (function-bindings env))
+           (get-function-binding name :env (parent-scope env)))))
+
+
+(defun add-macro (name lambda &key (env *environment*))
+  (assert (not (gethash name (function-bindings env))))
   (setf (gethash name (function-bindings env))
-        (list :macro lambda nil)))
-
-(defmethod add-symbol-macro-to-env ((env cl-environment) name expansion)
-  (setf (gethash name (variable-bindings env))
-        (list :symbol-macro expansion)))
-
-(defmethod add-variable-to-env ((env cl-environment) name x type)
-  (setf (gethash name (variable-bindings env))
-        (list type)))
-
-(defmethod add-function-to-env ((env cl-environment) type name lambda-list body
-                                &optional declarations doc-strings)
-  (assert (member type '(:builtin-function :local-function :toplevel-function)))
-  (setf (gethash name (function-bindings env))
-        (list type name :lambda-list lambda-list :body body
-              :declare declarations :doc doc-strings)))
-
-(defun add-macro (name lambda)
-  (add-macro-to-env *environment* name lambda))
-
-(defmethod get-macro-function-in-env (name (env cl-environment))
-  (let ((l (gethash name (function-bindings env))))
-    (if l
-        (when (eq (first l) :macro)
-          ;; return nil for a local function binding, since it shadows
-          ;; outer macros
-          (cdr l))
-        (get-macro-function-in-env name (parent-scope env)))))
-
-(defmethod get-macro-function-in-env (name (env null))
-  nil)
-
-
-(defmethod get-symbol-macro-in-env (name (env cl-environment))
-  (let ((l (gethash name (variable-bindings env))))
-    (if l
-        (when (eq (first l) :symbol-macro)
-          ;; return nil for a local binding, since it shadows outer macros
-          ;; -- CL uses a function for symbol macros, but not sure
-          ;;    that is visible without macroexpand-hook, so just returning
-          ;;    the expansion directly...
-          #++(lambda (form expansion)
-            (declare (ignore form expansion))
-            (second l))
-          ;; return 2nd value to indicate we actually have a symbol macro,
-          ;;   even if it expands to NIL
-          (values (second l) t))
-        (get-symbol-macro-in-env name (parent-scope env)))))
-
-(defmethod get-symbol-macro-in-env (name (env null))
-  nil)
+        (make-instance 'macro-definition
+                       :name name
+                       :expression lambda)))
 
 (defun get-macro-function (name)
-  (let ((mf (get-macro-function-in-env name *environment*)))
-    (when (and (consp mf) (not (second mf)))
-      (setf (second mf) (compile 'nil (first mf))))
-    (second mf)))
+  (let ((mf (get-function-binding name :env *environment*)))
+    (when (typep mf 'macro-definition)
+      (when (not (expander mf))
+        (setf (expander mf) (compile 'nil (expression mf))))
+      (expander mf))))
 
 (defun get-symbol-macro (name)
-  (get-symbol-macro-in-env name *environment*))
+  (let ((b (get-variable-binding name :env *environment*)))
+    (when (typep b 'symbol-macro)
+      b)))
 
-(defun add-symbol-macro (name expansion)
-  (add-symbol-macro-to-env *environment* name expansion))
+(defun add-symbol-macro (name expansion &key (env *environment*))
+  (assert (not (gethash name (variable-bindings env))))
+  (setf (gethash name (variable-bindings env))
+        (make-instance 'symbol-macro
+                       :name name
+                       :value-type t
+                       :expansion expansion)))
 
-(defun add-variable (name x &optional (type :local-binding))
-  (add-variable-to-env *environment* name x type))
+(defun add-variable (name init &key (env *environment*) binding (type 'variable-binding))
+  (assert (not (gethash name (variable-bindings env))))
+  (setf (gethash name (variable-bindings env))
+        (or binding
+            (make-instance type
+                           :name name
+                           :value-type t
+                           :init init))))
 
-(defun add-function (type name lambda-list body &optional declarations docs)
-  (add-function-to-env *environment*
-                       type name lambda-list body declarations docs))
 
+(defun make-&key-expander (lambda-list)
+  (multiple-value-bind (req opt rest key aux)
+      (alexandria:parse-ordinary-lambda-list lambda-list)
+    (declare (ignorable req))
+    (when rest
+      (error "&rest not supported"))
+    (when aux
+      (error "&aux not supported yet"))
+    ;; if we have any supplied-p args, we just expand into all required args
+    ;; else if we have only optional args, we let glsl default values handle it
+    ;; else if we have &key, we expand to optional positional args
+    (let ((use-optional (not (or (some 'third opt) (some 'third key))))
+          (args (reverse req))
+          (bindings (mapcar (lambda (n)
+                              (make-instance 'function-argument
+                                      :name n
+                                      :value-type t
+                                      :init nil))
+                            (reverse req))))
+      (loop for (n i s) in opt
+            when n
+              do (push n args)
+                 (push (make-instance 'function-argument
+                                      :name n
+                                      :value-type t
+                                      :init (when use-optional i))
+                       bindings)
+            when s
+              do (push `(if ,s 1 0) args)
+                 (push (make-instance 'function-argument
+                                      :name s
+                                      :value-type :boolean
+                                      :init nil)
+                       bindings))
+
+      (loop for ((nil n) i s) in key
+            when n
+              do (push n args)
+                 (push (make-instance 'function-argument
+                                      :name n
+                                      :value-type t
+                                      :init (when use-optional i))
+                       bindings)
+            when s
+              do (push `(if ,s 1 0) args)
+                 (push (make-instance 'function-argument
+                                      :name s
+                                      :value-type :boolean
+                                      :init nil)
+                       bindings))
+      (values
+       (reverse bindings)
+       (if (or key (not use-optional))
+           (compile nil
+                    `(lambda (args)
+                       ;; fixme: probably should switch unspecified
+                       ;; default values from NIL to 0 or something?
+                       (destructuring-bind (,@lambda-list) args
+                         (list ,@(reverse args)))))
+           #'identity)))))
+#++
+(make-&key-expander '(a &optional (b 2 p) &key (c 2.0 cp) (d 1)))
+#++
+(funcall (nth-value 1 (make-&key-expander '(a &optional (b 2 p) &key (c 2.0 cp) (d 1))))
+         (list 'a 'b :d 'cc))
+
+(defun add-function (name lambda-list body
+                     &key declarations docs (env *environment*)
+                       (function-type 'global-function)
+                       binding)
+  (assert (not (gethash name (function-bindings env))))
+  (if binding
+      (setf (gethash name (function-bindings env)) binding)
+      (multiple-value-bind (bindings expander)
+          (make-&key-expander lambda-list)
+        (setf (gethash name (function-bindings env))
+              (make-instance function-type
+                             :name name
+                             :return-type t
+                             :lambda-list lambda-list
+                             :bindings bindings
+                             :expander expander
+                             :body body
+                             :docs docs
+                             :declarations declarations)))))
+
+(defun add-function-arguments (function &key (env *environment*))
+  ;; add the bindings from a functions's arglist to current environment
+  (loop with v = (variable-bindings env)
+        for b in (bindings function)
+        for n = (name b)
+        do (assert (not (gethash n v)))
+           (setf (gethash n v) b)))
 
 (defclass cl-walker (walker)
   ())
 
-(defmethod add-scope (env (walker cl-walker))
-  (make-instance 'cl-environment :parent env))
-
-(defmacro with-environment-scope ((walker) &body body)
-  `(let ((*environment* (add-scope *environment* ,walker)))
+(defmacro with-environment-scope (() &body body)
+  `(let ((*environment* (make-instance 'cl-environment :parent *environment*)))
      ,@body))
 
 
@@ -174,7 +227,7 @@
 (defwalker cl-walker (load-time-value form &optional read-only-p)
   `(load-time-value ,(@ form) ,read-only-p))
 
-(defwalker cl-walker (setq (&rest assignments))
+(defwalker cl-walker (setq &rest assignments)
   `(setq ,@(loop for (a b) on assignments by #'cddr
                  when (nth-value 1 (get-symbol-macro a))
                    do (error "can't expand assignment to symbol macros in SETQ yet (in form ~s)" `(setq ,@assignments))
@@ -193,7 +246,7 @@
 (defwalker cl-walker (symbol-macrolet (&rest bindings) &rest body)
   ;; not sure if there is any reason to preserve the symbol-macrolet, so
   ;; just letting it expand for now...
-  (with-environment-scope (walker)
+  (with-environment-scope ()
     (loop for (name expansion) in bindings
           do (add-symbol-macro name expansion))
     (let ((w (@@ body :declare t)))
@@ -205,7 +258,7 @@
 (defwalker cl-walker (macrolet (&rest bindings) &rest body)
   ;; not sure if there is any reason to preserve the macrolet, so
   ;; just letting it expand for now...
-  (with-environment-scope (walker)
+  (with-environment-scope ()
     (loop for (name lambda-list . body) in bindings
           do (add-macro name
                         `(lambda (form env)
@@ -229,10 +282,11 @@
 (defwalker cl-walker (go tag)
   `(go ,tag))
 
-(defmacro with-lambda-list-vars ((walker lambda-list) &body body)
-  `(with-environment-scope (,walker)
-     (mapcar (lambda (a) (add-variable a nil))
-             (lambda-list-vars ,lambda-list))
+
+(defmacro with-lambda-list-vars ((function) &body body)
+  `(with-environment-scope ()
+     (mapcar (lambda (a) (add-variable (name a) nil :binding a))
+             (bindings ,function))
      ,@body))
 
 (defun walk-function-body (walker lambda-list body)
@@ -243,7 +297,7 @@
   (let* ((declare (when (typep (car body) '(cons (member declare)))
                     (pop body)))
          (walked
-           (with-environment-scope (walker)
+           (with-environment-scope ()
              (mapcar #'(lambda (a) (add-variable a nil))
                      (lambda-list-vars lambda-list))
              (mapcar (lambda (a) (walk a walker)) body))))
@@ -287,14 +341,14 @@
                           (init (if (consp a) (cadr a) nil)))
                       (list var (@ init))))
                    bindings))
-     ,@(with-environment-scope (walker)
+     ,@(with-environment-scope ()
          (mapcar (lambda (a) (add-variable (if (consp a) (car a) a) nil))
                  bindings)
          (@@ body :declare t))))
 
 (defwalker cl-walker (let* (&rest bindings) &rest body)
   ;; walk default values if any, and body
-  (with-environment-scope (walker)
+  (with-environment-scope ()
     `(let* (,@(mapcar (lambda (a)
                         (let ((var (if (consp a) (car a) a))
                               (init (if (consp a) (cadr a) nil)))
@@ -317,6 +371,8 @@
 
 (defwalker cl-walker (flet (&rest functions) &rest body)
   ;; walk function bodies (with local functions not in scope yet)
+  (error "rewrite this...")
+  #++
   (let ((walked (loop for (f ll . body+d) in functions
                       for (body declare doc) = (multiple-value-list
                                                 (alexandria:parse-body
@@ -343,6 +399,8 @@
 
 (defwalker cl-walker (labels (&rest functions) &rest body)
   ;; walk function bodies and main body
+  (error "rewrite this...")
+  #++
   (with-environment-scope (walker)
     ;; add all function names to env (with empty bodies for now)
     ;; so they are in scope while walking bodies (even if we can't
@@ -377,6 +435,7 @@
   ;; fixme: rearrange this so we can hook function application without
   ;; having to check for macros by hand
   (let ((macro (get-macro-function car)))
+    #++(format t "check for macro ~s -> ~s~%" car macro)
     (if macro
         (walk (funcall macro (list* car cdr) *environment*)
               walker)
@@ -422,3 +481,35 @@
             (a a b))))
       (make-instance 'cl-walker))
 
+;;; add some builtin functions for testing
+;;; todo: move these somewhere separate and add missing functions
+
+(defun add-internal-function (name lambda-list)
+  (setf (gethash name (function-bindings *environment*))
+        (make-instance  'internal-function
+                        :name name
+                        :lambda-list lambda-list
+                        ;; todo: add type info
+                        :return-type t)))
+(let ((*environment* *cl-environment*))
+  (add-internal-function '+ '(&rest numbers))
+  (add-internal-function '* '(&rest numbers))
+  (add-internal-function '- '(number &rest numbers))
+  (add-internal-function '/ '(number &rest numbers))
+  (add-internal-function 'or '(&rest forms))
+  (add-internal-function 'and '(&rest forms))
+  (add-internal-function 'logior '(&rest integers))
+  (add-internal-function 'logand '(&rest integers))
+  (add-internal-function 'logxor '(&rest integers))
+  (add-internal-function '1- '(number))
+  (add-internal-function '1+ '(number))
+  (add-internal-function 'ash '(integer count))
+  ;; these should probably be binary ops, with macros to expand more
+  ;; complicated uses
+  (add-internal-function '= '(number &rest numbers))
+  (add-internal-function '/= '(number &rest numbers))
+  (add-internal-function '< '(number &rest numbers))
+  (add-internal-function '> '(number &rest numbers))
+  (add-internal-function '<= '(number &rest numbers))
+  (add-internal-function '>= '(number &rest numbers))
+)

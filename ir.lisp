@@ -85,46 +85,128 @@
 ;;  uniforms?
 ;;  varyings?
 
-
-(defclass binding ()
-  ((name :accessor name :initarg :name)
-   ;; type of value stored in this binding (possibly not concrete if
-   ;; type inference not done yet, or if function is still generic)
-   (value-type :accessor value-type :initarg :value-type)
-   ;; type of binding (local, global, attribute, uniform, output, ?)
-   ;; possibly should distinguish between builtins and user defined vars?
-   (binding-type :accessor binding-type :initarg :binding-type)
-   (initial-value-form :accessor initial-value-form :initarg :init)))
-
-(defclass progn-body () ;; mixin for forms with (implicit) progn
-  ((body :accessor body)))
-
-(defclass bindings ()
-  ((bindings :accessor bindings)))
-
-(defclass binding-scope (bindings progn-body)  ;; let/let*, also used by defun
+(defclass place ()
   ())
 
-(defclass global-function (binding-scope)
+(defclass binding (place)
+  ((name :accessor name :initarg :name)
+   (glsl-name :accessor glsl-name :initarg :glal-name :initform nil)
+   ;; type of value stored in this binding (possibly not concrete if
+   ;; type inference not done yet, or if function is still generic)
+   (value-type :accessor value-type :initarg :value-type)))
+
+(defclass initialized-binding (binding)
+  ;; for actual variables in the code (global or local)
+  ((qualifiers :accessor qualifiers :initform nil)
+   (initial-value-form :accessor initial-value-form :initarg :init)))
+
+(defclass variable-binding (initialized-binding)
+  ())
+
+(defclass constant-binding (initialized-binding)
+  ())
+
+(defmethod initialize-instance :after ((i constant-binding)
+                                       &key &allow-other-keys)
+  (pushnew :const (qualifiers i)))
+
+;; do we need to distinguish locals from globals?
+(defclass local-variable (variable-binding)
+  ())
+
+(defclass symbol-macro (binding)
+  ((expansion :accessor expansion :initarg :expansion)))
+
+;; not sure if this needs to be distinct?
+(defclass function-argument (local-variable)
+  ())
+
+
+(defclass progn-body () ;; mixin for forms with (implicit) progn
+  ;; possibly should have a subclass for explicit progn, so we can
+  ;; distinguish that from implicit progns? (so we can do things
+  ;; like merging nested progns)
+  ;; alternately, might be better to just make all progns explicit?
+  ((body :accessor body :initarg :body)))
+
+(defclass explicit-progn (progn-body)
+  ())
+(defclass implicit-progn (progn-body)
+  ())
+
+(defclass bindings ()
+  ;; list (sequence?) of bindings corresponding to a let scope,
+  ;; function arglist, etc
+  ((bindings :accessor bindings :initarg :bindings)))
+
+(defclass binding-scope (bindings implicit-progn)  ;; let/let*
+  ((declarations :initarg :declarations)))
+
+
+(defclass function-binding ()
+  ;; bindings in function namespace
+  ((name :accessor name :initarg :name)
+   (glsl-name :accessor glsl-name :initarg :glsl-name :initform nil)
+   (declarations :initarg :declarations)
+   (docs :initarg :docs)
+   ;; might just distinguish them by type of the instance instead?
+   #++(binding-type :accessor binding-type :initarg :binding-type)))
+
+(defclass function-binding-function (function-binding)
   ;; possibly should also store some sort of type-inference function(s)
   ;; with these? (for example to specify all args have to be vectors
   ;; of same types, or whatever, or figure out return type of something
   ;; like `outer-product` or `transpose` from arg types
-  ((name :accessor name)
-   (return-type :accessor return-type)))
+  ((return-type :accessor return-type :initarg :return-type)
+   ;; sexp lambda list (with &key, etc)
+   ;; (no &rest though, since we don't have lists)
+   (lambda-list :initarg :lambda-list)
+   ;; c-style lambda list, only positional/optional args
+   ;; optional as (name value)?
+   ;; (arglist :initarg :arglist) -- just using BINDINGS for now?
+   ;; to support &key args, we optionally have a sort of compiler-macro
+   ;; associated with functions, to expand keyword args in the source
+   ;; into positional args
+   ;; todo: check for reordering argument values with side effects and warn
+   ;;  (since we might epand something like (foo :a a :b b) into (foo b a)
+   ;;   which could matter if A or B modify the same variable, or one
+   ;;   modifies a variable the other depends on)
+   ;; todo: compile this lazily like macros? (and maybe combine with them?)
+   (expander :accessor expander :initarg :expander :initform #'identity)
+)
+)
 
-(defclass builtin-function (bindings)
+(defclass global-function (function-binding-function implicit-progn bindings)
+  ;; global function definitions, with function body
+  ())
+
+(defclass builtin-function (function-binding-function bindings)
   ;; declarations for functions provided by glsl
   ;; (or external glsl code)
-  ((name :accessor name)
-   (return-type :accessor return-type)))
+  ())
 
-(defclass internal-function (bindings)
+(defclass internal-function (function-binding-function bindings)
   ;; like a builtin function, but we compile it specially
   ;; for example AND -> &&, etc
   ;; probably mostly CL functions?
-  ((name :accessor name)
-   (return-type :accessor return-type)))
+  ())
+
+;; we also have macros and local functions during early passes..
+(defclass macro-definition (function-binding)
+  ;; we store expression to compile for macro, and only compile the
+  ;; actual macro function the first time it is used
+  ((expression :accessor expression :initarg :expression )
+   (expander :accessor expander :initform nil)))
+
+;; not sure we need to distinguish global from local macros, since local
+;; macros shoul only exist in transient environment scopes?
+#++
+(defclass global-macro (macro-definition)
+  ())
+#++
+(defclass local-macro (macro-definition)
+  ())
+
 
 ;;; not supporting bindings in FOR loops for now, since they aren't
 ;;; really very general (we can bind multiple variables in
@@ -134,25 +216,79 @@
 ;;   `{ <bindings> for (...) {...} }`
 ;;; and if we really want to, later expand the simple cases to
 ;;; `for (<binding>...) {...}` if we care about the generated code
-(defclass for-loop (progn-body)
+(defclass for-loop (implicit-progn)
   ((init-form :accessor init-form)
    (condition-form :accessor condition-form)
    (step-form :accessor step-form)))
 
-(defclass var-read ()
-  ;; possibly should store some type info as well?
-  ((binding :accessor binding)))
 
-(defclass var-write ()
+;; slot/array access are used like bindings for now, might need to be
+;; smarter once we start type inference?
+(defclass slot-access (place)
+  ((binding :accessor binding :initarg :binding)
+   (field :accessor field :initarg :field)))
+(defclass array-access (place)
+  ((binding :accessor binding :initarg :binding)
+   (index :accessor index :initarg :index)))
+
+
+
+(defclass variable-read ()
   ;; possibly should store some type info as well?
-  ((binding :accessor binding)
-   (value :accessor value)))
+  ((binding :accessor binding :initarg :binding)))
+
+(defclass variable-write ()
+  ;; possibly should store some type info as well?
+  ((binding :accessor binding :initarg :binding)
+   (value :accessor value :initarg :value)))
 
 (defclass function-call ()
-  ((called-function :accessor called-function)
-   (arguments :accessor arguments)))
+  ((called-function :accessor called-function :initarg :function)
+   (arguments :accessor arguments :initarg :arguments)))
+
+(defclass if-form ()
+  ((test-form :accessor test-form :initarg :test)
+   (then-form :accessor then-form :initarg :then)
+   (else-form :accessor else-form :initarg :else))
+)
 
 
+
+;;; these don't assign results of walking children back into parent, since
+;;; other objects might refer to them... if we really need to make changes,
+;;; try change-class or something?
+
+(defmethod walk ((form initialized-binding) walker)
+  (walk (initial-value-form form) walker)
+  (when (next-method-p)
+    (call-next-method)))
+
+(defmethod walk ((form progn-body) walker)
+  (loop for i in (body form)
+        do (walk i walker))
+  (when (next-method-p)
+    (call-next-method)))
+
+(defmethod walk ((form bindings) walker)
+  (loop for i in (bindings form)
+        do (walk i walker))
+  (when (next-method-p)
+    (call-next-method)))
+
+(defmethod walk ((form array-access) walker)
+  (walk (index form) walker)
+  (when (next-method-p)
+    (call-next-method)))
+
+(defmethod walk ((form variable-write) walker)
+  (walk (value form) walker)
+  (when (next-method-p)
+    (call-next-method)))
+
+(defmethod walk ((form if-form) walker)
+  (walk (test-form form) walker)
+  (walk (then-form form) walker)
+  (walk (else-form form) walker))
 
 
 

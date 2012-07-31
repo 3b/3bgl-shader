@@ -111,6 +111,9 @@
          (specular (* blinn-phong normalization cosine fresnel visibility))))
   (+ diffuse specular))
 
+;; probably want to name these something other than `main`, and rename
+;; during export, so we can have multiple possible shaders defined at once
+;; and just pick the specific one as needed for a given shader
 (defun main ()
   (let* ((ntex (texture-2d normal-texture uv))
          (dtex (texture-2d diffuse-texture uv))

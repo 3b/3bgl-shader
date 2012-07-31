@@ -7,8 +7,15 @@
 ;;      walker that does expansion already)
 ;;; +extract top-level definitions
 ;;; +inline local functions?
+;;     has to happen after alpha conversion, since free variables
+;;     in the local function bodies need to refer to bindings in the
+;;     scope when the function was defined, as opposed to when it was
+;;     called
 ;;;  alpha conversion?
 ;;;    (including resolving conflicts between fn/var/etc namespaces?)
+;;     if possible, it would be nice to leave names unchanged, and
+;;       rely on on {} for shadowing lexical scopes, but if so, we need
+;;       to watch out for inlined local closures
 
 ;;;  convert into some less-cl form?
 ;;;    tree of objects (or just plists)?
@@ -34,9 +41,14 @@
 (defwalker extract-functions (defun name lambda-list &body body+d)
   (multiple-value-bind (body declare doc)
       (alexandria:parse-body body+d :documentation t)
-    (add-function :toplevel-function name lambda-list
+    #++(add-function :toplevel-function name lambda-list
                   (with-lambda-list-vars (walker lambda-list) (@@ body))
                   declare doc)
+    (let ((f (add-function name lambda-list
+                           nil
+                           :declarations declare :docs doc)))
+      (setf (body f)
+            (with-lambda-list-vars (f) (@@ body))))
     #++(call-next-method)
     nil))
 
@@ -55,48 +67,49 @@
 (defclass tree-shaker (glsl::glsl-walker)
   ())
 
-(defmethod walk-cons (car cdr (walker tree-shaker))
+(defmethod walk ((form function-call) (walker tree-shaker))
+  (when (typep (called-function form) 'global-function)
+    (funcall *tree-shaker-hook* (called-function form)))
+  (call-next-method))
+
+#++(defmethod walk-cons (car cdr (walker tree-shaker))
   (let ((ff (gethash car (function-bindings *environment*))))
     (when (eq (car ff) :toplevel-function)
       (funcall *tree-shaker-hook* car cdr)))
   (call-next-method))
 
+#++
 (defmethod walk :around (form (w tree-shaker))
   (call-next-method))
 
 (defun tree-shaker (root)
   ;; we assume local functions have been inlined or extracted, and
   ;; names have been alpha converted as needed, etc already...
-  (let ((in-edges (make-hash-table))
-        (out-edges (make-hash-table))
-        (roots (list root))
-        (live (list root)))
+  (let* ((root (gethash root (function-bindings *environment*)))
+         (in-edges (make-hash-table))
+         (out-edges (make-hash-table))
+         (roots (list root))
+         (live ()))
     ;;; first pass: walk the tree starting from root, and collect all edges
-    (loop with *tree-shaker-hook* =
-          (lambda (car cdr)
-            (declare (ignore cdr))
-            ;; store outgoing edges from current function being walked,
-            ;; so we don't need to walk it again for next pass
-            (setf (gethash car (gethash root out-edges)) car)
-            ;; then if we haven't seen the function being called before,
-            ;; add it to list to be walked
-            (unless (gethash car in-edges)
-              (push car roots)
-              (setf (gethash car in-edges) (make-hash-table)))
-            ;; finally, add an incoming edge from current function to
-            ;; function being called
-            (setf (gethash root (gethash car in-edges)) root))
+    (loop with *tree-shaker-hook*
+            =
+            (lambda (name)
+              ;; store outgoing edges from current function being walked,
+              ;; so we don't need to walk it again for next pass
+              (setf (gethash name (gethash root out-edges)) name)
+              ;; then if we haven't seen the function being called before,
+              ;; add it to list to be walked
+              (unless (gethash name in-edges)
+                (push name roots)
+                (setf (gethash name in-edges) (make-hash-table)))
+              ;; finally, add an incoming edge from current function to
+              ;; function being called
+              (setf (gethash root (gethash name in-edges)) root))
           for root = (pop roots)
           while root
           do (setf (gethash root out-edges) (make-hash-table))
-             (destructuring-bind (type name &key body lambda-list
-                                  &allow-other-keys)
-                 (gethash root (function-bindings *environment*))
-               ;; just wrapping it in a fake defun form rather than
-               ;;    walking the body by hand for now...
-               (when (eq :toplevel-function type)
-                 (walk `(defun ,name ,lambda-list ,@body)
-                       (make-instance 'tree-shaker)))))
+             (when (typep root 'global-function)
+               (walk root (make-instance 'tree-shaker))))
 
     ;;; second pass: topo sort entries
     (setf roots (list root))
@@ -113,11 +126,11 @@
                   ;; and add child to list of roots if there are no
                   ;; other callers
                   (when (zerop (hash-table-count in))
-                    (push k live)
+                    (push (name k) live)
                     (push k roots))))
               (gethash root out-edges))
              (remhash root out-edges))
-    live)
+    (reverse (cons (name root) live)))
 )
 
 
@@ -129,7 +142,7 @@
 
 
 (defun compile-block (forms tree-shaker-root)
-  (let ((*environment* (make-instance 'cl-environment
+  (let ((*environment* (make-instance 'environment
                                       :parent glsl::*glsl-base-environment*)))
     (setf forms (walk (cons 'progn forms) (make-instance 'extract-functions)))
     (let ((shaken (tree-shaker tree-shaker-root)))
@@ -138,36 +151,51 @@
        *environment*
        shaken
        (with-output-to-string (*standard-output*)
-         (pprint-glsl (remove 'nil forms))
+         (pprint-glsl forms)
          (loop for name in shaken
                for def = (gethash name (function-bindings *environment*))
-               when (eq (car def) :toplevel-function)
+               when (typep def 'global-function)
                do (pprint-glsl def)
                ))
        ))))
 
 
+#++
+(compile-block '((defun foo (a1 b1)
+                   #++(+ a (* 3 (/ b)) 2))
+)
+               'foo)
 
 #++
-(compile-block '((defun foo (a b)
-                   (+ a (* 3 (/ b)) 2))
-                 (defparameter *foo-bar* 123)
-                 (defconstant +hoge-piyo+ 45.6)
-                 (defmacro bar (c d)
-                   `(- ,c ,(+ d 10)))
-                 (defun not-called (g)
-                   (foo 1 2))
-                 (defun calls-foo (a b)
-                   (foo a b))
-                 (defun main ()
-                   (declare (:int e))
-                   "do baz stuff"
-                   #++(flet ((a (b)
-                            (+ 1 b)))
-                     (a 2))
-                   (:var e :type :int)
-                   (:var f :type :float)
-                   (if e
-                       (calls-foo (foo e 1) (bar f 9))
-                       (foo (if f (ash f 1) 2) (ash 4 g)))))
-               'main)
+(multiple-value-list
+ (compile-block '((defun foo (a b)
+                    (+ a (* 3 (/ b)) 2))
+                  (defparameter *foo-bar* (+ 123 4))
+                  (defconstant +hoge-piyo+ 45.6)
+                  (defmacro bar (c d)
+                    `(- ,c ,(+ d 10)))
+                  (defun not-called (g)
+                    (foo 1 2))
+                  (defun calls-foo (a b)
+                    (foo a b))
+                  (defun complicated (a &optional (b 1.0) &key (c 2 cp)
+                                                            (d 3))
+                    (if cp (+ a b c) (+ a b)))
+                  (defun main ()
+                    (declare (:int e))
+                    "do baz stuff"
+                    #++(flet ((a (b)
+                                (+ 1 b)))
+                         (a 2))
+                    (let ((e)
+                          (f 1.0))
+                      (when e
+                        (foo 1 2)
+                        (bar 2 3)
+                        )
+                      (if e
+                          (calls-foo (foo e 1) (bar f 9))
+                          (complicated (if f (ash f 1) (ash e -1)) (glsl::<< 4 +hoge-piyo+)
+                                       :d 4)))))
+                'main))
+
