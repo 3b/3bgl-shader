@@ -275,12 +275,14 @@
                               :type '3bgl-shaders::constant-binding))
 
 (3bgl-shaders::defwalker glsl-walker (defun name lambda-list &body body+d)
-  (multiple-value-bind (body declare doc)
-      (alexandria:parse-body body+d :documentation t)
-    (3bgl-shaders::add-function name lambda-list
-                                (filter-progn (3bgl-shaders::@@ body))
-                                :declarations declare :docs doc)))
+  (3bgl-shaders::process-type-declarations-for-scope
+   (multiple-value-bind (body declare doc)
+       (alexandria:parse-body body+d :documentation t)
+     (3bgl-shaders::add-function name lambda-list
+                                 (filter-progn (3bgl-shaders::@@ body))
+                                 :declarations declare :docs doc))))
 
+#++
 (3bgl-shaders::defwalker glsl-walker (let (&rest bindings) &rest body+d)
   (multiple-value-bind (body declare)
       (alexandria:parse-body body+d)
@@ -295,39 +297,41 @@
      :body (3bgl-shaders::@@ body))))
 
 (3bgl-shaders::defwalker glsl-walker (let (&rest bindings) &rest body+d)
-  (multiple-value-bind (body declare)
-      (alexandria:parse-body body+d)
-    (let ((l (make-instance
-              '3bgl-shaders::binding-scope
-              :bindings (loop for (n i) in bindings
-                              collect (make-instance
-                                       '3bgl-shaders::local-variable
-                                       :name n
-                                       :init (3bgl-shaders::@ i)
-                                       :value-type t))
-              :declarations declare
-              :body nil)))
-      (setf (3bgl-shaders::body l)
-            (3bgl-shaders::with-lambda-list-vars (l)
-              (3bgl-shaders::@@ body)))
-      l)))
+  (3bgl-shaders::process-type-declarations-for-scope
+   (multiple-value-bind (body declare)
+       (alexandria:parse-body body+d)
+     (let ((l (make-instance
+               '3bgl-shaders::binding-scope
+               :bindings (loop for (n i) in bindings
+                               collect (make-instance
+                                        '3bgl-shaders::local-variable
+                                        :name n
+                                        :init (3bgl-shaders::@ i)
+                                        :value-type t))
+               :declarations declare
+               :body nil)))
+       (setf (3bgl-shaders::body l)
+             (3bgl-shaders::with-lambda-list-vars (l)
+               (3bgl-shaders::@@ body)))
+       l))))
 
 (3bgl-shaders::defwalker glsl-walker (let* (&rest bindings) &rest body+d)
   (multiple-value-bind (body declare)
       (alexandria:parse-body body+d)
-    (3bgl-shaders::with-environment-scope ()
-      (make-instance
-       '3bgl-shaders::binding-scope
-       :bindings (loop for (n i) in bindings
-                       for b = (make-instance
-                                '3bgl-shaders::local-variable
-                                :name n
-                                :init (3bgl-shaders::@ i)
-                                :value-type t)
-                       collect b
-                       do (3bgl-shaders::add-variable n i :binding b))
-       :declarations declare
-       :body (3bgl-shaders::@@ body)))))
+    (3bgl-shaders::process-type-declarations-for-scope
+     (3bgl-shaders::with-environment-scope ()
+       (make-instance
+        '3bgl-shaders::binding-scope
+        :bindings (loop for (n i) in bindings
+                        for b = (make-instance
+                                 '3bgl-shaders::local-variable
+                                 :name n
+                                 :init (3bgl-shaders::@ i)
+                                 :value-type t)
+                        collect b
+                        do (3bgl-shaders::add-variable n i :binding b))
+        :declarations declare
+        :body (3bgl-shaders::@@ body))))))
 
 (3bgl-shaders::defwalker glsl-walker (progn &body body)
   (make-instance '3bgl-shaders::explicit-progn
@@ -411,7 +415,7 @@
 
 #++
 (let ((3bgl-shaders::*environment*
-        (make-instance '3bgl-shaders::cl-environment
+        (make-instance '3bgl-shaders::environment
                        :parent *glsl-base-environment*)))
   (3bgl-shaders::walk '(progn
                         (defmacro do-stuff (a)

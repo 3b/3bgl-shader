@@ -44,9 +44,10 @@
     #++(add-function :toplevel-function name lambda-list
                   (with-lambda-list-vars (walker lambda-list) (@@ body))
                   declare doc)
-    (let ((f (add-function name lambda-list
-                           nil
-                           :declarations declare :docs doc)))
+    (let ((f (process-type-declarations-for-scope
+              (add-function name lambda-list
+                            nil
+                            :declarations declare :docs doc))))
       (setf (body f)
             (with-lambda-list-vars (f) (@@ body))))
     #++(call-next-method)

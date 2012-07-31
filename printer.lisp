@@ -57,6 +57,15 @@
           (index x)))
 
 
+(defmethod translate-type (type)
+  (string type)
+  #++(error "don't know how to compile type ~s" type))
+
+(defmethod translate-type ((type concrete-type))
+  (glsl-name type))
+
+
+
 
 (defmacro assert-statement ()
   `(when *in-expression*
@@ -190,7 +199,7 @@
   (let ((*in-expression* t))
     (format t "~{~a ~}~@[~a ~]~a~@[ = ~a~]"
             (qualifiers o)
-            (value-type o)
+            (translate-type (value-type o))
             (translate-name o)
             (initial-value-form o))))
 
@@ -232,7 +241,7 @@
 (defprint global-function (o)
   (assert-statement)
   (format t "~a ~a ~<(~;~@{~:_~a~#[~:;, ~]~}~;)~:> {~%"
-          (or (return-type o) "void")
+          (or (translate-type (return-type o)) "void")
           (translate-name o)
           (bindings o))
   (call-next-method)
@@ -246,7 +255,7 @@
        (funcall (gethash (name f) *internal-function-printers*)
                 *standard-output* args))
       (t
-       (with-standard-io-syntax
+       #++(with-standard-io-syntax
          (format *debug-io* "call args ~a~%" args))
        (let ((*in-expression* t))
          (format t "~a~<(~;~@{~:_~a~#[~:;, ~]~}~;)~:>"

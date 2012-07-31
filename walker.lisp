@@ -26,7 +26,8 @@
    ;; map of name -> FUNCTION-BINDING instance
    (function-bindings :reader function-bindings :initform (make-hash-table))
    ;; map of name -> BINDING instance
-   (variable-bindings :reader variable-bindings :initform (make-hash-table))))
+   (variable-bindings :reader variable-bindings :initform (make-hash-table))
+   (types :reader types :initform (make-hash-table))))
 
 (defparameter *cl-environment* (make-instance 'environment))
 
@@ -39,6 +40,11 @@
   (and env
        (or (gethash name (function-bindings env))
            (get-function-binding name :env (parent-scope env)))))
+
+(defun get-type-binding (name &key (env *environment*))
+  (and env
+       (or (gethash name (types env))
+           (get-type-binding name :env (parent-scope env)))))
 
 
 (defun add-macro (name lambda &key (env *environment*))
@@ -109,7 +115,7 @@
               do (push `(if ,s 1 0) args)
                  (push (make-instance 'function-argument
                                       :name s
-                                      :value-type :boolean
+                                      :value-type :bool
                                       :init nil)
                        bindings))
 
@@ -125,7 +131,7 @@
               do (push `(if ,s 1 0) args)
                  (push (make-instance 'function-argument
                                       :name s
-                                      :value-type :boolean
+                                      :value-type :bool
                                       :init nil)
                        bindings))
       (values
@@ -176,7 +182,7 @@
   ())
 
 (defmacro with-environment-scope (() &body body)
-  `(let ((*environment* (make-instance 'cl-environment :parent *environment*)))
+  `(let ((*environment* (make-instance 'environment :parent *environment*)))
      ,@body))
 
 

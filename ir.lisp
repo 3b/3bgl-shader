@@ -140,14 +140,14 @@
   ((bindings :accessor bindings :initarg :bindings)))
 
 (defclass binding-scope (bindings implicit-progn)  ;; let/let*
-  ((declarations :initarg :declarations)))
+  ((declarations :initarg :declarations :accessor declarations)))
 
 
 (defclass function-binding ()
   ;; bindings in function namespace
   ((name :accessor name :initarg :name)
    (glsl-name :accessor glsl-name :initarg :glsl-name :initform nil)
-   (declarations :initarg :declarations)
+   (declarations :initarg :declarations :accessor declarations)
    (docs :initarg :docs)
    ;; might just distinguish them by type of the instance instead?
    #++(binding-type :accessor binding-type :initarg :binding-type)))
