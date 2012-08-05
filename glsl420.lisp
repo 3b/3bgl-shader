@@ -63,5 +63,20 @@
     (input (gl-sample-position "gl_SamplePosition") :vec2 :fragment)
     (input (gl-sample-mask-in "gl_SampleMaskIn") (:int *) :fragment)
     (output (gl-frag-depth "gl_FragDepth") :float :fragment)
-    (output (gl-sample-mask "gl_SampleMask") (:int *) :fragment)))
+    (output (gl-sample-mask "gl_SampleMask") (:int *) :fragment)
 
+    ;; 4.30 stuff
+    ;; fixme: probably should split this out
+    (input (gl-num-work-groups "gl_NumWorkGroups") :uvec3 :compute)
+    (input (gl-work-group-size "gl_WorkGroupSize") :uvec3 :compute) ;; const instead of in?
+    (input (gl-work-group-id "gl_WorkGroupID") :uvec3 :compute)
+    (input (gl-local-invocation-id "gl_LocalInvocationID") :uvec3 :compute)
+    (input (gl-global-invocation-id "gl_GlobalInvocationID") :uvec3 :compute)
+    (input (gl-local-invocation-index "gl_LocalInvocationIndex") :uint :compute)
+
+    (input (gl-layer "gl_Layer") :int :fragment)
+    (input (gl-viewport-index "gl_ViewportIndex") :int :fragment)
+
+))
+
+cons

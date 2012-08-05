@@ -57,4 +57,10 @@
    :gl-sample-mask-in
    :gl-frag-depth
    :gl-sample-mask
-   :glsl-uniform))
+   :glsl-uniform
+   :gl-num-work-groups
+   :gl-work-group-size
+   :gl-work-group-id
+   :gl-local-invocation-id
+   :gl-global-invocation-id
+   :gl-local-invocation-index))

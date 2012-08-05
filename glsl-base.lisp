@@ -502,6 +502,7 @@
     ;; GLSL 'step' instead of CL STEP
     (step (x a b) :gentype (:gentype :gentype :gentype))
     (clamp (a b) :gentype (:gentype :gentype))
+    (noise4 (a) :vec4 (:gentype))
 
     )))
 
