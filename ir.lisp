@@ -90,21 +90,21 @@
 
 (defclass binding (place)
   ((name :accessor name :initarg :name)
-   (glsl-name :accessor glsl-name :initarg :glal-name :initform nil)
+   (glsl-name :accessor glsl-name :initarg :glsl-name :initform nil)
    ;; type of value stored in this binding (possibly not concrete if
    ;; type inference not done yet, or if function is still generic)
-   (value-type :accessor value-type :initarg :value-type)))
+   (value-type :accessor value-type :initarg :value-type)
+   (qualifiers :accessor qualifiers :initform nil)))
 
 (defclass initialized-binding (binding)
   ;; for actual variables in the code (global or local)
-  ((qualifiers :accessor qualifiers :initform nil)
-   (initial-value-form :accessor initial-value-form :initarg :init)))
+  ((initial-value-form :accessor initial-value-form :initarg :init)))
 
 (defclass variable-binding (initialized-binding)
   ())
 
 (defclass constant-binding (initialized-binding)
-  ())
+  ((internal :accessor internal :initform nil)))
 
 (defmethod initialize-instance :after ((i constant-binding)
                                        &key &allow-other-keys)
@@ -233,7 +233,7 @@
 
 
 
-(defclass variable-read ()
+(defclass variable-read (place)
   ;; possibly should store some type info as well?
   ((binding :accessor binding :initarg :binding)))
 
@@ -263,6 +263,12 @@
   (when (next-method-p)
     (call-next-method)))
 
+(defmethod walk ((form function-call) walker)
+  (loop for i in (arguments form)
+        do (walk i walker))
+  (when (next-method-p)
+    (call-next-method)))
+
 (defmethod walk ((form progn-body) walker)
   (loop for i in (body form)
         do (walk i walker))
@@ -276,11 +282,23 @@
     (call-next-method)))
 
 (defmethod walk ((form array-access) walker)
+  (walk (binding form) walker)
   (walk (index form) walker)
   (when (next-method-p)
     (call-next-method)))
 
+(defmethod walk ((form slot-access) walker)
+  (walk (binding form) walker)
+  (when (next-method-p)
+    (call-next-method)))
+
+(defmethod walk ((form variable-read) walker)
+  (walk (binding form) walker)
+  (when (next-method-p)
+    (call-next-method)))
+
 (defmethod walk ((form variable-write) walker)
+  (walk (binding form) walker)
   (walk (value form) walker)
   (when (next-method-p)
     (call-next-method)))

@@ -48,6 +48,7 @@
 
 
 (defun add-macro (name lambda &key (env *environment*))
+  #++
   (assert (not (gethash name (function-bindings env))))
   (setf (gethash name (function-bindings env))
         (make-instance 'macro-definition
@@ -74,13 +75,14 @@
                        :value-type t
                        :expansion expansion)))
 
-(defun add-variable (name init &key (env *environment*) binding (type 'variable-binding))
-  (assert (not (gethash name (variable-bindings env))))
+(defun add-variable (name init &key (env *environment*) binding
+                                 (type 'variable-binding) value-type)
+  ;(assert (not (gethash name (variable-bindings env))))
   (setf (gethash name (variable-bindings env))
         (or binding
             (make-instance type
                            :name name
-                           :value-type t
+                           :value-type (or (get-type-binding value-type) T)
                            :init init))))
 
 
@@ -154,7 +156,7 @@
                      &key declarations docs (env *environment*)
                        (function-type 'global-function)
                        binding)
-  (assert (not (gethash name (function-bindings env))))
+  ;;(assert (not (gethash name (function-bindings env))))
   (if binding
       (setf (gethash name (function-bindings env)) binding)
       (multiple-value-bind (bindings expander)
@@ -268,6 +270,7 @@
     (loop for (name lambda-list . body) in bindings
           do (add-macro name
                         `(lambda (form env)
+                           (declare (ignorable env))
                            (destructuring-bind ,lambda-list
                                (cdr form)
                              ,@body))))
@@ -474,6 +477,7 @@
   `(let ((*environment* *cl-environment*))
      (add-macro ,name
                 (lambda (form env)
+                  (declare (ignorable env))
                   (destructuring-bind ,lambda-list
                       (cdr form)
                     ,@body)))))

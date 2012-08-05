@@ -64,7 +64,7 @@
 
 ;;; possibly should add an option to bind while declaring uniform
 ;;; blocks/interfaces?
-(uniform-block light (:bind light)
+(uniform-block light (:in light)
   (color :vec4)
   (position :vec4))
 

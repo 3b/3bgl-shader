@@ -2,6 +2,12 @@
 
 (defparameter *in-expression* nil)
 
+;; hack to rename a specific function as 'main' when printing, so we
+;; can define a bunch of shaders for different stages (or different
+;; features) in same package without worrying about which can be named
+;; MAIN.
+(defparameter *print-as-main* nil)
+
 ;; we want to use call-next-method to print mixins, so using a custom
 ;; print function rather than pprint-dispatch stuff...
 
@@ -46,7 +52,9 @@
   (or (glsl-name x) (%translate-name (name x))))
 
 (defmethod translate-name ((x function-binding))
-  (or (glsl-name x) (%translate-name (name x))))
+  (if (eq x *print-as-main*)
+      "main"
+      (or (glsl-name x) (%translate-name (name x)))))
 
 (defmethod translate-name ((x slot-access))
   (format nil "~a.~a" (binding x)
@@ -55,6 +63,20 @@
 (defmethod translate-name ((x array-access))
   (format nil "~a[~a]" (binding x)
           (index x)))
+
+
+#++
+(defmethod translate-name ((x interface-binding))
+  (translate-name (binding x)))
+
+(defmethod translate-name ((x interface-stage-binding))
+  (translate-name (or (interface-block x) (binding x))))
+
+(defmethod translate-name ((x generic-type))
+  (or (glsl-name x) (%translate-name (name x))))
+
+(defmethod translate-name ((x variable-read))
+  (translate-name (binding x)))
 
 
 (defmethod translate-type (type)
@@ -139,10 +161,10 @@
 
 (defprinti (1- x) ()
   (let ((*in-expression* t))
-    (format t "~a" (- x 1))))
+    (format t "~a" `(- ,x 1))))
 (defprinti (1+ x) ()
   (let ((*in-expression* t))
-    (format t "~a" (+ x 1))))
+    (format t "~a" `(+ ,x 1))))
 
 ;; only handling binary versions of compare ops for now,
 ;; can expand multi arg versions in earlier pass if needed
@@ -194,14 +216,22 @@
           (%print ,object ,stream))
         1 *pprint-glsl*))))
 
-(defprint binding (o)
+(defprint initialized-binding (o)
   (assert-statement)
   (let ((*in-expression* t))
-    (format t "~{~a ~}~@[~a ~]~a~@[ = ~a~]"
+    (format t "~{~(~a ~)~}~@[~a ~]~a~@[ = ~a~]"
             (qualifiers o)
             (translate-type (value-type o))
             (translate-name o)
             (initial-value-form o))))
+
+(defprint binding (o)
+  (assert-statement)
+  (let ((*in-expression* t))
+    (format t "~{~a ~}~@[~a ~]~a"
+            (qualifiers o)
+            (translate-type (value-type o))
+            (translate-name o))))
 
 (defprint slot-access (o)
   (format t "~a" (translate-name o)))
@@ -311,7 +341,26 @@
           (format t "~&}")))))
 
 
+(defprint interface-binding (o)
+  (format *debug-io* "~a ~s~%" (translate-name o) (internal o))
+  (let ((b (stage-binding o)))
+    (cond
+      ((or (interface-block b) (typep (binding b) 'bindings))
+       (format t "~a ~a {~%~<  ~@;~@{~a;~^~%~}~:>~%}~@[ ~a~];~%"
+               (translate-name (interface-qualifier b))
+               (translate-name b)
+               (bindings (or (interface-block b) (binding b)))
+               (unless (interface-block b) (translate-name o))))
+      (t
+       (format t "~a ~a ~a;~%"
+               ;; fixme: layout qualifiers
+               (translate-name (interface-qualifier b))
+               (translate-name (value-type b))
+               (translate-name o))))))
 
+(defprint constant-binding (o)
+  (call-next-method)
+  (format t ";"))
 
 (defun pprint-glsl (form)
   #+=(%print form *standard-output*)

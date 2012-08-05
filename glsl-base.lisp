@@ -34,7 +34,7 @@
         MULTIPLE-VALUE-BIND MULTIPLE-VALUE-LIST MULTIPLE-VALUE-SETQ
         NTH-VALUE PPRINT-EXIT-IF-LIST-EXHAUSTED PPRINT-LOGICAL-BLOCK
         PPRINT-POP PRINT-UNREADABLE-OBJECT PROG PROG* PUSHNEW
-        RESTART-BIND RESTART-CASE STEP TIME TRACE UNTRACE
+        RESTART-BIND RESTART-CASE TIME TRACE UNTRACE
         WITH-CONDITION-RESTARTS WITH-HASH-TABLE-ITERATOR
         WITH-COMPILATION-UNIT WITH-INPUT-FROM-STRING WITH-OPEN-FILE
         WITH-OPEN-STREAM WITH-OUTPUT-TO-STRING WITH-PACKAGE-ITERATOR
@@ -114,6 +114,7 @@
                                 ,@body)))
   nil)
 
+#++
 (%glsl-macro defstruct (&body body)
   (declare (ignore body))
   `(error "DEFSTRUCT not implemented yet for GLSL"))
@@ -148,9 +149,7 @@
 (%glsl-macro prog1 (first-form &body form*)
   (alexandria:with-gensyms (temp)
     `(let ((,temp ,first-form))
-       ,@(loop for (a . b) on form*
-               while b
-               collect `(setf ,a ,(car b)))
+       ,@form*
        ,temp)))
 
 (%glsl-macro prog2 (first-form second-form &rest form*)
@@ -158,15 +157,15 @@
     `(progn
        ,first-form
        (let ((,temp ,second-form))
-         ,@(loop for (a . b) on form*
-                while b
-                collect `(setf ,a ,(car b)))
+         ,@form*
          ,temp))))
 
 (%glsl-macro PSETF (&body body)
+  (error "PSETF not implemented yet for GLSL")
   `(,@body))
 
 (%glsl-macro PSETQ (&body body)
+  (error "PSETQ not implemented yet for GLSL")
   `(,@body))
 
 ;; handle by compiler for now?
@@ -273,6 +272,12 @@
   (3bgl-shaders::add-variable name
                               (3bgl-shaders::@ value)
                               :type '3bgl-shaders::constant-binding))
+
+(3bgl-shaders::defwalker glsl-walker (%defconstant name value type)
+  (3bgl-shaders::add-variable name
+                              (3bgl-shaders::@ value)
+                              :type '3bgl-shaders::constant-binding
+                              :value-type type))
 
 (3bgl-shaders::defwalker glsl-walker (defun name lambda-list &body body+d)
   (3bgl-shaders::process-type-declarations-for-scope
@@ -455,19 +460,122 @@
                                          :glsl-name ',glsl-name
                                          :lambda-list ',lambda-list
                                          ;; todo: add type info
-                                         :return-type ,return))))))
-
+                                         :return-type ,return)))))
+     (builtin-vars (&rest definitions)
+       `(progn
+          ,@(loop for (stage dir %name type) in definitions
+                  for name = (if (consp %name) (car %name) %name)
+                  for glsl-name = (if (consp %name) (cadr %name) nil)
+                  collect
+                  `(setf (gethash ',name (3bgl-shaders::variable-bindings
+                                          3bgl-shaders::*environment*))
+                         (make-instance '3bgl-shaders::binding
+                                        :name ',name
+                                        :glsl-name ',glsl-name
+                                        :value-type ,type))))))
  (let ((3bgl-shaders::*environment* *glsl-base-environment*))
    (add-builtins
     ((texture-2d "texture2D") (sampler uv) :vec4 (:sampler2D :vec))
+    (mat2 (???) :mat2 (???))
+    (mat2x3 (???) :mat2x3 (???))
+    (mat2x4 (???) :mat2x4 (???))
+    (mat3x2 (???) :mat3x2 (???))
     (mat3 (???) :mat3 (???))
+    (mat3x4 (???) :mat3x4 (???))
+    (mat4x2 (???) :mat4x2 (???))
+    (mat4x3 (???) :mat4x3 (???))
+    (mat4 (???) :mat4 (???))
+    (vec2 (???) :vec2 (???))
     (vec3 (???) :vec3 (???))
+    (vec4 (???) :vec4 (???))
     (normalize (vec) :vec (:vec))
     (length (vec) :float (:vec))
+    (min (a b) :float (:float :float))
     (max (a b) :float (:float :float))
     (dot (a b) :float (:vec :vec))
+    (abs (a) :float (:float))
     (sqrt (a) :float (:float))
-    (pow (a b) :float (:float)))
+    (pow (a b) :float (:float))
+    (floor (a) :gentype (:gentype))
+    (fract (a) :gentype (:gentype))
+    (less-than (a b) :gentype (:gentype :gentype))
+    ;; GLSL 'step' instead of CL STEP
+    (step (x a b) :gentype (:gentype :gentype :gentype))
+    (clamp (a b) :gentype (:gentype :gentype))
 
+    )))
 
-   ))
+;; fixme: this should probably use a weak hash table
+(defparameter *package-environments* (make-hash-table))
+
+(defun ensure-package-environment (package)
+  (or (gethash package *package-environments*)
+      (setf (gethash package *package-environments*)
+            (make-instance '3bgl-shaders::environment
+                           ;; todo: make default parent environment
+                           ;; configurable?
+                           :parent *glsl-base-environment*))))
+
+(defun call-with-package-environment (thunk)
+  (let ((3bgl-shaders::*environment* (ensure-package-environment *package*)))
+    (funcall thunk)))
+
+(defmacro with-package-environment (() &body body)
+  `(call-with-package-environment (lambda () ,@body)))
+
+;;; api for defining GLSL code from CL code
+;; (as opposed to compiling a block of GLSL code as GLSL code, which can
+;;  just use DEFUN etc directly)
+
+(defmacro glsl-defun (name args &body body)
+  `(with-package-environment ()
+     (3bgl-shaders::walk '(defun ,name ,args ,@body)
+                         (make-instance '3bgl-shaders::extract-functions))))
+
+(defmacro glsl-defconstant (name value type)
+  `(with-package-environment ()
+     (3bgl-shaders::walk '(%defconstant ,name ,value ,type)
+                         (make-instance '3bgl-shaders::extract-functions))))
+
+(defmacro glsl-interface (name (&rest args &key in out uniform) &body slots)
+  (declare (ignore in out uniform))
+  `(with-package-environment ()
+     (3bgl-shaders::walk '(interface ,name ,args ,@slots)
+                         (make-instance '3bgl-shaders::extract-functions))))
+
+(defmacro glsl-attribute (name type &rest args &key location)
+  (declare (ignore location))
+  `(with-package-environment ()
+     (3bgl-shaders::walk '(attribute ,name ,type ,@args)
+                         (make-instance '3bgl-shaders::extract-functions))))
+
+(defmacro glsl-input (name type &rest args &key  stage location)
+  (declare (ignore location))
+  `(with-package-environment ()
+     (3bgl-shaders::walk '(input ,name ,type ,@args)
+                         (make-instance '3bgl-shaders::extract-functions))))
+
+(defmacro glsl-output (name type &rest args &key stage location)
+  (declare (ignore location))
+  `(with-package-environment ()
+     (3bgl-shaders::walk '(output ,name ,type ,@args)
+                         (make-instance '3bgl-shaders::extract-functions))))
+
+(defmacro glsl-uniform (name type &rest args &key  stage location)
+  (declare (ignore location stage))
+  `(with-package-environment ()
+     (3bgl-shaders::walk '(uniform ,name ,type ,@args)
+                         (make-instance '3bgl-shaders::extract-functions))))
+
+(defmacro glsl-bind-interface (stage block-name interface-qualifier instance-name)
+  `(with-package-environment ()
+     (3bgl-shaders::walk '(bind-interface ,stage ,block-name
+                           ,interface-qualifier ,instance-name)
+                         (make-instance '3bgl-shaders::extract-functions))))
+
+(defun generate-stage (stage main)
+  (nth-value 4
+             (glsl::with-package-environment()
+               (3bgl-shaders::compile-block nil main stage
+                                            :env 3bgl-shaders::*environment*
+                                            :print-as-main main))))

@@ -60,10 +60,15 @@
 ;;;; tree-shaker
 ;;;   given an entry point, return a list of all functions called by that
 ;;;   entry point, in reverse dependency order (so main entry point last)
-(defparameter *tree-shaker-live* nil)
-(defparameter *tree-shaker-depth* 0)
-(defparameter *tree-shaker-roots* nil)
+;;
+;; we also need to declare any aggregate types we use, so we need to
+;; mark variable usage, then map those back to structure/interface
+;; types and dump those as well
+;(defparameter *tree-shaker-live* nil)
+;(defparameter *tree-shaker-depth* 0)
+;(defparameter *tree-shaker-roots* nil)
 (defparameter *tree-shaker-hook* (lambda (&rest r) (declare (ignore r))))
+(defparameter *tree-shaker-type-hook* (lambda (&rest r) (declare (ignore r))))
 
 (defclass tree-shaker (glsl::glsl-walker)
   ())
@@ -71,6 +76,40 @@
 (defmethod walk ((form function-call) (walker tree-shaker))
   (when (typep (called-function form) 'global-function)
     (funcall *tree-shaker-hook* (called-function form)))
+  (call-next-method))
+
+(defun walk-type (x)
+  (when (typep x 'struct-type)
+    (funcall *tree-shaker-type-hook* x)))
+
+(defmethod walk ((form slot-access) (walker tree-shaker))
+  (walk-type (binding form))
+  (call-next-method))
+
+(defmethod walk ((form variable-read) (walker tree-shaker))
+  (walk-type (binding form))
+  (call-next-method))
+
+(defmethod walk ((form variable-write) (walker tree-shaker))
+  (walk-type (binding form))
+  (call-next-method))
+
+(defmethod walk ((form binding) (walker tree-shaker))
+  (walk-type (value-type form))
+  (call-next-method))
+
+(defmethod walk ((form constant-binding) (walker tree-shaker))
+  (funcall *tree-shaker-type-hook* form)
+  (call-next-method))
+
+
+(defmethod walk ((form interface-binding) (walker tree-shaker))
+  (let ((b (stage-binding form)))
+    (when b
+      (if (interface-block b)
+          #++(funcall *tree-shaker-type-hook* (interface-block b))
+          (funcall *tree-shaker-type-hook* form)
+          (funcall *tree-shaker-type-hook* form))))
   (call-next-method))
 
 #++(defmethod walk-cons (car cdr (walker tree-shaker))
@@ -86,18 +125,20 @@
 (defun tree-shaker (root)
   ;; we assume local functions have been inlined or extracted, and
   ;; names have been alpha converted as needed, etc already...
-  (let* ((root (gethash root (function-bindings *environment*)))
+  (let* ((root (get-function-binding root))
          (in-edges (make-hash-table))
          (out-edges (make-hash-table))
          (roots (list root))
-         (live ()))
+         (live ())
+         (live-types ())
+         (current-function root))
     ;;; first pass: walk the tree starting from root, and collect all edges
     (loop with *tree-shaker-hook*
             =
             (lambda (name)
               ;; store outgoing edges from current function being walked,
               ;; so we don't need to walk it again for next pass
-              (setf (gethash name (gethash root out-edges)) name)
+              (setf (gethash name (gethash current-function out-edges)) name)
               ;; then if we haven't seen the function being called before,
               ;; add it to list to be walked
               (unless (gethash name in-edges)
@@ -105,34 +146,47 @@
                 (setf (gethash name in-edges) (make-hash-table)))
               ;; finally, add an incoming edge from current function to
               ;; function being called
-              (setf (gethash root (gethash name in-edges)) root))
+              #++(format t "edge from ~s to ~s~%" (name current-function)
+                      (name name))
+              (setf (gethash current-function (gethash name in-edges))
+                    current-function))
+          with *tree-shaker-type-hook*
+            = (lambda (name)
+                #++(format t "add type name ~s / ~s~%" name (name name))
+                (pushnew name live-types))
           for root = (pop roots)
           while root
-          do (setf (gethash root out-edges) (make-hash-table))
+          do (setf (gethash root out-edges) (make-hash-table)
+                   current-function root)
              (when (typep root 'global-function)
                (walk root (make-instance 'tree-shaker))))
 
     ;;; second pass: topo sort entries
     (setf roots (list root))
+    ;(format t "add ~s~%" (name root))
+    (push (name root) live)
     (loop for root = (pop roots)
           ;; remove edges from roots to children, then add
-          ;; any children with no mor eincoming edges to roots
+          ;; any children with no more incoming edges to roots
           while root
           do
              (alexandria:maphash-keys
               (lambda (k)
-                (let ((in (gethash k in-edges) ))
-                  ;; remove link from current root
-                  (remhash root in)
-                  ;; and add child to list of roots if there are no
-                  ;; other callers
-                  (when (zerop (hash-table-count in))
-                    (push (name k) live)
-                    (push k roots))))
+                (unless (eq root k)
+                  (let ((in (gethash k in-edges) ))
+                    ;; remove link from current root
+                    (remhash root in)
+                    ;; and add child to list of roots if there are no
+                    ;; other callers
+                    (when (zerop (hash-table-count in))
+                    ;  (format t "add ~s~%" (name k))
+                      (push (name k) live)
+                      (push k roots)))))
               (gethash root out-edges))
              (remhash root out-edges))
-    (reverse (cons (name root) live)))
-)
+    (values ;;(reverse (cons (name root) live))
+     live
+            (reverse live-types))))
 
 
 
@@ -142,23 +196,33 @@
 ;;;; main entry point for compiler
 
 
-(defun compile-block (forms tree-shaker-root)
-  (let ((*environment* (make-instance 'environment
-                                      :parent glsl::*glsl-base-environment*)))
+(defun compile-block (forms tree-shaker-root *current-shader-stage*
+                      &key env print-as-main)
+  (let ((*environment* (or env
+                           (make-instance 'environment
+                                          :parent glsl::*glsl-base-environment*))))
     (setf forms (walk (cons 'progn forms) (make-instance 'extract-functions)))
-    (let ((shaken (tree-shaker tree-shaker-root)))
-      (values
-       forms
-       *environment*
-       shaken
-       (with-output-to-string (*standard-output*)
-         (pprint-glsl forms)
-         (loop for name in shaken
-               for def = (gethash name (function-bindings *environment*))
-               when (typep def 'global-function)
-               do (pprint-glsl def)
-               ))
-       ))))
+    (let ((*print-as-main* (when print-as-main
+                             (get-function-binding print-as-main))))
+      (multiple-value-bind (shaken shaken-types)
+          (tree-shaker tree-shaker-root)
+        (values
+         forms
+         *environment*
+         shaken
+         shaken-types
+         (with-output-to-string (*standard-output*)
+           (format t "#version 420~%")
+           (pprint-glsl forms)
+           (loop for type in shaken-types
+                 unless (internal type)
+                 do (pprint-glsl type))
+           (loop for name in shaken
+                 for def = (gethash name (function-bindings *environment*))
+                 when (typep def 'global-function)
+                   do (pprint-glsl def)
+                 ))
+         )))))
 
 
 #++
