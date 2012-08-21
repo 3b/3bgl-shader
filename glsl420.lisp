@@ -41,7 +41,7 @@
     (input (gl-primitive-id-in "gl_PrimitiveIDIn") :int :geometry)
     (input (gl-invocation-id "gl_InvocationID") :int :geometry)
     (output (gl-primitive-id "gl_PrimitiveID") :int :geometry)
-    (output (gl-layer "gl_layer") :int :geometry)
+    (output (gl-layer "gl_Layer") :int :geometry)
     (output (gl-viewport-index "gl_ViewportIndex") :int :geometry)
     (input (gl-patch-vertices-in "gl_PatchVerticesIn") :int :tess-control)
     (input (gl-primitive-id "gl_PrimitiveID") :int :tess-control)
@@ -78,5 +78,3 @@
     (input (gl-viewport-index "gl_ViewportIndex") :int :fragment)
 
 ))
-
-cons
