@@ -227,7 +227,7 @@
   `(:var ,name :init ,(3bgl-shaders::@ value) :qualifiers ,(list :const)))
 
 #++
-(3bgl-shaders::defwalker glsl-walker (defun name lambda-list &body body+d)
+(3bgl-shaders::defwalker glsl-walker (cl:defun name lambda-list &body body+d)
   (multiple-value-bind (body declare doc) (alexandria:parse-body body+d)
     `(:function ,name :lambda-list ,lambda-list
       :declare ,@(when declare (list declare))
@@ -253,7 +253,7 @@
 
 ;;; translate into IR
 
-(defun filter-progn (x)
+(cl:defun filter-progn (x)
   (loop for i in x
         ;; if we have a progn in the body, just expand the contents
         ;; (but not something with progn as a mixin)
@@ -267,7 +267,7 @@
   (declare (ignore docs))
   (3bgl-shaders::add-variable name (3bgl-shaders::@ value)))
 
-(3bgl-shaders::defwalker glsl-walker (defconstant name value &optional docs)
+(3bgl-shaders::defwalker glsl-walker (cl:defconstant name value &optional docs)
   (declare (ignore docs))
   (3bgl-shaders::add-variable name
                               (3bgl-shaders::@ value)
@@ -279,7 +279,7 @@
                               :type '3bgl-shaders::constant-binding
                               :value-type type))
 
-(3bgl-shaders::defwalker glsl-walker (defun name lambda-list &body body+d)
+(3bgl-shaders::defwalker glsl-walker (cl:defun name lambda-list &body body+d)
   (3bgl-shaders::process-type-declarations-for-scope
    (multiple-value-bind (body declare doc)
        (alexandria:parse-body body+d :documentation t)
@@ -503,13 +503,19 @@
     (step (x a b) :gentype (:gentype :gentype :gentype))
     (clamp (a b) :gentype (:gentype :gentype))
     (noise4 (a) :vec4 (:gentype))
-
-    )))
+    (cross (a b) :vec (:vec :vec))
+    (transpose (x) :mat (:mat))
+    ((emit-vertex "EmitVertex") () :void ())
+    ((end-primitive "EndPrimitive") () :void ())
+    (reflect (a b) :vec3 (:vec3 :vec3))
+    ((smooth-step "smoothstep") (edge0 edge1 x) :gentype (:gentype :gentype :float))
+    )
+   ))
 
 ;; fixme: this should probably use a weak hash table
-(defparameter *package-environments* (make-hash-table))
+(cl:defparameter *package-environments* (make-hash-table))
 
-(defun ensure-package-environment (package)
+(cl:defun ensure-package-environment (package)
   (or (gethash package *package-environments*)
       (setf (gethash package *package-environments*)
             (make-instance '3bgl-shaders::environment
@@ -517,66 +523,117 @@
                            ;; configurable?
                            :parent *glsl-base-environment*))))
 
-(defun call-with-package-environment (thunk)
-  (let ((3bgl-shaders::*environment* (ensure-package-environment *package*)))
+(cl:defun call-with-package-environment (thunk &key (package *package*))
+  (let ((3bgl-shaders::*environment* (ensure-package-environment package)))
     (funcall thunk)))
 
-(defmacro with-package-environment (() &body body)
+(cl:defmacro with-package-environment (() &body body)
   `(call-with-package-environment (lambda () ,@body)))
 
 ;;; api for defining GLSL code from CL code
 ;; (as opposed to compiling a block of GLSL code as GLSL code, which can
 ;;  just use DEFUN etc directly)
 
-(defmacro glsl-defun (name args &body body)
+(cl:defmacro glsl-defun (name args &body body)
   `(with-package-environment ()
-     (3bgl-shaders::walk '(defun ,name ,args ,@body)
+     (3bgl-shaders::walk '(cl:defun ,name ,args ,@body)
                          (make-instance '3bgl-shaders::extract-functions))))
 
-(defmacro glsl-defconstant (name value type)
+(cl:defmacro glsl-defconstant (name value type)
   `(with-package-environment ()
      (3bgl-shaders::walk '(%defconstant ,name ,value ,type)
                          (make-instance '3bgl-shaders::extract-functions))))
 
-(defmacro glsl-interface (name (&rest args &key in out uniform) &body slots)
+(cl:defmacro glsl-interface (name (&rest args &key in out uniform) &body slots)
   (declare (ignore in out uniform))
   `(with-package-environment ()
      (3bgl-shaders::walk '(interface ,name ,args ,@slots)
                          (make-instance '3bgl-shaders::extract-functions))))
 
-(defmacro glsl-attribute (name type &rest args &key location)
+(cl:defmacro glsl-attribute (name type &rest args &key location)
   (declare (ignore location))
   `(with-package-environment ()
      (3bgl-shaders::walk '(attribute ,name ,type ,@args)
                          (make-instance '3bgl-shaders::extract-functions))))
 
-(defmacro glsl-input (name type &rest args &key  stage location)
+(cl:defmacro glsl-input (name type &rest args &key  stage location)
   (declare (ignore location))
   `(with-package-environment ()
      (3bgl-shaders::walk '(input ,name ,type ,@args)
                          (make-instance '3bgl-shaders::extract-functions))))
 
-(defmacro glsl-output (name type &rest args &key stage location)
+(cl:defmacro glsl-output (name type &rest args &key stage location)
   (declare (ignore location))
   `(with-package-environment ()
      (3bgl-shaders::walk '(output ,name ,type ,@args)
                          (make-instance '3bgl-shaders::extract-functions))))
 
-(defmacro glsl-uniform (name type &rest args &key  stage location)
+(cl:defmacro glsl-uniform (name type &rest args &key  stage location)
   (declare (ignore location stage))
   `(with-package-environment ()
      (3bgl-shaders::walk '(uniform ,name ,type ,@args)
                          (make-instance '3bgl-shaders::extract-functions))))
 
-(defmacro glsl-bind-interface (stage block-name interface-qualifier instance-name)
+(cl:defmacro glsl-bind-interface (stage block-name interface-qualifier instance-name)
   `(with-package-environment ()
      (3bgl-shaders::walk '(bind-interface ,stage ,block-name
                            ,interface-qualifier ,instance-name)
                          (make-instance '3bgl-shaders::extract-functions))))
 
-(defun generate-stage (stage main)
-  (nth-value 4
-             (glsl::with-package-environment()
-               (3bgl-shaders::compile-block nil main stage
-                                            :env 3bgl-shaders::*environment*
-                                            :print-as-main main))))
+(cl:defun generate-stage (stage main)
+ (let ((*package* (or (symbol-package main) *package*)))
+   (nth-value 4
+              (glsl::with-package-environment()
+                (3bgl-shaders::compile-block nil main stage
+                                             :env 3bgl-shaders::*environment*
+                                             :print-as-main main)))))
+
+
+;;; CL macros for the glsl API (for use with slime when working on files
+;;;  to be loaded as glsl code)
+
+(cl:defmacro defun (name args &body body)
+  `(with-package-environment ()
+     (3bgl-shaders::walk '(cl:defun ,name ,args ,@body)
+                         (make-instance '3bgl-shaders::extract-functions))))
+
+(cl:defmacro defconstant (name value type)
+  `(with-package-environment ()
+     (3bgl-shaders::walk '(%defconstant ,name ,value ,type)
+                         (make-instance '3bgl-shaders::extract-functions))))
+
+(cl:defmacro interface (name (&rest args &key in out uniform) &body slots)
+  (declare (ignore in out uniform))
+  `(with-package-environment ()
+     (3bgl-shaders::walk '(interface ,name ,args ,@slots)
+                         (make-instance '3bgl-shaders::extract-functions))))
+
+(cl:defmacro attribute (name type &rest args &key location)
+  (declare (ignore location))
+  `(with-package-environment ()
+     (3bgl-shaders::walk '(attribute ,name ,type ,@args)
+                         (make-instance '3bgl-shaders::extract-functions))))
+
+(cl:defmacro input (name type &rest args &key  stage location)
+  (declare (ignore location))
+  `(with-package-environment ()
+     (3bgl-shaders::walk '(input ,name ,type ,@args)
+                         (make-instance '3bgl-shaders::extract-functions))))
+
+(cl:defmacro output (name type &rest args &key stage location)
+  (declare (ignore location))
+  `(with-package-environment ()
+     (3bgl-shaders::walk '(output ,name ,type ,@args)
+                         (make-instance '3bgl-shaders::extract-functions))))
+
+(cl:defmacro uniform (name type &rest args &key  stage location)
+  (declare (ignore location stage))
+  `(with-package-environment ()
+     (3bgl-shaders::walk '(uniform ,name ,type ,@args)
+                         (make-instance '3bgl-shaders::extract-functions))))
+
+(cl:defmacro bind-interface (stage block-name interface-qualifier instance-name)
+  `(with-package-environment ()
+     (3bgl-shaders::walk '(bind-interface ,stage ,block-name
+                           ,interface-qualifier ,instance-name)
+                         (make-instance '3bgl-shaders::extract-functions))))

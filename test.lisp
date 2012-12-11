@@ -1,5 +1,7 @@
 (defpackage #:3bgl-shader-test
-  (:use #:cl #:basecode #:glsl))
+  (:use #:cl #:basecode #:glsl)
+  (:shadowing-import-from #:cl #:defun #:defconstant))
+
 (in-package #:3bgl-shader-test)
 
 (defclass noise-demo (basecode::basecode-glop

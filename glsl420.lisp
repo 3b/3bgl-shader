@@ -26,12 +26,12 @@
         (:out (:vertex t
                :geometry t
                ;; fixme: should be gl_out[]
-               :tess-control gl_out
+               :tess-control gl-out
                :tess-eval t)
-         ;; fixme: should be gl_in[]
-         :in (:geometry gl_in
-              :tess-control gl_in
-              :tess-eval gl_in
+              ;; fixme: should be gl_in[]
+         :in (:geometry (gl-in "gl_in")
+              :tess-control (gl-in "gl_in")
+              :tess-eval (gl-in "gl_in")
               ))
 
       ((gl-position "gl_Position") :vec4)

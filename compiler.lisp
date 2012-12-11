@@ -152,7 +152,6 @@
                     current-function))
           with *tree-shaker-type-hook*
             = (lambda (name)
-                #++(format t "add type name ~s / ~s~%" name (name name))
                 (pushnew name live-types))
           for root = (pop roots)
           while root
@@ -212,16 +211,24 @@
          shaken
          shaken-types
          (with-output-to-string (*standard-output*)
-           (format t "#version 420~%")
+           (format t "#version 330~%")
            (pprint-glsl forms)
-           (loop for type in shaken-types
-                 unless (internal type)
-                 do (pprint-glsl type))
+           (loop with dumped = (make-hash-table)
+              for type in shaken-types
+              for stage-binding = (stage-binding type)
+              for interface-block = (when stage-binding
+                                      (interface-block stage-binding))
+              #+do   (format *debug-io* "add type? ~s (~s) ib ~s~%"
+                             type (name type) interface-block)
+              unless (or (internal type) (gethash interface-block dumped))
+              do (pprint-glsl type)
+              (when interface-block
+                (setf (gethash interface-block dumped) t)))
            (loop for name in shaken
-                 for def = (gethash name (function-bindings *environment*))
-                 when (typep def 'global-function)
-                   do (pprint-glsl def)
-                 ))
+              for def = (gethash name (function-bindings *environment*))
+              when (typep def 'global-function)
+              do (pprint-glsl def)
+              ))
          )))))
 
 

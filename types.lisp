@@ -40,7 +40,8 @@
    (stage :accessor stage :initarg :stage)
    (interface-qualifier :accessor interface-qualifier :initarg :interface-qualifier)
    (layout-qualifier :accessor layout-qualifier :initarg :layout-qualifier :initform nil)
-   (interface-block :accessor interface-block :initform nil :initarg :interface-block)))
+   (interface-block :accessor interface-block :initform nil :initarg :interface-block)
+   (array-size :accessor array-size :initform nil :initarg :array-size)))
 
 (defparameter *current-shader-stage* nil)
 
@@ -52,7 +53,11 @@
   ((stage-bindings :accessor stage-bindings :initarg :stage-bindings
                    :initform nil)
    ;; flag indicating we don't need to dump a definition into generated source
-   (internal :accessor internal :initform nil :initarg :internal)))
+   (internal :accessor internal :initform nil :initarg :internal)
+   (array-size :accessor array-size :initform nil :initarg :array-size)))
+
+(defmethod stage-binding (binding)
+  nil)
 
 (defmethod stage-binding ((binding interface-binding))
   (let ((sb (or (getf (stage-bindings binding)
@@ -74,7 +79,7 @@
 
 
 
-(defun bind-interface (stage type interface-qualifier name &key internal)
+(defun bind-interface (stage type interface-qualifier name &key internal glsl-name array)
   (let ((type (or (get-type-binding type) type)))
     (cond
       ((eq name t)
@@ -101,12 +106,16 @@
        (let ((vb (variable-bindings *environment*)))
          (unless (typep (gethash name vb) 'interface-binding)
            (setf (gethash name vb) (make-instance 'interface-binding
-                                                  :name name)))
+                                                  :name name
+                                                  :internal internal
+                                                  :glsl-name glsl-name
+                                                  :array-size array)))
          (setf (getf (stage-bindings (gethash name vb)) stage)
                (make-instance 'interface-stage-binding
                               :stage stage
                               :interface-qualifier interface-qualifier
-                              :binding type)))))))
+                              :binding type
+                              :array-size array)))))))
 
 (glsl::%glsl-macro glsl::interface (%name (&key in out uniform internal)
                                          &body slots)
@@ -140,29 +149,42 @@
         do (bind-interface t name k t :internal internal)
       else
         when x
-          do (loop for (stage bind) on x by #'cddr
-                   do (bind-interface stage name k bind :internal internal)))
+          do (loop for (stage %bind) on x by #'cddr
+                   for bind = (if (consp %bind) (car %bind) %bind)
+                   for glsl-bind = (if (consp %bind) (cadr %bind) nil)
+                   for array = (if (consp %bind) (caddr %bind) nil)
+                   do (format t "bind ~s -> ~s (~s) int ~s~%" %bind bind name internal)
+                   do (bind-interface stage name k bind :internal internal
+                                      :glsl-name glsl-bind
+                                      :array array)))
     nil))
 
-(defun in/out/uniform/attrib (qualifier %name type &key location internal stage)
+(defun in/out/uniform/attrib (qualifier %name type
+                              &key location internal stage index)
   ;; possibly should have generic '&rest args' instead of enumerating options?
   (let ((vb (variable-bindings *environment*))
         (name (if (consp %name) (car %name) %name))
-        (glsl-name (if (consp %name) (cadr %name))))
+        (glsl-name (if (consp %name) (cadr %name)))
+        (layout-qualifier nil))
     (unless (typep (gethash name vb) 'interface-binding)
       (setf (gethash name vb) (make-instance 'interface-binding
                                              :internal internal
                                              :glsl-name glsl-name
                                              :name name)))
     (assert (equal (glsl-name (gethash name vb)) glsl-name))
+    ;; possibly should just pass the layout qualifiers directly as a plist
+    ;; rather than enumerating options here?
+    (when location
+      (setf (getf layout-qualifier :location) location))
+    (when index
+      (setf (getf layout-qualifier :index) index))
     ;; just treating vs attributes and fs outputs like named interface
     ;; blocks for now
     (setf (getf (stage-bindings (gethash name vb)) stage)
           (make-instance 'interface-stage-binding
                          :stage stage
                          :interface-qualifier qualifier
-                         :layout-qualifier (when location
-                                             (list :location location ))
+                         :layout-qualifier layout-qualifier
                          :binding (or (get-type-binding type) type))))
 )
 
@@ -228,6 +250,13 @@
                             (get-type-binding (car args))
                             (get-type-binding :void)))
                   )
+                 ;; 'layout' declarations (for geometry shaders, etc)
+                 ;; (layout (:in primitive &rest) (:out prim &rest args) ...)
+                 ((eql decl 'layout)
+                  (loop for (car . cdr) in args
+                        do (setf (gethash car (layout-qualifiers scope))
+                                 cdr))
+)
                  ;; ignore any other known declarations for now
                  ((member decl *known-declarations*)
                   )

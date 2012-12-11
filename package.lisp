@@ -1,8 +1,14 @@
 (defpackage #:3bgl-shaders
-  (:use :cl))
+  (:use :cl)
+  (:export
+   :layout))
 
 (defpackage #:glsl
   (:use :cl)
+  (:shadow #:defun
+           #:defconstant)
+  (:import-from #:3bgl-shaders
+                #:layout)
   (:export
    :<<
    :>>
@@ -15,6 +21,11 @@
    :dot
    :sqrt
    :pow
+   :defun
+   :interface
+   :attribute
+   :output
+   :defconstant
    :glsl-defun
    :glsl-interface
    :glsl-attribute
@@ -63,4 +74,15 @@
    :gl-work-group-id
    :gl-local-invocation-id
    :gl-global-invocation-id
-   :gl-local-invocation-index))
+   :gl-local-invocation-index
+   :input
+   :uniform
+   :bind-interface
+   :cross
+   :layout
+   :emit-vertex
+   :end-primitive
+   :gl-in
+   :reflect
+   :transpose
+   :smooth-step))

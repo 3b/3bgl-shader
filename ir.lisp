@@ -173,6 +173,8 @@
    ;;   modifies a variable the other depends on)
    ;; todo: compile this lazily like macros? (and maybe combine with them?)
    (expander :accessor expander :initarg :expander :initform #'identity)
+   ;; 'layout' qualifiers for shader with this function as 'main'
+   (layout-qualifiers :accessor layout-qualifiers :initform (make-hash-table))
 )
 )
 

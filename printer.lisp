@@ -22,7 +22,7 @@
 
 
 
-(defun %translate-name (x)
+(defun %translate-name (x &key lc-underscore)
   ;; todo: lookup name in environment to allow for specifying a translation
   (unless (stringp x)
     (setf x (string x)))
@@ -31,19 +31,21 @@
     (if (char= #\+ (char x 0) (char x (1- (length x))))
         (with-standard-io-syntax
           (format s "~:@(~a~)" (substitute #\_ #\- (remove #\+ x))))
-        (loop with uc = 0
-              for c across (string x)
-              do (case c
-                   (#\* (incf uc 1))
-                   (#\- (incf uc 1))
-                   (#\+
-                    (incf uc 1)
-                    (format s "_"))
-                   (#\% (format s "_"))
-                   (t (if (plusp uc)
-                          (format s "~:@(~c~)" c)
-                          (format s "~(~c~)" c))
-                    (setf uc (max 0 (1- uc)))))))))
+        (if lc-underscore
+            (format s "~(~a~)" (substitute #\_ #\- (remove #\+ x)))
+            (loop with uc = 0
+               for c across (string x)
+               do (case c
+                    (#\* (incf uc 1))
+                    (#\- (incf uc 1))
+                    (#\+
+                     (incf uc 1)
+                     (format s "_"))
+                    (#\% (format s "_"))
+                    (t (if (plusp uc)
+                           (format s "~:@(~c~)" c)
+                           (format s "~(~c~)" c))
+                     (setf uc (max 0 (1- uc))))))))))
 
 (defmethod translate-name (x)
   (%translate-name x))
@@ -58,12 +60,36 @@
 
 (defmethod translate-name ((x slot-access))
   (format nil "~a.~a" (binding x)
-          (%translate-name (field x))))
+          (translate-slot-name (field x) (binding x))))
 
 (defmethod translate-name ((x array-access))
   (format nil "~a[~a]" (binding x)
           (index x)))
 
+(defmethod translate-slot-name (x b)
+  (%translate-name x))
+
+
+(defmethod translate-slot-name (x (b variable-read))
+  (or (translate-slot-name x (binding b))
+      (%translate-name x)))
+
+(defmethod translate-slot-name (x (b array-access))
+  (or (translate-slot-name x (binding b))
+      (%translate-name x)))
+
+(defmethod translate-slot-name (x (b interface-binding))
+  (or (translate-slot-name x (stage-binding b))
+      (%translate-name x)))
+
+(defmethod translate-slot-name (x (b interface-stage-binding))
+  (when (or (interface-block b) (typep (binding b) 'bindings))
+    (let ((b2 (bindings (or (interface-block b) (binding b)))))
+      (loop for binding in b2
+            when (eq (name binding) x)
+              do (return-from translate-slot-name (or (glsl-name binding)
+                                                      (%translate-name x)))))
+    (%translate-name x)))
 
 #++
 (defmethod translate-name ((x interface-binding))
@@ -100,6 +126,14 @@
                      *pprint-glsl*)
 (defmethod %print ((o symbol) s)
   (format s "~a" (translate-name o)))
+
+(set-pprint-dispatch 'double-float
+                     (lambda (s o)
+                       (let ((*read-default-float-format* 'double-float))
+                         ;; fixme: how should these be printed?
+                         (format s "~f"  o)))
+                     0
+                     *pprint-glsl*)
 
 
  ;; print uny cons without a higher-priority printer as a normal function call
@@ -270,6 +304,21 @@
 
 (defprint global-function (o)
   (assert-statement)
+  ;; fixme: clean this layout stuff up...
+  ;; if function is "main", check for extra layout qualifiers
+  (when (and (string= (translate-name o) "main") (layout-qualifiers o))
+    (maphash (lambda (k v)
+               (format t "layout(~a~{~^,~a=~a~}) ~a;~%"
+                       (%translate-name (car v) :lc-underscore t)
+                       (loop for (a b) on (cdr v) by #'cddr
+                             collect (%translate-name a :lc-underscore t)
+                             collect b)
+                       (translate-name k))
+               )
+             (layout-qualifiers o))
+    )
+
+  ;; print function def
   (format t "~a ~a ~<(~;~@{~:_~a~#[~:;, ~]~}~;)~:> {~%"
           (or (translate-type (return-type o)) "void")
           (translate-name o)
@@ -341,19 +390,35 @@
           (format t "~&}")))))
 
 
+(defmethod array-suffix (x)
+  nil)
+
+(defmethod array-suffix ((x interface-binding))
+  (typecase (array-size x)
+    (number (format nil "[~a]" (array-size x)))
+    (null nil)
+    (t "[]")))
+
+(defmethod array-suffix ((x interface-stage-binding))
+  (typecase (array-size x)
+    (number (format nil "[~a]" (array-size x)))
+    (null nil)
+    (t "[]")))
+
 (defprint interface-binding (o)
-  (format *debug-io* "~a ~s~%" (translate-name o) (internal o))
+  #++(format *debug-io* "~a ~s~%" (translate-name o) (internal o))
   (let ((b (stage-binding o)))
     (cond
       ((or (interface-block b) (typep (binding b) 'bindings))
-       (format t "~a ~a {~%~<  ~@;~@{~a;~^~%~}~:>~%}~@[ ~a~];~%"
+       (format t "~a ~a {~%~<  ~@;~@{~a;~^~%~}~:>~%}~@[ ~a~]~@[~a~];~%"
                (translate-name (interface-qualifier b))
                (translate-name b)
                (bindings (or (interface-block b) (binding b)))
-               (unless (interface-block b) (translate-name o))))
+               (unless (interface-block b) (translate-name o))
+               (array-suffix  b)))
       (t
-       (format t "~a ~a ~a;~%"
-               ;; fixme: layout qualifiers
+       (format t "~@[layout(~(~{~a = ~a~^,~}~))~] ~a ~a ~a;~%"
+               (layout-qualifier b)
                (translate-name (interface-qualifier b))
                (translate-name (value-type b))
                (translate-name o))))))
