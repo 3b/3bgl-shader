@@ -10,6 +10,10 @@
 (defclass concrete-type (generic-type)
   ())
 
+(defclass array-type (generic-type)
+  ((base-type :initarg :base-type :accessor base-type)
+   (array-size :initarg :array-size :accessor array-size)))
+
 (defclass aggregate-type (generic-type bindings)
   ())
 

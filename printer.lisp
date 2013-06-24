@@ -101,6 +101,9 @@
 (defmethod translate-name ((x generic-type))
   (or (glsl-name x) (%translate-name (name x))))
 
+(defmethod translate-name ((x array-type))
+  (translate-name (base-type x)))
+
 (defmethod translate-name ((x variable-read))
   (translate-name (binding x)))
 
@@ -393,6 +396,13 @@
 (defmethod array-suffix (x)
   nil)
 
+
+(defmethod array-suffix ((x array-type))
+  (typecase (array-size x)
+    (number (format nil "[~a]" (array-size x)))
+    (null nil)
+    (t "[]")))
+
 (defmethod array-suffix ((x interface-binding))
   (typecase (array-size x)
     (number (format nil "[~a]" (array-size x)))
@@ -417,11 +427,12 @@
                (unless (interface-block b) (translate-name o))
                (array-suffix  b)))
       (t
-       (format t "~@[layout(~(~{~a = ~a~^,~}~))~] ~a ~a ~a;~%"
+       (format t "~@[layout(~(~{~a = ~a~^,~}~)) ~]~a ~a ~a~@[~a~];~%"
                (layout-qualifier b)
                (translate-name (interface-qualifier b))
                (translate-name (value-type b))
-               (translate-name o))))))
+               (translate-name o)
+               (array-suffix (value-type b)))))))
 
 (defprint constant-binding (o)
   (call-next-method)

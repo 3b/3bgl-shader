@@ -42,9 +42,13 @@
            (get-function-binding name :env (parent-scope env)))))
 
 (defun get-type-binding (name &key (env *environment*))
-  (and env
-       (or (gethash name (types env))
-           (get-type-binding name :env (parent-scope env)))))
+  (if (consp name)
+      (make-instance 'array-type :base-type (get-type-binding (car name)
+                                                             :env env)
+                     :array-size (second name))
+      (and env
+           (or (gethash name (types env))
+               (get-type-binding name :env (parent-scope env))))))
 
 
 (defun add-macro (name lambda &key (env *environment*))
