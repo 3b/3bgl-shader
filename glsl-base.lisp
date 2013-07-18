@@ -475,7 +475,8 @@
                                         :value-type ,type))))))
  (let ((3bgl-shaders::*environment* *glsl-base-environment*))
    (add-builtins
-    ((texture-2d "texture2D") (sampler uv) :vec4 (:sampler2D :vec))
+    ((texture-2d "texture2D") (sampler uv) :vec4 (:sampler2D :vec :float)
+     (texture "texture") (sampler uv bias) :vec4 (:sampler2D :vec :float))
     (mat2 (???) :mat2 (???))
     (mat2x3 (???) :mat2x3 (???))
     (mat2x4 (???) :mat2x4 (???))
