@@ -134,9 +134,13 @@
   (declare (ignore body))
   `(error "DO* not implemented yet for GLSL"))
 
-(%glsl-macro dotimes (&body body)
-  (declare (ignore body))
-  `(error "DOTIMES not implemented yet for GLSL"))
+(%glsl-macro dotimes ((var count &optional (result nil)) &body body)
+  (if result
+      `(error "RESULT not implemented for GLSL DOTIMES yet")
+      `(let ((,var 0))
+         (declare (:int ,var))
+         (%for (nil ((< ,var ,count)) ((incf ,var)))
+               ,@body))))
 
 (%glsl-macro loop (&body body)
   (declare (ignore body))
@@ -203,6 +207,10 @@
                while b
                collect `(setf ,a ,(car b)))
        ,temp)))
+
+
+(%glsl-macro incf (x &optional (inc 1))
+  `(setf ,x (+ ,x ,inc)))
 
 (%glsl-macro unless (a b)
   ;; not quite usual expansion, since we don't really have a "NIL" to return
@@ -365,6 +373,13 @@
                  :then (3bgl-shaders::@ b)
                  :else (3bgl-shaders::@ c)))
 
+(3bgl-shaders::defwalker glsl-walker (%for (init while step) &body body)
+  (make-instance '3bgl-shaders::for-loop
+                 :init (mapcar #'3bgl-shaders::@ init)
+                 :while (mapcar #'3bgl-shaders::@ while)
+                 :step (mapcar #'3bgl-shaders::@ step)
+                 :body (3bgl-shaders::@@ body)))
+
 
 ;; function application
 (defmethod 3bgl-shaders::walk-cons (car cdr (walker glsl-walker))
@@ -439,6 +454,8 @@
   (3bgl-shaders::add-internal-function '<< '(integer count))
   (3bgl-shaders::add-internal-function '>> '(integer count))
   (3bgl-shaders::add-internal-function 'return '(value))
+  (3bgl-shaders::add-internal-function '^^ '(cl:&rest integers))
+
 
 )
 
@@ -475,8 +492,9 @@
                                         :value-type ,type))))))
  (let ((3bgl-shaders::*environment* *glsl-base-environment*))
    (add-builtins
-    ((texture-2d "texture2D") (sampler uv) :vec4 (:sampler2D :vec :float)
-     (texture "texture") (sampler uv bias) :vec4 (:sampler2D :vec :float))
+    ((texture-2d "texture2D") (sampler uv) :vec4 (:sampler2D :vec :float))
+    (texture (sampler uv bias) :vec4 (:sampler2D :vec :float))
+    (texel-fetch (sampler texcoord lod sample) :vec4 (:sampler2D :ivec :int :int))
     (mat2 (???) :mat2 (???))
     (mat2x3 (???) :mat2x3 (???))
     (mat2x4 (???) :mat2x4 (???))
@@ -489,6 +507,9 @@
     (vec2 (???) :vec2 (???))
     (vec3 (???) :vec3 (???))
     (vec4 (???) :vec4 (???))
+    (ivec2 (???) :ivec2 (???))
+    (ivec3 (???) :ivec3 (???))
+    (ivec4 (???) :ivec4 (???))
     (normalize (vec) :vec (:vec))
     (length (vec) :float (:vec))
     (min (a b) :float (:float :float))
@@ -510,6 +531,15 @@
     ((end-primitive "EndPrimitive") () :void ())
     (reflect (a b) :vec3 (:vec3 :vec3))
     ((smooth-step "smoothstep") (edge0 edge1 x) :gentype (:gentype :gentype :float))
+    (any (x) :bool (:bvec))
+    (all (x) :bool (:bvec))
+    #++(not (x) :bvec (:bvec))
+    (equal (x y) :bvec (:vec :vec))
+    (not-equal (x y) :bvec (:vec :vec))
+    (less-than (x y) :bvec (:vec :vec))
+    (less-than-equal (x y) :bvec (:vec :vec))
+    (greater-than (x y) :bvec (:vec :vec))
+    (greater-than-equal (x y) :bvec (:vec :vec))
     )
    ))
 

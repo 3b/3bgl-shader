@@ -219,9 +219,9 @@
 ;;; and if we really want to, later expand the simple cases to
 ;;; `for (<binding>...) {...}` if we care about the generated code
 (defclass for-loop (implicit-progn)
-  ((init-form :accessor init-form)
-   (condition-form :accessor condition-form)
-   (step-form :accessor step-form)))
+  ((init-forms :accessor init-forms :initarg :init)
+   (condition-forms :accessor condition-forms :initarg :while)
+   (step-forms :accessor step-forms :initarg :step)))
 
 
 ;; slot/array access are used like bindings for now, might need to be

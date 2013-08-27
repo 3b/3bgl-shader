@@ -512,6 +512,7 @@
   (add-internal-function '/ '(number &rest numbers))
   (add-internal-function 'or '(&rest forms))
   (add-internal-function 'and '(&rest forms))
+  (add-internal-function 'not '(boolean))
   (add-internal-function 'logior '(&rest integers))
   (add-internal-function 'logand '(&rest integers))
   (add-internal-function 'logxor '(&rest integers))

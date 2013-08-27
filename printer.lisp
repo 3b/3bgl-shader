@@ -190,6 +190,7 @@
 (defprint-binop / "/" 1.0 (format t "(1.0 / ~a)" (car args)))
 (defprint-binop or "||" 0 t)
 (defprint-binop and "&&" 1 t) ;; should this be #xffffffff instead of 1 for t?
+(defprint-binop glsl:^^ "^^" 0 t)
 (defprint-binop logior "|" 0 t)
 (defprint-binop logand "&" #xffffffff t) ;; fixme: how many bits is -1?
 (defprint-binop logxor "^" 0 t)
@@ -202,6 +203,9 @@
 (defprinti (1+ x) ()
   (let ((*in-expression* t))
     (format t "~a" `(+ ,x 1))))
+(defprinti (not x) ()
+  (let ((*in-expression* t))
+    (format t "~a" `(! ,x))))
 
 ;; only handling binary versions of compare ops for now,
 ;; can expand multi arg versions in earlier pass if needed
@@ -390,6 +394,20 @@
           (when else
             (format t "~&} else {~%")
             (format t "~<  ~@;~a;~:>" (list else)))
+          (format t "~&}")))))
+
+
+(defprint for-loop (o)
+  (let ((initialize (init-forms o))
+        (term (condition-forms o))
+        (step (step-forms o)))
+    (if *in-expression*
+        (error "can't expand 'for' loop in expression context")
+        (progn
+          (let ((*in-expression* t))
+            (format t "for (~{~a~^,~};~{~a~^,~};~{~a~^,~}) {~%"
+                    initialize term step))
+          (call-next-method)
           (format t "~&}")))))
 
 

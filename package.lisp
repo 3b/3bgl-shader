@@ -12,6 +12,7 @@
   (:export
    :<<
    :>>
+   :^^
    :texture-2d
    :mat3
    :vec3
@@ -85,4 +86,15 @@
    :gl-in
    :reflect
    :transpose
-   :smooth-step))
+   :smooth-step
+   :texel-fetch
+   :any
+   :all
+   :equal
+   :not-equal
+   :less-than-equal
+   :greater-than
+   :greater-than-equal
+   :ivec4
+   :ivec3
+   :ivec2))
