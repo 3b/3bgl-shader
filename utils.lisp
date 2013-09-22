@@ -21,6 +21,30 @@
       (y (%gl:uniform-2f u (float x) (float y)))
       (x (%gl:uniform-1f u (float x)))))))
 
+(defun uniformfv (program name v)
+  (let ((u (uniform-index program name)))
+    (unless (minusp u)
+      (typecase v
+        ;; fast cases
+        ((vector single-float 3)
+         (%gl:uniform-3f u (aref v 0) (aref v 1) (aref v 2)))
+        ((vector single-float 4)
+         (%gl:uniform-4f u (aref v 0) (aref v 1) (aref v 2) (aref v 3)))
+        ;; convenient but slower cases
+        ((vector * 4)
+         (%gl:uniform-3f u (float (elt v 0) 1.0) (float (elt v 1) 1.0)
+                        (float (elt v 2) 1.0) (float (elt v 3) 1.0)))
+        ((vector * 3)
+         (%gl:uniform-3f u (float (elt v 0) 1.0) (float (elt v 1) 1.0)
+                         (float (elt v 2) 1.0)))
+        ((vector * 2)
+         (%gl:uniform-2f u (float (elt v 0) 1.0) (float (elt v 1) 1.0)))
+
+        ((vector * 1)
+         (%gl:uniform-1f u (float (elt v 0) 1.0)))
+
+        ))))
+
 (defun uniform-matrix (program name m)
   (let ((u (uniform-index program name)))
     (unless (minusp u)

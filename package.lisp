@@ -97,4 +97,7 @@
    :greater-than-equal
    :ivec4
    :ivec3
-   :ivec2))
+   :ivec2
+   :sign
+   :exp
+   :exp2))
