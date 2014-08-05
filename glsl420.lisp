@@ -4,6 +4,7 @@
 ;; from glsl-base, and add separate package for each version...
 
 (let ((3bgl-shaders::*environment* *glsl-base-environment*)
+      (3bgl-shaders::*global-environment* *glsl-base-environment*)
       (walker (make-instance 'glsl-walker)))
   (macrolet ((input (name type stage &rest qualifiers)
                (declare (ignorable qualifiers))

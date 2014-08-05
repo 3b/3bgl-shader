@@ -99,7 +99,7 @@
   (translate-name (or (interface-block x) (binding x))))
 
 (defmethod translate-name ((x generic-type))
-  (or (glsl-name x) (%translate-name (name x))))
+  (or (glsl-name x) (%translate-name (name (get-equiv-type x)))))
 
 (defmethod translate-name ((x array-type))
   (translate-name (base-type x)))
@@ -115,7 +115,11 @@
 (defmethod translate-type ((type concrete-type))
   (glsl-name type))
 
-
+(defmethod translate-type ((type generic-type))
+  (let ((e (get-equiv-type type)))
+    (if (eq type e)
+        (string type) ;;?
+        (translate-type e))))
 
 
 (defmacro assert-statement ()
@@ -271,7 +275,7 @@
   (let ((*in-expression* t))
     (format t "~{~a ~}~@[~a ~]~a"
             (qualifiers o)
-            (translate-type (value-type o))
+            (translate-type (get-equiv-type (value-type o)))
             (translate-name o))))
 
 (defprint slot-access (o)
@@ -327,7 +331,7 @@
 
   ;; print function def
   (format t "~a ~a ~<(~;~@{~:_~a~#[~:;, ~]~}~;)~:> {~%"
-          (or (translate-type (return-type o)) "void")
+          (or (translate-type (get-equiv-type (return-type o))) "void")
           (translate-name o)
           (bindings o))
   (call-next-method)

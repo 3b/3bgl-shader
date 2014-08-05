@@ -10,6 +10,9 @@
 (defclass glsl-walker (3bgl-shaders::cl-walker)
   ())
 
+(defparameter *current-function* nil
+  "current function being compiled if any")
+
 
 #++
 (let ((a nil))
@@ -390,31 +393,53 @@
   ;;  aref forms are converted specially
   (let ((binding (3bgl-shaders::get-function-binding car)))
     #++(format t "~&looking up binding ~s got ~s~%" car binding)
-    (cond
-      ((typep binding '3bgl-shaders::function-binding-function)
-       (make-instance '3bgl-shaders::function-call
-                      :function binding
-                      :arguments (mapcar (lambda (x)
-                                           (3bgl-shaders::walk x walker))
-                                         (funcall (3bgl-shaders::expander binding)
-                                                  cdr))))
-      ((eq car 'aref)
-       (make-instance '3bgl-shaders::array-access
-                      :binding (3bgl-shaders::walk (first cdr) walker)
-                      :index (3bgl-shaders::walk (second cdr) walker)))
-      ;; not sure about syntax for slot/swizzle, for now
-      ;; trying magic .slot accessors
-      ;; and (@ struct slot) style...
-      ((eq car '@)
-       (make-instance '3bgl-shaders::slot-access
-                      :binding (3bgl-shaders::walk (first cdr) walker)
-                      :field (second cdr)))
-      ((and (symbolp car) (char= (char (string car) 0) #\.))
-       (make-instance '3bgl-shaders::slot-access
-                      :binding (3bgl-shaders::walk (first cdr) walker)
-                      :field (subseq (string car) 1)))
-      (t
-       (call-next-method)))))
+    (flet ((add-dependencies (called)
+             #++
+             (when *current-function*
+              (format t "add dep ~s calls ~s~%" (3bgl-shaders::name *current-function*)
+                      (3bgl-shaders::name called))
+              (setf (gethash called (3bgl-shaders::function-dependencies *current-function*))
+                    called)
+              (setf (gethash *current-function* (3bgl-shaders::function-dependents called))
+                    *current-function*))
+             called))
+      (cond
+        ((typep binding '3bgl-shaders::function-binding-function)
+         (add-dependencies binding)
+         (make-instance '3bgl-shaders::function-call
+                        :function binding
+                        :raw-arguments cdr
+                        :argument-environment 3bgl-shaders::*environment*
+                        :arguments (mapcar (lambda (x)
+                                             (format t "walk ~s~%" x)
+                                             (3bgl-shaders::walk x walker))
+                                           (funcall (3bgl-shaders::expander binding)
+                                                    cdr))))
+        ((eq car 'aref)
+         (make-instance '3bgl-shaders::array-access
+                        :binding (3bgl-shaders::walk (first cdr) walker)
+                        :index (3bgl-shaders::walk (second cdr) walker)))
+        ;; not sure about syntax for slot/swizzle, for now
+        ;; trying magic .slot accessors
+        ;; and (@ struct slot) style...
+        ((eq car '@)
+         (make-instance '3bgl-shaders::slot-access
+                        :binding (3bgl-shaders::walk (first cdr) walker)
+                        :field (second cdr)))
+        ((and (symbolp car) (char= (char (string car) 0) #\.))
+         (make-instance '3bgl-shaders::slot-access
+                        :binding (3bgl-shaders::walk (first cdr) walker)
+                        :field (subseq (string car) 1)))
+        ((symbolp car)
+         (format t "unknown function ~s?~%" car)
+         (make-instance '3bgl-shaders::function-call
+                        :function (add-dependencies
+                                   (3bgl-shaders::add-unknown-function car))
+                        :raw-arguments cdr
+                        :argument-environment 3bgl-shaders::*environment*
+                        :arguments nil))
+        (t
+         (call-next-method))))))
 
 ;; literals and variable access
 (defmethod 3bgl-shaders::walk (form (walker glsl-walker))
@@ -477,7 +502,7 @@
                                          :glsl-name ',glsl-name
                                          :lambda-list ',lambda-list
                                          ;; todo: add type info
-                                         :return-type ,return)))))
+                                         :function-type ,return)))))
      (builtin-vars (&rest definitions)
        `(progn
           ,@(loop for (stage dir %name type) in definitions
@@ -558,7 +583,8 @@
                            :parent *glsl-base-environment*))))
 
 (cl:defun call-with-package-environment (thunk &key (package *package*))
-  (let ((3bgl-shaders::*environment* (ensure-package-environment package)))
+  (let ((3bgl-shaders::*environment* (ensure-package-environment package))
+        (3bgl-shaders::*global-environment* (ensure-package-environment package)))
     (funcall thunk)))
 
 (cl:defmacro with-package-environment (() &body body)

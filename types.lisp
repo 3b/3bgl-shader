@@ -4,8 +4,16 @@
   ((name :accessor name :initarg :name)
    (glsl-name :accessor glsl-name :initarg :glsl-name :initform nil)
    ;; flag indicating we don't need to dump a definition into generated source
-   (internal :accessor internal :initform nil :initarg :internal)   ))
+   (internal :accessor internal :initform nil :initarg :internal)
+   (equiv :initform nil :initarg :equiv :accessor equiv)
+   (modified :initform nil :accessor :modified)))
 
+(defun get-equiv-type (stype)
+  (loop for i = stype then j
+     for j = (equiv i)
+     for x from 0 below 20
+     while j
+     finally (return i)))
 
 (defclass concrete-type (generic-type)
   ())

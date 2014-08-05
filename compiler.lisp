@@ -38,23 +38,30 @@
 (defclass extract-functions (glsl::glsl-walker)
   ())
 
+;;; list of new functions (used to tell which functions were just
+;;;  defined and need things like dependencies added and type
+;;;  inference by later passes)
+(defvar *new-function-definitions*)
+
 (defwalker extract-functions (defun name lambda-list &body body+d)
+  (format t "defun ~s~%" name)
   (multiple-value-bind (body declare doc)
       (alexandria:parse-body body+d :documentation t)
     #++(add-function :toplevel-function name lambda-list
-                  (with-lambda-list-vars (walker lambda-list) (@@ body))
-                  declare doc)
-    (let ((f (process-type-declarations-for-scope
-              (add-function name lambda-list
-                            nil
+                     (with-lambda-list-vars (walker lambda-list) (@@ body))
+                     declare doc)
+    (let ((glsl::*current-function*
+            (process-type-declarations-for-scope
+             (add-function name lambda-list
+                           nil
                             :declarations declare :docs doc))))
-      (setf (body f)
-            (with-lambda-list-vars (f) (@@ body))))
+      (clrhash (function-dependencies glsl::*current-function*))
+      (when (boundp '*new-function-definitions*)
+        (pushnew glsl::*current-function* *new-function-definitions*))
+      (setf (body glsl::*current-function*)
+            (with-lambda-list-vars (glsl::*current-function*) (@@ body))))
     #++(call-next-method)
     nil))
-
-
-
 
 
 ;;;; tree-shaker
@@ -74,7 +81,9 @@
   ())
 
 (defmethod walk ((form function-call) (walker tree-shaker))
-  (when (typep (called-function form) 'global-function)
+  (format t "~s -> ~s~%" form (called-function form))
+  (when (or (typep (called-function form) 'global-function)
+            (typep (called-function form) 'unknown-function-binding))
     (funcall *tree-shaker-hook* (called-function form)))
   (call-next-method))
 
@@ -122,6 +131,7 @@
 (defmethod walk :around (form (w tree-shaker))
   (call-next-method))
 
+;; todo: rewrite this to use pregenerated dependencies?
 (defun tree-shaker (root)
   ;; we assume local functions have been inlined or extracted, and
   ;; names have been alpha converted as needed, etc already...
@@ -188,19 +198,75 @@
             (reverse live-types))))
 
 
+;; add dependencies to specified function-binding-function
+;;  also add function as a dependent to any functions it depends on?
+(defun update-dependencies (function)
+  ;; reuse tree-shaker walker, find all functions called and add to list
+  ;;
+  (format t "update deps ~s~%" (name function))
+  (let* ((current-function (if (symbolp function)
+                               (get-function-binding function)
+                               function))
+         (*tree-shaker-hook*
+           (lambda (f)
+             (assert (or (typep f 'function-binding-function)
+                         (typep f 'unknown-function-binding)))
+             ;; fixme: add a proper "unknown function" warning,
+             ;;  and somehow mark to skip type inference step
+             (format t "add dep ~s calls ~s~%" (name current-function)
+                     (name f))
+             (setf (gethash f (function-dependencies current-function))
+                   f)
+             (setf (gethash current-function (function-dependents f))
+                   current-function))))
+    (walk current-function (make-instance 'tree-shaker))))
 
+(defclass update-calls (glsl::glsl-walker)
+  ((modified :initarg :modified :reader modified)))
 
-
-
+(defmethod walk ((form function-call) (walker update-calls))
+  (let ((*environment* (argument-environment form)))
+    (setf (arguments form)
+          (mapcar (lambda (x)
+                    (format t "update ~s~%" x)
+                    (walk x walker))
+                  (funcall (expander (called-function form))
+                           (raw-arguments form)))))
+  (call-next-method))
 ;;;; main entry point for compiler
 
 
 (defun compile-block (forms tree-shaker-root *current-shader-stage*
                       &key env print-as-main)
-  (let ((*environment* (or env
-                           (make-instance 'environment
-                                          :parent glsl::*glsl-base-environment*))))
+  (let* ((*environment* (or env
+                            (make-instance 'environment
+                                           :parent glsl::*glsl-base-environment*)))
+         (*global-environment* *environment*)
+         (*new-function-definitions* nil))
     (setf forms (walk (cons 'progn forms) (make-instance 'extract-functions)))
+    (loop for f in *new-function-definitions*
+          do (update-dependencies f))
+    ;; if any functions' lambda list was changed, recompile any calls to those
+    ;; functions in their dependents
+    (let* ((changed-signatures (remove-if-not #'function-signature-changed
+                                              *new-function-definitions*))
+           (deps (make-hash-table))
+           (update-calls (make-instance 'update-calls
+                                        :modified (alexandria:alist-hash-table
+                                                   (mapcar (lambda (a)
+                                                             (cons a nil))
+                                                           changed-signatures)))))
+      (loop for i in changed-signatures
+            do (maphash (lambda (k v) (setf (gethash k deps) v))
+                        (function-dependents i))
+               (setf (old-lambda-list i)
+                     (lambda-list i)))
+      (maphash (lambda (k v)
+                 (declare (ignore v))
+                 (walk k update-calls))
+               deps))
+
+    (print forms)
     (let ((*print-as-main* (when print-as-main
                              (get-function-binding print-as-main))))
       (multiple-value-bind (shaken shaken-types)
@@ -210,7 +276,8 @@
          *environment*
          shaken
          shaken-types
-         (with-output-to-string (*standard-output*)
+         (infer-modified-functions *new-function-definitions*)
+#++         (with-output-to-string (*standard-output*)
            (format t "#version 330~%")
            (pprint-glsl forms)
            (loop with dumped = (make-hash-table)
@@ -227,16 +294,28 @@
            (loop for name in shaken
               for def = (gethash name (function-bindings *environment*))
               when (typep def 'global-function)
-              do (pprint-glsl def)
+                do (pprint-glsl def)
               ))
          )))))
 
 
 #++
-(compile-block '((defun foo (a1 b1)
-                   #++(+ a (* 3 (/ b)) 2))
-)
-               'foo)
+(multiple-value-list
+  (compile-block '((defun foo (a1 b1)
+                       (+ a (* 3 (/ b)) 2))
+                     )
+                   'foo
+                   :vertex))
+
+#++
+(multiple-value-list
+  (compile-block '((input position :vec4 :location 0)
+                   (defun foo (a1 b1)
+                        (+ a (* 3 (/ b)) 2))
+                     )
+                   'foo
+                   :vertex))
+
 
 #++
 (multiple-value-list
@@ -253,7 +332,7 @@
                   (defun complicated (a &optional (b 1.0) &key (c 2 cp)
                                                             (d 3))
                     (if cp (+ a b c) (+ a b)))
-                  (defun main ()
+                  (defun main (e)
                     (declare (:int e))
                     "do baz stuff"
                     #++(flet ((a (b)
@@ -269,5 +348,19 @@
                           (calls-foo (foo e 1) (bar f 9))
                           (complicated (if f (ash f 1) (ash e -1)) (glsl::<< 4 +hoge-piyo+)
                                        :d 4)))))
-                'main))
+                'main
+                :vertex))
 
+#++
+(multiple-value-list
+ (compile-block '((defun a (aa) (+ aa (b aa) (c) (d)))
+                  (defun a2 (a) (+ (b a) (c a)))
+                  (defun b (bb) (+ (e) (f)))
+                  (defun c () (b 2))
+                  (defun d () (f))
+                  (defun e () (d))
+                  (defun f () (+ (g) (h)))
+                  (defun g () 1)
+                  (defun h () 2))
+                   'a
+                   :vertex))

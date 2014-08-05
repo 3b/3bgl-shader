@@ -91,9 +91,13 @@
 (defclass binding (place)
   ((name :accessor name :initarg :name)
    (glsl-name :accessor glsl-name :initarg :glsl-name :initform nil)
-   ;; type of value stored in this binding (possibly not concrete if
-   ;; type inference not done yet, or if function is still generic)
+   ;; inferred type of variable or T if not known yet
    (value-type :accessor value-type :initarg :value-type)
+   ;; T for unknown, or a type or a binding object to share a type
+   ;; with another binding (for example functions that accept any type
+   ;; as long as all arguments are same type, or where return type
+   ;; matches an arg type)
+   (declared-type :accessor declared-type :initarg :declared-type)
    (qualifiers :accessor qualifiers :initform nil)))
 
 (defclass initialized-binding (binding)
@@ -157,10 +161,15 @@
   ;; with these? (for example to specify all args have to be vectors
   ;; of same types, or whatever, or figure out return type of something
   ;; like `outer-product` or `transpose` from arg types
-  ((return-type :accessor return-type :initarg :return-type)
+  ((function-type :accessor function-type :initarg :function-type)
+   ;; previous function type, so we can tell if it changed
+   (old-function-type :accessor old-function-type :initform nil)
+   ;; old code still needs this until type inference is done...
+   (return-type :accessor return-type :initarg :return-type :initform t)
    ;; sexp lambda list (with &key, etc)
    ;; (no &rest though, since we don't have lists)
-   (lambda-list :initarg :lambda-list)
+   (lambda-list :initarg :lambda-list :accessor lambda-list)
+   (old-lambda-list :initform t :accessor old-lambda-list)
    ;; c-style lambda list, only positional/optional args
    ;; optional as (name value)?
    ;; (arglist :initarg :arglist) -- just using BINDINGS for now?
@@ -175,12 +184,43 @@
    (expander :accessor expander :initarg :expander :initform #'identity)
    ;; 'layout' qualifiers for shader with this function as 'main'
    (layout-qualifiers :accessor layout-qualifiers :initform (make-hash-table))
-)
-)
+   ;; functions called by this function, + signature and ftype
+   ;; originally planned to use timestamps to detect changes in ftype/signature
+   ;; but that gets confused if we do type inference in a separate pass
+   ;; (since we will update function with 'unknown' ftype, then set it
+   ;;  to new value, so it will always look modified)
+   ;; instead, just store the old values with link and compare explicitly
+   (function-dependencies :initform (make-hash-table) :reader function-dependencies)
+   ;; functions that depend directly on this function
+   ;; (possibly should add reinitialize-instance method to clean it up?
+   ;;  or just clean it up on use, when checking a dependent make sure it
+   ;;  is still a dependent?)
+   (function-dependents :initform (make-hash-table) :reader function-dependents)
+))
+
+(defun function-signature-changed (fun)
+  ;; todo: ignore changed names (but keep changed defaults, so can't
+  ;; just look at shape of tree)
+  (not (equal (lambda-list fun) (old-lambda-list fun))))
+
+(defun function-type-changed (fun)
+  (not (equal (function-type fun) (old-function-type fun))))
 
 (defclass global-function (function-binding-function implicit-progn bindings)
   ;; global function definitions, with function body
   ())
+
+(defclass unknown-function-binding (function-binding)
+  ;; reference to an unknown function, will be CHANGE-CLASSed to
+  ;;    function-binding-function when defined
+  ;; store onvironment that was current when the reference was made,
+  ;;   so we can check there, will also check for an environment in
+  ;;   symbol-package of function's name
+  ;; (probably should be in package's 
+  ((environment :accessor environment :initarg :environment)
+   (function-dependencies :initform (make-hash-table) :reader function-dependencies)
+   (function-dependents :initform (make-hash-table) :reader function-dependents)
+))
 
 (defclass builtin-function (function-binding-function bindings)
   ;; declarations for functions provided by glsl
@@ -246,7 +286,14 @@
 
 (defclass function-call ()
   ((called-function :accessor called-function :initarg :function)
-   (arguments :accessor arguments :initarg :arguments)))
+   (arguments :accessor arguments :initarg :arguments)
+   ;; we need to store enough information to recompile
+   ;; calls when called function is (re)defined, since we expand
+   ;; &key and such at the call site
+   (raw-arguments :accessor raw-arguments :initarg :raw-arguments)
+   (argument-environment :accessor argument-environment
+                         :initarg :argument-environment )
+))
 
 (defclass if-form ()
   ((test-form :accessor test-form :initarg :test)
