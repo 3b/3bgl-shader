@@ -1,5 +1,11 @@
 (in-package #:3bgl-shaders)
 
+;; fixme: rearrange stuff so this doesn't need eval-when
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defparameter glsl::*glsl-base-environment*
+                (make-instance 'environment
+                               :parent *cl-environment*)))
+
 (defclass generic-type ()
   ((name :accessor name :initarg :name)
    (glsl-name :accessor glsl-name :initarg :glsl-name :initform nil)
@@ -16,8 +22,13 @@
      finally (return i)))
 
 (defclass concrete-type (generic-type)
-  ())
+  ;; list of types we can implicitly cast this type to
+  ((implicit-casts-to :initform nil :accessor implicit-casts-to)
+   ;; list of types that can be implicitly cast to this one
+   (implicit-casts-from :initform nil :accessor implicit-casts-from)))
 
+;; should these be concrete-type? or some common superclass?
+;; for now assuming everything not a constrained-type is a concrete type
 (defclass array-type (generic-type)
   ((base-type :initarg :base-type :accessor base-type)
    (array-size :initarg :array-size :accessor array-size)))
@@ -35,7 +46,17 @@
 (defclass uniform-block-type (aggregate-type)
   ())
 
-(glsl::%glsl-macro defstruct (name args &body slots)
+
+(defmacro %glsl-macro (name lambda-list &body body)
+  `(let ((3bgl-shaders::*environment* glsl::*glsl-base-environment*))
+     (3bgl-shaders::add-macro ',name
+                              (lambda (form env)
+                                (declare (ignorable env))
+                                (destructuring-bind ,lambda-list
+                                    (cdr form)
+                                  ,@body)))))
+
+(%glsl-macro defstruct (name args &body slots)
   (declare (ignore args))
   `(setf (gethash ',name (types *environment*))
          (make-instance 'struct-type
@@ -129,7 +150,7 @@
                               :binding type
                               :array-size array)))))))
 
-(glsl::%glsl-macro glsl::interface (%name (&key in out uniform internal)
+(%glsl-macro glsl::interface (%name (&key in out uniform internal)
                                          &body slots)
   ;; in/out/uniform are either T,NAME,or (&key :vertex :fragment ...)
   ;; where T means make slots directly visible in all stages,
@@ -200,34 +221,34 @@
                          :binding (or (get-type-binding type) type))))
 )
 
-(glsl::%glsl-macro glsl::attribute (%name type &key location internal)
+(%glsl-macro glsl::attribute (%name type &key location internal)
   (in/out/uniform/attrib :attribute %name type :location location :internal internal :stage :vertex)
   nil)
 
-(glsl::%glsl-macro glsl::input (%name type &key location (stage :vertex)
+(%glsl-macro glsl::input (%name type &key location (stage :vertex)
                                       internal)
   (in/out/uniform/attrib :in %name type
                          :location location :internal internal :stage stage)
   nil)
 
-(glsl::%glsl-macro glsl::output (%name type &key location (stage :fragment)
+(%glsl-macro glsl::output (%name type &key location (stage :fragment)
                                        internal)
   (in/out/uniform/attrib :out %name type
                          :location location :internal internal :stage stage)
   nil)
 
-(glsl::%glsl-macro glsl::uniform (%name type &key location (stage t)
+(%glsl-macro glsl::uniform (%name type &key location (stage t)
                                        internal)
   (in/out/uniform/attrib :uniform %name type
                          :location location :internal internal :stage stage)
   nil)
 
 
-(glsl::%glsl-macro glsl::bind-interface (stage block-name interface-qualifier instance-name)
+(%glsl-macro glsl::bind-interface (stage block-name interface-qualifier instance-name)
   (bind-interface stage block-name interface-qualifier instance-name)
   nil)
 
-(defclass set-type (generic-type)
+#++(defclass set-type (generic-type)
   ((types :accessor types :initarg :types)))
 
 (defparameter *known-declarations*
@@ -241,11 +262,11 @@
                (warn "declared unknown type ~a for variables ~a?" d a))
              (loop for var in a
                    for b = (find var (bindings scope) :key 'name)
-                   for bt = (value-type b)
+                   for bt = (declared-type b)
                    do (when (not (member bt (list type d t)))
                         (warn "changing type of ~a from ~a to ~a?"
-                              var (value-type b) type))
-                      (setf (value-type b) type)))))
+                              var (declared-type b) type))
+                      (setf (declared-type b) type)))))
     (let ((declarations (declarations scope)))
       (loop for (decl . args) in (mapcan 'cdr declarations)
             do (cond
@@ -257,7 +278,7 @@
                   #++(format t "scope = ~s, ret = ~s~%"
                           scope
                           args)
-                  (setf (return-type scope)
+                  (setf (declared-type scope)
                         (if args
                             (get-type-binding (car args))
                             (get-type-binding :void)))
@@ -376,14 +397,17 @@
 
 
 
-
+;; not sure if these are directly useful or not? mainly used in defining
+;; function types, which want a bunch of (concrete-type1 ..) -> concrete-typeN
+;; rather than independent set-type for each arg
+#++
 (defun add-set-type (name types &key (env *environment*) type)
   (setf (gethash name (types env))
         (or type
             (make-instance 'set-type
                            :name name
                            :types types))))
-
+#++
 (let ((*environment* glsl::*glsl-base-environment*))
   (add-set-type :bvec '(:bvec2 :bvec3 :bvec4))
   (add-set-type :ivec '(:ivec2 :ivec3 :ivec4))
@@ -402,26 +426,32 @@
                        :mat4x2 :mat4x3 :mat4)))
 
 #++
-(add-implicit-conversions
- (:int :uint :float :double)
- (:uint :float :double)
- (:float :double)
- (:ivec2 :uvec2 :vec2 :dvec2)
- (:ivec3 :uvec3 :vec3 :dvec3)
- (:ivec4 :uvec4 :vec4 :dvec4)
- (:uvec2 :vec2 :dvec2)
- (:uvec3 :vec3 :dvec3)
- (:uvec4 :vec4 :dvec4)
- (:vec2 :dvec2)
- (:vec3 :dvec3)
- (:vec4 :dvec4)
- (:mat2 :dmat2)
- (:mat3 :dmat3)
- (:mat4 :dmat4)
- (:mat2x3 :dmat2x3)
- (:mat2x4 :dmat2x4)
- (:mat3x2 :dmat3x2)
- (:mat3x4 :dmat3x4)
- (:mat4x2 :dmat4x2)
- (:mat4x3 :dmat4x3)
-)
+(let ((*environment* glsl::*glsl-base-environment*))
+  (flet ((c (&rest types)
+           (loop for (.type . to) on types
+                 for type = (get-type-binding .type)
+                 do (format t "~s -> ~s ->~s~%" from .type to)
+                    (setf (implicit-casts-to type)
+                          (print (mapcar 'get-type-binding to)))
+                    (setf (implicit-casts-from type)
+                          (print (mapcar 'get-type-binding from)))
+                 collect .type into from)))
+    (macrolet ((add-implicit-conversions (&rest conversions)
+                 `(progn
+                    ,@(mapcar (lambda (a) (cons 'c a))
+                              conversions))))
+      (add-implicit-conversions
+       (:int :uint :float :double)
+       (:ivec2 :uvec2 :vec2 :dvec2)
+       (:ivec3 :uvec3 :vec3 :dvec3)
+       (:ivec4 :uvec4 :vec4 :dvec4)
+       (:mat2 :dmat2)
+       (:mat3 :dmat3)
+       (:mat4 :dmat4)
+       (:mat2x3 :dmat2x3)
+       (:mat2x4 :dmat2x4)
+       (:mat3x2 :dmat3x2)
+       (:mat3x4 :dmat3x4)
+       (:mat4x2 :dmat4x2)
+       (:mat4x3 :dmat4x3)
+       ))))

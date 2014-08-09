@@ -1,5 +1,6 @@
 (defpackage #:3bgl-shaders
   (:use :cl)
+  (:intern #:%glsl-macro)
   (:export
    :layout))
 
@@ -8,7 +9,8 @@
   (:shadow #:defun
            #:defconstant)
   (:import-from #:3bgl-shaders
-                #:layout)
+                #:layout
+                #:%glsl-macro)
   (:export
    :<<
    :>>

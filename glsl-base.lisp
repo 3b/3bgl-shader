@@ -3,9 +3,6 @@
 ;;; definitions for CL macros supported by the shader DSL
 ;;;   (and maybe some extra utilities)
 
-(defparameter *glsl-base-environment*
-  (make-instance '3bgl-shaders::environment
-                 :parent 3bgl-shaders::*cl-environment*))
 
 (defclass glsl-walker (3bgl-shaders::cl-walker)
   ())
@@ -72,14 +69,6 @@
           :env *glsl-base-environment*))
 
 ;;; todo:
-(defmacro %glsl-macro (name lambda-list &body body)
-  `(let ((3bgl-shaders::*environment* *glsl-base-environment*))
-     (3bgl-shaders::add-macro ',name
-                              (lambda (form env)
-                                (declare (ignorable env))
-                                (destructuring-bind ,lambda-list
-                                    (cdr form)
-                                  ,@body)))))
 
 (%glsl-macro case (&body body)
   (declare (ignore body))
@@ -474,22 +463,14 @@
                       (make-instance '3bgl-shaders::cl-walker)))
 
 
-;;; some more internal functions, that aren't in the CL package
-(let ((3bgl-shaders::*environment* *glsl-base-environment*))
-  (3bgl-shaders::add-internal-function '<< '(integer count))
-  (3bgl-shaders::add-internal-function '>> '(integer count))
-  (3bgl-shaders::add-internal-function 'return '(value))
-  (3bgl-shaders::add-internal-function '^^ '(cl:&rest integers))
-
-
-)
 
 ;;; start defining some glsl functions
 (%glsl-macro expt (a b)
   `(pow ,a ,b))
 
+#++
 (macrolet
-    ((add-builtins (&rest definitions)
+    (#++(add-builtins (&rest definitions)
        `(progn
           ,@(loop for (%name lambda-list return types) in definitions
                   for name = (if (consp %name) (car %name) %name)
@@ -516,59 +497,7 @@
                                         :glsl-name ',glsl-name
                                         :value-type ,type))))))
  (let ((3bgl-shaders::*environment* *glsl-base-environment*))
-   (add-builtins
-    ((texture-2d "texture2D") (sampler uv) :vec4 (:sampler2D :vec :float))
-    (texture (sampler uv bias) :vec4 (:sampler2D :vec :float))
-    (texel-fetch (sampler texcoord lod sample) :vec4 (:sampler2D :ivec :int :int))
-    (mat2 (???) :mat2 (???))
-    (mat2x3 (???) :mat2x3 (???))
-    (mat2x4 (???) :mat2x4 (???))
-    (mat3x2 (???) :mat3x2 (???))
-    (mat3 (???) :mat3 (???))
-    (mat3x4 (???) :mat3x4 (???))
-    (mat4x2 (???) :mat4x2 (???))
-    (mat4x3 (???) :mat4x3 (???))
-    (mat4 (???) :mat4 (???))
-    (vec2 (???) :vec2 (???))
-    (vec3 (???) :vec3 (???))
-    (vec4 (???) :vec4 (???))
-    (ivec2 (???) :ivec2 (???))
-    (ivec3 (???) :ivec3 (???))
-    (ivec4 (???) :ivec4 (???))
-    (normalize (vec) :vec (:vec))
-    (length (vec) :float (:vec))
-    (sign (x) :gentype (:gentype))
-    (min (a b) :float (:float :float))
-    (max (a b) :float (:float :float))
-    (dot (a b) :float (:vec :vec))
-    (abs (a) :float (:float))
-    (sqrt (a) :float (:float))
-    (pow (a b) :float (:float :float))
-    (exp (a) :float (:float))
-    (exp2 (a) :float (:float))
-    (floor (a) :gentype (:gentype))
-    (fract (a) :gentype (:gentype))
-    (less-than (a b) :gentype (:gentype :gentype))
-    ;; GLSL 'step' instead of CL STEP
-    (step (x a b) :gentype (:gentype :gentype :gentype))
-    (clamp (a b) :gentype (:gentype :gentype))
-    (noise4 (a) :vec4 (:gentype))
-    (cross (a b) :vec (:vec :vec))
-    (transpose (x) :mat (:mat))
-    ((emit-vertex "EmitVertex") () :void ())
-    ((end-primitive "EndPrimitive") () :void ())
-    (reflect (a b) :vec3 (:vec3 :vec3))
-    ((smooth-step "smoothstep") (edge0 edge1 x) :gentype (:gentype :gentype :float))
-    (any (x) :bool (:bvec))
-    (all (x) :bool (:bvec))
-    #++(not (x) :bvec (:bvec))
-    (equal (x y) :bvec (:vec :vec))
-    (not-equal (x y) :bvec (:vec :vec))
-    (less-than (x y) :bvec (:vec :vec))
-    (less-than-equal (x y) :bvec (:vec :vec))
-    (greater-than (x y) :bvec (:vec :vec))
-    (greater-than-equal (x y) :bvec (:vec :vec))
-    )
+   
    ))
 
 ;; fixme: this should probably use a weak hash table

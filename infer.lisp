@@ -1,117 +1,49 @@
 (in-package #:3bgl-shaders)
 
-;;; in types.lisp
-;; concrete-type
-;; array-type
-;; aggregate-type
-;; struct-type
-;; interface-type
-;; set-type
-;;
+(defvar *inference-worklist*)
 
-;; inference:
-;;   walk tree, build list of set-types for expressions, add constraints
-;;   to unification worklist
+(defclass any-type ()
+  ((constraints :initform (make-hash-table) :accessor constraints :initarg :constraints)))
 
-;; constraints:
-;;   alias: not sure we need this, just always use same type object
-;;          for aliased type, or use 'equiv' field so they can all
-;;          link to a single type?
-
-;;   ftype-set: set of combinations of types for a function application
-;;     for example a function might allow (int int) -> int
-;;       and (float float) -> float
-;;     contains a list of set-types for each arg, a set-type for ret
-;;        might also store a copy of the set of types for each arg + ret
-;;        to use for checking for changes?
-;;        alternately, probably want a modified flag for each arg + ret?
-;;          (to use flag, linked types would need link back in order to
-;;           know when to toggle flag. we can't store it in the set-type,
-;;           since multiple types might depend on it, so can't know when
-;;           to turn it off)
-;;        possibly as a compromise, increment a counter in set-type
-;;          when modified, and store last known value in ftype-set, since
-;;          it would be faster to compare an int than a list?
-;;        -- rather than counter, use length, since that should
-;;           be monotonically decreasing?
-;;        -- actually, need links from set-types back to ftype-sets anyway
-;;           so we can add other ftype-sets to worklist when a set-type is
-;;           modified
-
-;;     and a set of ftypes (each containing a list of concrete types for args
-;;     and 1 for ret)
-
-;; unification:
-;;    get a ftype-set from worklist
-;;      loop through modified args + ret
-;;        filter out any ftypes that don't match updated arg/ret types
-;;      loop through all args + ret
-;;        calculate set of types for that position in ftype list
-;;        if different from current value
-;;          update types in that set-type
-;;          mark all other constraints linked to that type as modified
-;;          add any constraints that were not previously marked to worklist
-;;
-
-
-
-;;; (defun foo (a b)
-;;;   (let ((c (+ a 2.0)))
-;;;     (return (texture-1d b (.xy c))))
-;;;  FOO = A B -> RET
-;;;  A = set T
-;;;  B = set T
-;;;  RET = set T
-;;;  F1 (+ a 2.0) = C1 application (A 2.0)
-;;;     gentype gentype -> gentype
-;;;     mat mat -> mat
-;;;     vec f -> vec
-;;;     f vec -> vec
-;;;     mat f -> mat
-;;;     f mat -> mat
-;;;  C = F1
-;;;  F2 (.xy c) = C2 application (C)
-;;;     vec4 -> vec2
-;;;     vec3 -> vec2
-;;;     vec2 -> vec2
-;;;  F3 (texture-2d B F2) = C3 application (B F2)
-;;;     sampler2d vec2 -> vec4
-;;;  F4 (return F3) = C4 equality RET = F3 = F4
-;;;
-;;; worklist = C1 C2 C3 C4
-;;;   C1 = F1 T 2.0 -> T
-;;;     float float -> float
-;;;     vec float -> vec
-;;;     mat float -> met
-;;;     A => (set float vec* mat*)
-;;;     C = F1 => (set float vec* mat) -> C2 already modified
-;;;   C2 = F2 (float vec* mat) -> T
-;;;     F2 => vec2
-;;;     C => (set vec2 vec3 vec4) -> C1 + modified
-;;;   C3 (B F2) = (T vec2)
-;;;     sampler2d vec2 -> vec4
-;;;     B => sampler2d
-;;;     F3 => vec4
-;;;   C4 eq (ret f3 f4) T vec4 T
-;;;     F4 = RET => vec4
-;;;   C1 = (A 2.0) -> F1 = (float vec* mat*) 2.0 -> vec2 vec3 vec4
-;;;     vec2/3/4 float -> vec2/3/4
-;;;     A => vec2 vec3 vec4
-;;; FOO = vec2/vec3/vec4 sampler2D -> vec4
+(defclass nil-type () ;; for optional args
+  ())
 
 (defclass constrained-type ()
-  ((constraints :initform nil :accessor constraints)
-   ;;
-   (equality-constraint :initform nil :accessor equality-constraint))
-)
+  ;; constraints shouldn't include equality constraints, they get
+  ;; handled in UNIFY
+  ((types :accessor types :initarg :types
+          :initform (make-hash-table))
+   (constraints :initform (make-hash-table) :accessor constraints :initarg :constraints)))
 
-(defclass set-type (constrained-type)
-  ((length)
-   (types :initarg :types :accessor types) ;; list? of concrete types
-))
 
-(defclass any-type (constrained-type)
-  ())
+(defun debug-type-names (type)
+  (typecase type
+    (list (mapcar 'debug-type-names type))
+    (generic-type (name type))
+    (any-type T)
+    (nil-type nil)
+    (constrained-type
+     (debug-type-names
+      (mapcar 'car
+              (remove nil (alexandria:hash-table-alist
+                           (types type))
+                      :key 'cdr))))
+    (t (error "foo!"))))
+
+(defun print-bindings/ret (name bindings ret)
+  (when name (format t "inferred ~s:~%" name))
+  (loop for i in bindings
+        do (format t "  ~a = ~s~%" (if (typep i 'generic-type)
+                                       (name i)
+                                       i)
+                   (debug-type-names (if (typep i 'binding)
+                                         (value-type i)
+                                         i))))
+    (format t "  -> ~s~%" (debug-type-names ret)))
+
+
+(defun add-constraint (ctype constraint)
+  (setf (gethash constraint (constraints ctype)) t))
 
 
 ;; having a separate constant-type instead of a set-type with 1 type seems
@@ -121,71 +53,278 @@
   ((type :initarg :type :accessor ctype)))
 
 (defclass constraint ()
-  ((modified :initform nil :accessor modified)))
+  ((modified :initform t :accessor modified)))
 
-(defclass equality-constraint (constraint)
-  ((types)) ;; list of SET-TYPEs
-)
+(defun flag-modified-constraint (constraint)
+  (unless (modified constraint)
+    (setf (modified constraint) t)
+    (push constraint *inference-worklist*)))
 
 (defclass function-application (constraint)
-  ((argument-types :initarg :argument-types :reader argument-types) ;; list of set-types
-   (return-type :initarg :return-type :reader return-type) ;; SET-TYPE?
+  ((argument-types :accessor argument-types :initform nil)
+   (return-type :initarg :return-type :accessor return-type) ;; SET-TYPE?
    (function-types :initarg :function-types :accessor function-types) ;; modifiable list of ftype, each is a list of concrete arg types + concrete ret type
-   (name :initarg :name :accessor name) ;; for debugging
+   (name :initarg :name :accessor name :initform nil) ;; for debugging
    ))
 
+(defclass global-function-constraint (constraint)
+  ;; doesn't actually constrain things, just a place to track changes
+  ;; to argument bindings' types
+  ((name :accessor name :initarg :name :initform nil)
+   (argument-types :accessor argument-types :initform nil)
+   (return-type :initarg :return-type :accessor return-type)))
 
-(defvar *inference-worklist*)
+(defun replace-constraint-type (new old constraint)
+  (when (eq (return-type constraint) old)
+    (setf (return-type constraint) new))
+  (flag-modified-constraint constraint)
+  (setf (argument-types constraint)
+        (substitute new old (argument-types constraint))))
+
+(defclass cast-constraint (constraint)
+  ;; represents a possible implicit cast from IN-TYPE to OUT-TYPE
+  ;; (can't just unify them, since we might have other incompatible
+  ;; uses for IN. for example in (setf a 1) (setf b a) (* a uvec)
+  ;; (setf b 1.2), A needs to be :INT or :UINT for the multiplication
+  ;; and B needs to be :FLOAT for the 2nd assignment, so they can't be
+  ;; unified directly at (SETF B A) it needs to unify something like
+  ;; (SETF B (CAST A)) where knowing B is a float means A is
+  ;; INT/UINT/FLOAT, and knowing A is INT/UINT means B is
+  ;; INT/UINT/FLOAT
+  ;;
+  ;; on update, if none of the input or output types can be involved
+  ;; in an implicit cast (like structs or samplers), it should remove
+  ;; itself from in/out and unify them normally
+  ((in-type :initarg :in-type :accessor in-type)
+   (out-type :initarg :out-type :accessor out-type)))
+
+
+
+(defmacro defmethod2 (name (a b) &body body)
+  ;; define methods on NAME with arguments A B and B A
+  `(progn
+     (defmethod ,name (,a ,b) ,@body)
+     (defmethod ,name (,b ,a) ,@body)))
+
+
+;; unify types A, B, updating any constraints if needed, and return unified type
+;; (should UNIFY handle any implicit cast stuff? assuming not for now,
+;;  possibly will want a separate 'concrete' type for casts though?
+(defmethod unify (a b)
+  (unless (eq a b)
+    (error "can't unify ~s and ~s yet!" a b))
+  a)
+
+(defmethod unify ((a constrained-type) (b constrained-type))
+  ;; merge sets of types
+  ;; if singleton
+  ;;    replace with concrete-type
+  ;;    remove A,B from constraint, add new type
+  ;;    flag constraints modified
+  ;;    return new type
+  ;; else
+  ;;    update A with new set of types
+  ;;    set constraints of A to union of A, B constraints
+  ;;    remove A,B from constraints, add A
+  ;;      (or remove B, add A if not already there)
+  ;;    flag constraint modified
+  ;;    return A
+
+  (let ((types (make-hash-table))
+        (last-type nil))
+    (maphash (lambda (k v) (when (and v (gethash k (types a)))
+                             (setf last-type k)
+                             (setf (gethash k types) t)))
+             (types b))
+    (case (hash-table-count types)
+      (0 (error "failed to unify types ~s, ~s" a b))
+      (1
+       (loop for c being the hash-keys of (constraints a) using (hash-value v)
+             when v
+               do (replace-constraint-type last-type a c))
+       (loop for c being the hash-keys of (constraints b) using (hash-value v)
+             when v
+               do (replace-constraint-type last-type b c))
+       )
+      (t
+       (setf (types a) types)
+       (loop for c being the hash-keys of (constraints b) using (hash-value v)
+             when v
+               do (unless (gethash c (constraints a))
+                    (setf (gethash c (constraints a)) t)
+                    (break "?")
+                    (remhash b (types c))
+                    (replace-constraint-type a b c)))
+       ))
+)
+  a
+
+
+)
+
+(defmethod2 unify ((a constrained-type) (b generic-type))
+  ;; make sure B is in A's set of valid types
+  ;; remove A,B from constraints, add B
+  ;; flag constraint modified
+  ;; return B
+  (error "constrained x generic not done yet")
+)
+
+(defmethod2 unify ((a constrained-type) (b concrete-type))
+  (assert (gethash b (types a)))
+  (format t "replacing ~s with ~s~%" a b)
+  (loop for c being the hash-keys of (constraints a) using (hash-value v)
+        do (format t "  ~s? in ~s~%" v c)
+        when v
+          do (replace-constraint-type b a c))
+  b)
+(defmethod2 unify ((a any-type) (b concrete-type))
+  (assert (gethash b (types a)))
+  (format t "replacing ~s with ~s~%" a b)
+  (loop for c being the hash-keys of (constraints a) using (hash-value v)
+        do (format t "  ~s? in ~s~%" v c)
+        when v
+          do (replace-constraint-type b a c))
+  b)
+
+
+(defmethod2 unify ((a constrained-type) (b any-type))
+  ;; replace B with A in all of its constraints (if not already there)
+  ;; and add Bs constraints to A
+  (format t "replacing ~s with ~s~%" b a)
+  (loop for c being the hash-keys of (constraints b) using (hash-value v)
+        do (format t "  ~s? in ~s~%" v c)
+        when v
+          do (replace-constraint-type a b c)
+             (setf (gethash c (constraints a)) t))
+  a)
+
+
 
 (defclass infer-build-constraints (glsl::glsl-walker)
   ())
 
+#++
 (defun copy-type (type)
   (if (consp type)
       (copy-list type)
       type))
 
-(defun set-type (types #+&key instance)
+
+(defun set-type (types &key constraint)
   (typecase types
     ((eql t)
-     (make-instance 'any-type))
+     (make-instance 'any-type
+                    :constraints (alexandria:plist-hash-table
+                                  (when constraint (list constraint t)))))
     (symbol
      #++(make-instance 'constant-type :type types)
-     (set-type (list types)))
+     (set-type (list (or (get-type-binding types) types))
+               :constraint constraint))
     (concrete-type
      ;; fixme: combine the inference types with other type stuff properly
-     (set-type (list (name types))))
+     ;;(set-type (list (name types)))
+     types)
     (list
      (let ((set (make-hash-table)))
-       (loop for i in types do (setf (gethash i set) i))
-       (make-instance 'set-type :types set)))))
+       (loop for i in types
+             when (symbolp i)
+               do (setf i (or (get-type-binding i) i))
+             do (setf (gethash i set) i))
+       (make-instance 'constrained-type :types set
+                      :constraints (alexandria:plist-hash-table
+                                    (when constraint (list constraint t))))))))
+
+(defparameter *copy-constraints-hash* nil
+  "used to track already copied constraints when copying type inference data")
+
+(defmethod copy-constraints :around (x)
+  (or (gethash (if (typep x 'generic-type)
+                   (get-equiv-type x)
+                   x)
+               *copy-constraints-hash*)
+      (call-next-method)))
+
+(defmethod copy-constraints ((constraint function-application))
+  (let ((copy (make-instance 'function-application
+                             :name (name constraint)
+                             :function-types (copy-list (function-types
+                                                         constraint)))))
+    ;; we need to update cache before copying constrained types because they
+    ;; link back to constraint
+    (setf (gethash constraint *copy-constraints-hash*)
+          copy)
+    (setf (slot-value copy 'argument-types)
+          (mapcar 'copy-constraints (argument-types constraint)))
+    (setf (slot-value copy 'return-type)
+          (copy-constraints (return-type constraint)))
+    (push copy *inference-worklist*)
+    copy))
+
+(defmethod copy-constraints ((type generic-type))
+  ;; concrete types and aggregates don't need copied
+  (let ((e (or (get-equiv-type type) type)))
+    (setf (gethash type *copy-constraints-hash*) e
+          (gethash e *copy-constraints-hash*) e)))
+
+(defmethod copy-constraints ((type nil-type))
+  ;; doesn't need copied
+  (setf (gethash type *copy-constraints-hash*) type))
+
+#++
+(defmethod copy-constraints ((type set-type))
+  (error "shouldn't get a bare set-type in copy-constraints?"))
+
+(defmethod copy-constraints ((hash hash-table))
+  (let ((n (make-hash-table)))
+    (maphash (lambda (k v)
+               (when v
+                 (setf (gethash (copy-constraints k) n) t)))
+             hash)
+    n))
+
+(defmethod copy-constraints ((type constrained-type))
+  (let* ((copy (make-instance 'constrained-type)))
+    ;; we need to update cache before copying constraints because they
+    ;; link back to type
+    (setf (gethash type *copy-constraints-hash*) copy)
+    ;; assuming we don't have any equiv types in constraint graphs being
+    ;; copied (and too messy to fix it here, so just complaining for now)
+    ;;(assert (eq type (get-equiv-type type)))
+    ;; (setf (equiv copy) copy)
+    (setf (slot-value copy 'constraints)
+          (copy-constraints (constraints type)))
+    (setf (slot-value copy 'types)
+          (copy-constraints (types type)))
+    copy))
+
+
+(defun copy-unify-constraints (type unify-type)
+  (let ((copy (copy-constraints type)))
+    (format t "c-unify ~s ~s~%" copy unify-type)
+    (unify copy unify-type)))
 
 (defmethod walk ((form function-call) (walker infer-build-constraints))
-  (format t "infer ~s =~%" form)
+  (format t "infer ~s (~s) =~%" (name (called-function form)) form)
   (let* ((called (called-function form))
-         (function-type (function-type called)))
+         (*copy-constraints-hash* (make-hash-table)))
     (when (typep called 'unknown-function-binding)
-     (error "got call to unknown function ~s during type inference"
-            (name called)))
-    (if (eql function-type t)
-        (prog1 t (format t "T*->T function call"))
-        (let ((return-type (set-type (if (consp function-type)
-                                         (mapcar 'second function-type)
-                                         function-type)))
-              (argument-types (mapcar (lambda (a) (walk a walker))
-                                      (arguments form))))
-          (when argument-types
-            (let ((constraint
-                    (make-instance 'function-application
-                                   :argument-types argument-types
-                                   :function-types (copy-type function-type)
-                                   :return-type return-type
-                                   :name (name called))))
-              (loop for i in (cons return-type argument-types)
-                    do (push constraint (constraints i)))
-              (setf (modified constraint) t)
-              (push constraint *inference-worklist*)))
-          (print return-type)))))
+      (error "got call to unknown function ~s during type inference"
+             (name called)))
+    (unless (eq t (type-inference-state called))
+      (format t "got call to function ~s with incomplete or failed type inference ~s?" (name called) (type-inference-state called))
+      (throw :incomplete-dependent called))
+    ;; make local copies of any types/constraints affected by function
+    ;; args, and unify with actual arg types
+    ;; (unify will add modified constraints to work list)
+    (loop for arg in (arguments form)
+          for binding in (bindings called)
+          collect (copy-unify-constraints
+                   (value-type binding) (walk arg walker)))
+    ;; copy return type and any linked constraints
+    ;; (may have already been copied if it depends on arguments)
+    (format t "~s =>~s~%" (name called) (value-type called ))
+    (copy-constraints (value-type called))))
 
 (defmethod walk ((form variable-read) (walker infer-build-constraints))
   (format t "infer ~s =~%" form)
@@ -199,7 +338,7 @@
 
 (defmethod walk ((form integer) (walker infer-build-constraints))
   (format t "infer ~s =~%" form)
-  (print (set-type (list :int :uint :float))))
+  (print (set-type (list :int))))
 
 (defmethod walk ((form float) (walker infer-build-constraints))
   (format t "infer ~s =~%" form)
@@ -207,20 +346,26 @@
 
 (defmethod walk ((form global-function) (walker infer-build-constraints))
   (format t "infer ~s  (~s)=~%" form (body form))
-  (loop for binding in (bindings form)
-        for declared-type in (declared-types form)
-        if (typep declared-type '(cons (eql T) (cons unsigned-byte)))
-          do (setf (value-type binding)
-                   (value-type (elt (bindings form) (second declared-type))))
-        else do (setf (value-type binding)
-                      (set-type declared-type)))
-  ;; fixme: add a constraint if return type isn't T
-  (assert (eq t (return-type form)))
-
-  (print (loop for a in (body form)
-               for ret = (walk a walker)
-               do (format t "@ global-function / ~s~%" ret)
-               finally (return (setf (return-type form) ret)))))
+  (let ((c (make-instance 'global-function-constraint)))
+    (setf (return-type c) (set-type t :constraint c))
+    (setf (argument-types c)
+          (loop for binding in (bindings form)
+                for declared-type = (declared-type binding)
+                if (typep declared-type '(cons (eql T) (cons unsigned-byte)))
+                  collect (setf (value-type binding)
+                                (value-type (elt (bindings form)
+                                                 (second declared-type))))
+                else collect (setf (value-type binding)
+                                   (set-type declared-type
+                                             :constraint c))))
+    ;; fixme: add a constraint (or just a type?) if return type isn't T
+    (assert (eq t (value-type form)))
+    (setf (return-type c)
+          (loop for a in (body form)
+                for ret = (walk a walker)
+                do (format t "@ global-function / ~s~%" ret)
+                finally (return (setf (value-type form) ret))))
+    c))
 
 
 (defmethod walk (form (walker infer-build-constraints))
@@ -229,14 +374,49 @@
     (call-next-method))
 )
 
-(defmacro defmethod2 (name (a b) &body body)
-  ;; define methods on NAME with arguments A B and B A
-  `(progn
-     (defmethod ,name (,a ,b) ,@body)
-     (defmethod ,name (,b ,a) ,@body)))
+(defmethod unifiable-types-p (x type)
+  (error "can't tell if ~s unifies with ~s?" x type))
 
-(defmethod2 unify ((a set-type) (b set-type))
-  (maphash ))
+
+(defmethod unifiable-types-p ((a nil-type) (b nil-type))
+  ;; is this right?
+  t)
+
+(defmethod2 unifiable-types-p ((a nil-type) (b any-type))
+  nil)
+
+(defmethod2 unifiable-types-p ((a nil-type) (b generic-type))
+  nil)
+
+(defmethod2 is-type ((a nil-type) b)
+  nil)
+
+(defmethod2 unifiable-types-p ((a any-type) b)
+  t)
+
+(defmethod2 unifiable-types-p ((a generic-type) b)
+  (or (eq a b) (eq (get-equiv-type a) b)))
+
+(defmethod2 unifiable-types-p ((a generic-type) (b generic-type))
+  (eq (or (get-equiv-type a) a) (or (get-equiv-type b) b)))
+
+(defmethod2 unifiable-types-p ((a generic-type) (b constrained-type))
+  (gethash (get-equiv-type a) (types b)))
+
+(defmethod unifiable-types-p ((x constrained-type) (type constrained-type))
+  (if (< (hash-table-count (types type))
+         (hash-table-count (types x)))
+      (rotatef x type))
+  (loop for k being the hash-keys of (types x) using (hash-value v)
+        thereis (and v (gethash k (types type)))))
+
+
+
+(defmethod2 unifiable-types-p ((a symbol) b)
+  (let ((at (get-type-binding a)))
+    (when at
+      (unifiable-types-p at b))))
+
 
 (defmethod update-constraint ((constraint function-application))
   ;; fixme: keep track of which args were modified and only process them...
@@ -247,90 +427,132 @@
     ;; restrict any of the arguments or return type, so it shouldn't
     ;; have a constraint in the first place...
     (assert (not (eql t (function-types constraint))))
-    (format t "update constraint (~s ftypes)~%" (length (function-types constraint)))
+    (format t "~&update constraint ~s (~s ftypes)~%" constraint (length (function-types constraint)))
+    (format t "  constrained = ~{~s~%                 ~}-> ~s~%"
+            (argument-types constraint)
+            (return-type constraint))
+    (print-bindings/ret (name constraint) (argument-types constraint) (return-type constraint))
     ;; loop through function types, keep ones that match the argument/ret types
     (setf (function-types constraint)
           (loop for ftype in (function-types constraint)
                 for (args ret) = ftype
-                do (format t "  check constraint ~s:" ftype)
+                do (format t "  check constraint ~s: " ftype)
                 when (prin1
                       (and
-                       (gethash ret (types (return-type constraint)))
-                       (loop for ftype-arg in args
-                             for arg in (argument-types constraint)
-                             always (or (typep arg 'any-type)
-                                        ;; possibly should add a TYPES
-                                        ;; reader to constant-types to
-                                        ;; simplify this?
-                                        (progn #+if (typep arg 'constant-type)
-                                               #++(eql ftype-arg (ctype arg))
-                                            (gethash ftype-arg (types arg)))))))
+                       ;; fixme: store concrete types in ftypes instead of symbols
+                       (unifiable-types-p ret (return-type constraint))
+                       #++(gethash (or (get-type-binding ret) ret)
+                                (types (return-type constraint)))
+                       (loop with arg-types = (argument-types constraint)
+                             for .ftype-arg in args
+                             for ftype-arg = (or (get-type-binding .ftype-arg)
+                                                 .ftype-arg)
+                             for arg = (pop arg-types)
+                             always (unifiable-types-p arg ftype-arg)
+                                    #++(or (typep arg 'any-type)
+                                           ;; possibly should add a TYPES
+                                           ;; reader to constant-types to
+                                           ;; simplify this?
+                                           (if (typep arg 'concrete-type)
+                                               (eql ftype-arg arg)
+                                               (gethash ftype-arg (types arg)))))))
                   collect ftype
                 else do (incf removed)
                 do (terpri)))
     (format t " -> (~s ftypes)~%" (length (function-types constraint)))
     ;; loop through argument types, set all to NIL
-    (loop for arg in (cons (return-type constraint)
-                           (argument-types constraint))
-          unless (or (typep arg 'any-type)
-                     #++(typep arg 'constant-type))
-            do (maphash (lambda (k v)
+    (flet ((process (arg)
+             (unless (or (typep arg 'any-type)
+                         (typep arg 'concrete-type))
+               (maphash (lambda (k v)
                           (declare (ignore v))
                           (setf (gethash k (types arg)) nil))
-                        (types arg)))
+                        (types arg)))))
+      (mapcar #'process (argument-types constraint))
+      (process (return-type constraint)))
     ;; expand any-type args/ret
     (flet ((hash-list (l)
              (let ((h (make-hash-table)))
                (loop for i in l do (setf (gethash i h) nil))
                h)))
       (when (typep (return-type constraint) 'any-type)
+        (break "any type?")
         (change-class (return-type constraint)
                       'set-type
                       :types (hash-list (mapcar 'second
                                                 (function-types constraint)))))
       (loop for arg in (argument-types constraint)
             for i from 0
+            do (format t "maybe expand any type ~s?~%" arg)
             when (typep arg 'any-type)
-              do (change-class arg 'set-type
+              do (change-class arg 'blahblah
                                :types (hash-list
                                        (mapcar (lambda (a) (nth i (first a)))
-                                               (function-types constraint))))))
+                                               (function-types constraint))))
+
+            ))
 
     ;; loop through function types again, turn back on the valid argument types
-    (loop for (nil ret) in (function-types constraint)
-          do (setf (gethash ret (types (return-type constraint)))
-                   ret))
+    (loop for (nil .ret) in (function-types constraint)
+          for ret = (or (get-type-binding .ret) .ret)
+          if (typep (return-type constraint) 'concrete-type)
+            do (assert (unifiable-types-p ret (return-type constraint)))
+          else
+            do (setf (gethash ret
+                              (types (return-type constraint)))
+                     ret))
     (loop for ftype in (function-types constraint)
-          for (args ret) = ftype
-          do (assert (nth-value 1 (gethash ret (types (return-type constraint)))))
-             (loop for ftype-arg in args
-                   for arg in (argument-types constraint)
-                   ;unless (typep arg 'constant-type)
+          for (args .ret) = ftype
+          for ret = (or (get-type-binding .ret) .ret)
+          do (format t "add ftype? ~s -> ~s~%" args ret)
+          if (typep (return-type constraint) 'concrete-type)
+            do (assert (unifiable-types-p ret (return-type constraint)))
+          else
+            do (assert (nth-value 1 (gethash ret (types (return-type constraint)))))
+          do (loop with arg-types = (argument-types constraint)
+                   for .ftype-arg in args
+                   for ftype-arg = (or (get-type-binding .ftype-arg)
+                                       .ftype-arg)
+                   for arg = (pop arg-types)
+                   do (format t "add arg type? ~s -> ~s~%" ftype-arg arg)
+                   unless (typep arg 'concrete-type)
                      do (assert (nth-value 1 (gethash ftype-arg (types arg))))
                         (setf (gethash ftype-arg (types arg))
                               ftype-arg)
                         (incf removed2)))
     ;; (possibly loop through arg types again and remove NIL values?
     (format t "updated constraint, removed ~s ftypes, ~s arg types~%" removed removed2)
+    (print-bindings/ret (name constraint) (argument-types constraint) (return-type constraint))
     (assert (or (plusp removed) (plusp removed2)))
     )
 
 )
 
+(defmethod update-constraint ((constraint global-function-constraint))
+  (format t "updated global-function-constraint ~s:~%" (name constraint))
+  (print-bindings/ret (name constraint) (argument-types constraint) (return-type constraint)))
 
 (defun infer (function)
-  (format t "~&infer ~s (~s ~s)~%" (name function)
+  #++(format t "~&infer ~s (~s ~s)~%" (name function)
           (function-type function)
           (old-function-type function))
   (let* ((*inference-worklist* nil)
-         (ret (walk function (make-instance 'infer-build-constraints))))
+         (gfc (walk function (make-instance 'infer-build-constraints))))
     ;; leaves are at end of list, so we process them before interior nodes
     ;; (should be correct either way, but wastes effort doing interior first)
     (setf *inference-worklist* (nreverse *inference-worklist*))
     (loop for constraint = (pop *inference-worklist*)
           while constraint
-          do (update-constraint constraint))
-    ret
+          do (update-constraint constraint)
+             ;; clear flag after updating so it doesn't get put back
+             ;; when constrained types change
+             (setf (modified constraint) nil))
+    (loop for b in (bindings function)
+          for type in (argument-types gfc)
+          do (setf (value-type b) type))
+    (setf (value-type function) (return-type gfc))
+    (print-bindings/ret (name function) (bindings function) (return-type gfc))
+    (return-type gfc)
 )
 )
 (defun infer-modified-functions (functions)
@@ -388,31 +610,33 @@
     (print (mapcar 'name leaves))
     ;; run type inference on list
     (loop for function in leaves
-          when (function-type-changed function)
+          ;; when (function-type-changed function)
             collect (infer function)
           do
-               (when (function-type-changed function)
-                 ;; mark dependents as needing inference
-                 (loop for k being the hash-keys of (function-dependents
-                                                     function)
-                       do (setf (function-type k) t))
-                 (setf (old-function-type function)
-                       (function-type function))))
+             ;; not sure if we should check type-inference-state here?
+             ;; assuming it THROWs to higher level for now...
+             (progn ;when (function-type-changed function)
+               ;; mark dependents as needing inference
+               (loop for k being the hash-keys of (function-dependents
+                                                   function)
+                     do (setf (type-inference-state k) nil))
+               #++(setf (old-function-type function)
+                     (function-type function))))
     ;;
     ))
 
 #++
 (multiple-value-list
- (compile-block '((defun h (a)
-                    ;(declare (:int a))
-                    (+ a 2.0)))
+ (compile-block '((defun h (a b)
+                    (declare (:int a))
+                    (+ (glsl::vec2 a b) 2.0)))
                    'h
                    :vertex))
 
 #++
 (multiple-value-list
  (compile-block '((defun h (a)
-                    ;(declare (:int a))
+                    (declare (:int a))
                     (< a 2)))
                    'h
                    :vertex))

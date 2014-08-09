@@ -92,12 +92,20 @@
   ((name :accessor name :initarg :name)
    (glsl-name :accessor glsl-name :initarg :glsl-name :initform nil)
    ;; inferred type of variable or T if not known yet
-   (value-type :accessor value-type :initarg :value-type)
+   (value-type :accessor value-type :initarg :value-type
+               :initform t)
+   ;; most things allow implicit casts, but constructors explicitly allow
+   ;; a larger set of other types, so we don't want to confuse things
+   ;; by allowing casts in addition to that
+   ;; (not sure if it affects correctness or not, but should be faster
+   ;;  and maybe reduce ambiguity)
+   (allow-casts :accessor allow-casts :initform t :initarg :allow-casts)
    ;; T for unknown, or a type or a binding object to share a type
    ;; with another binding (for example functions that accept any type
    ;; as long as all arguments are same type, or where return type
    ;; matches an arg type)
-   (declared-type :accessor declared-type :initarg :declared-type)
+   (declared-type :accessor declared-type :initarg :declared-type
+                  :initform t)
    (qualifiers :accessor qualifiers :initform nil)))
 
 (defclass initialized-binding (binding)
@@ -153,26 +161,30 @@
    (glsl-name :accessor glsl-name :initarg :glsl-name :initform nil)
    (declarations :initarg :declarations :accessor declarations)
    (docs :initarg :docs)
-   ;; might just distinguish them by type of the instance instead?
-   #++(binding-type :accessor binding-type :initarg :binding-type)))
+   ;; inferred type of variable or T if not known yet
+   (value-type :accessor value-type :initarg :value-type
+               :initform t)
+   ;; T for unknown, or a type or a binding object to share a type
+   ;; with another binding (for example functions that accept any type
+   ;; as long as all arguments are same type, or where return type
+   ;; matches an arg type)
+   (declared-type :accessor declared-type :initarg :declared-type
+                  :initform t)))
 
 (defclass function-binding-function (function-binding)
-  ;; possibly should also store some sort of type-inference function(s)
-  ;; with these? (for example to specify all args have to be vectors
-  ;; of same types, or whatever, or figure out return type of something
-  ;; like `outer-product` or `transpose` from arg types
-  ((function-type :accessor function-type :initarg :function-type)
-   ;; previous function type, so we can tell if it changed
-   (old-function-type :accessor old-function-type :initform nil)
-   ;; old code still needs this until type inference is done...
-   (return-type :accessor return-type :initarg :return-type :initform t)
+  ;; todo: add some way to detect changes in type inference data
+  ;; so we don't need to redo type inference for callers if not needed?
+  ;; not sure how often they will actually be similar enough though,
+  ;; so might not actually be worth it?
+  (;; nil = not run yet, t = OK, :failed = unknown globals or type
+   ;; conflicts (possibly should also distinguish between resolved to
+   ;; single types or not?)
+   (type-inference-state :initform nil :accessor type-inference-state
+                         :initarg :type-inference-state)
    ;; sexp lambda list (with &key, etc)
    ;; (no &rest though, since we don't have lists)
    (lambda-list :initarg :lambda-list :accessor lambda-list)
    (old-lambda-list :initform t :accessor old-lambda-list)
-   ;; c-style lambda list, only positional/optional args
-   ;; optional as (name value)?
-   ;; (arglist :initarg :arglist) -- just using BINDINGS for now?
    ;; to support &key args, we optionally have a sort of compiler-macro
    ;; associated with functions, to expand keyword args in the source
    ;; into positional args
@@ -203,6 +215,7 @@
   ;; just look at shape of tree)
   (not (equal (lambda-list fun) (old-lambda-list fun))))
 
+#++
 (defun function-type-changed (fun)
   (not (equal (function-type fun) (old-function-type fun))))
 
@@ -231,7 +244,8 @@
   ;; like a builtin function, but we compile it specially
   ;; for example AND -> &&, etc
   ;; probably mostly CL functions?
-  ())
+  ()
+  (:default-initargs :type-inference-state t))
 
 ;; we also have macros and local functions during early passes..
 (defclass macro-definition (function-binding)
