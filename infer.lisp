@@ -5,6 +5,11 @@
 (defclass any-type ()
   ((constraints :initform (make-hash-table) :accessor constraints :initarg :constraints)))
 
+;;; would be better to have a singleton for the 'nil type', since we
+;;; want to look for it in hash tables, so rather than having an
+;;; actual singleton instance of 'nil-type', just using actual NIL for now...
+;;; (have to watch out for things that will interpret it as a list though)
+#++
 (defclass nil-type () ;; for optional args
   ())
 
@@ -18,10 +23,10 @@
 
 (defun debug-type-names (type)
   (typecase type
+    (null nil)
     (list (mapcar 'debug-type-names type))
     (generic-type (name type))
     (any-type T)
-    (nil-type nil)
     (constrained-type
      (debug-type-names
       (mapcar 'car
@@ -201,6 +206,17 @@
 
 
 
+(defmethod2 unify ((a constrained-type) (b null))
+  (assert (gethash b (types a)))
+  (format t "replacing ~s with ~s~%" a b)
+  (loop for c being the hash-keys of (constraints a) using (hash-value v)
+        do (format t "  ~s? in ~s~%" v c)
+        when v
+          do (replace-constraint-type b a c))
+  b)
+
+
+
 (defclass infer-build-constraints (glsl::glsl-walker)
   ())
 
@@ -267,7 +283,7 @@
     (setf (gethash type *copy-constraints-hash*) e
           (gethash e *copy-constraints-hash*) e)))
 
-(defmethod copy-constraints ((type nil-type))
+(defmethod copy-constraints ((type null))
   ;; doesn't need copied
   (setf (gethash type *copy-constraints-hash*) type))
 
@@ -317,10 +333,20 @@
     ;; make local copies of any types/constraints affected by function
     ;; args, and unify with actual arg types
     ;; (unify will add modified constraints to work list)
-    (loop for arg in (arguments form)
+    (format t "ibc / walk function ~s,~% args=~s,~% bindings=~s~%"
+            (name called)
+            (arguments form)
+            (bindings called))
+    (assert (<= (length (arguments form))
+                (length (bindings called))))
+    (loop with args = (arguments form)
+          for arg = (pop args)
           for binding in (bindings called)
           collect (copy-unify-constraints
-                   (value-type binding) (walk arg walker)))
+                   (value-type binding)
+                   (if arg
+                       (walk arg walker)
+                       nil)))
     ;; copy return type and any linked constraints
     ;; (may have already been copied if it depends on arguments)
     (format t "~s =>~s~%" (name called) (value-type called ))
@@ -378,17 +404,17 @@
   (error "can't tell if ~s unifies with ~s?" x type))
 
 
-(defmethod unifiable-types-p ((a nil-type) (b nil-type))
+(defmethod unifiable-types-p ((a null) (b null))
   ;; is this right?
   t)
 
-(defmethod2 unifiable-types-p ((a nil-type) (b any-type))
+(defmethod2 unifiable-types-p ((a null) (b any-type))
   nil)
 
-(defmethod2 unifiable-types-p ((a nil-type) (b generic-type))
+(defmethod2 unifiable-types-p ((a null) (b generic-type))
   nil)
 
-(defmethod2 is-type ((a nil-type) b)
+(defmethod2 is-type ((a null) b)
   nil)
 
 (defmethod2 unifiable-types-p ((a any-type) b)
@@ -443,11 +469,11 @@
                        (unifiable-types-p ret (return-type constraint))
                        #++(gethash (or (get-type-binding ret) ret)
                                 (types (return-type constraint)))
-                       (loop with arg-types = (argument-types constraint)
-                             for .ftype-arg in args
+
+                       (loop for .ftype-arg = (pop args)
                              for ftype-arg = (or (get-type-binding .ftype-arg)
                                                  .ftype-arg)
-                             for arg = (pop arg-types)
+                             for arg in (argument-types constraint)
                              always (unifiable-types-p arg ftype-arg)
                                     #++(or (typep arg 'any-type)
                                            ;; possibly should add a TYPES
@@ -462,7 +488,8 @@
     (format t " -> (~s ftypes)~%" (length (function-types constraint)))
     ;; loop through argument types, set all to NIL
     (flet ((process (arg)
-             (unless (or (typep arg 'any-type)
+             (unless (or (not arg)
+                         (typep arg 'any-type)
                          (typep arg 'concrete-type))
                (maphash (lambda (k v)
                           (declare (ignore v))
@@ -509,17 +536,17 @@
             do (assert (unifiable-types-p ret (return-type constraint)))
           else
             do (assert (nth-value 1 (gethash ret (types (return-type constraint)))))
-          do (loop with arg-types = (argument-types constraint)
-                   for .ftype-arg in args
-                   for ftype-arg = (or (get-type-binding .ftype-arg)
-                                       .ftype-arg)
-                   for arg = (pop arg-types)
-                   do (format t "add arg type? ~s -> ~s~%" ftype-arg arg)
-                   unless (typep arg 'concrete-type)
-                     do (assert (nth-value 1 (gethash ftype-arg (types arg))))
-                        (setf (gethash ftype-arg (types arg))
-                              ftype-arg)
-                        (incf removed2)))
+            do (loop with arg-types = (argument-types constraint)
+                     for .ftype-arg in args
+                     for ftype-arg = (or (get-type-binding .ftype-arg)
+                                         .ftype-arg)
+                     for arg = (pop arg-types)
+                     do (format t "add arg type? ~s -> ~s~%" ftype-arg arg)
+                     unless (typep arg 'concrete-type)
+                       do (assert (nth-value 1 (gethash ftype-arg (types arg))))
+                          (setf (gethash ftype-arg (types arg))
+                                ftype-arg)
+                          (incf removed2)))
     ;; (possibly loop through arg types again and remove NIL values?
     (format t "updated constraint, removed ~s ftypes, ~s arg types~%" removed removed2)
     (print-bindings/ret (name constraint) (argument-types constraint) (return-type constraint))
@@ -628,8 +655,8 @@
 #++
 (multiple-value-list
  (compile-block '((defun h (a b)
-                    (declare (:int a))
-                    (+ (glsl::vec2 a b) 2.0)))
+;                    (declare (:float b))
+                    (+ (glsl::vec4 a b) 2)))
                    'h
                    :vertex))
 

@@ -58,7 +58,7 @@
                                          (mapcar (lambda (a)
                                                    (cons (or (get-type-binding a)
                                                              a
-                                                             (make-instance 'nil-type))
+                                                             nil)
                                                          t))
                                                  (delete-duplicates
                                                   (mapcar (lambda (a)
