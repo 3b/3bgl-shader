@@ -47,7 +47,12 @@
     (format t "  -> ~s~%" (debug-type-names ret)))
 
 
-(defun add-constraint (ctype constraint)
+(defmethod add-constraint (ctype constraint)
+  ;; not an error, so we don't have to check before assigning constraints...
+  (format t "added constraint to type ~s?~%" ctype))
+(defmethod add-constraint ((ctype constrained-type) constraint)
+  (setf (gethash constraint (constraints ctype)) t))
+(defmethod add-constraint ((ctype any-type) constraint)
   (setf (gethash constraint (constraints ctype)) t))
 
 
@@ -65,6 +70,11 @@
     (setf (modified constraint) t)
     (push constraint *inference-worklist*)))
 
+(defun flag-modified-type (type)
+  (maphash (lambda (constraint v)
+             (when v (flag-modified-constraint constraint)))
+           (constraints type)))
+
 (defclass function-application (constraint)
   ((argument-types :accessor argument-types :initform nil)
    (return-type :initarg :return-type :accessor return-type) ;; SET-TYPE?
@@ -79,14 +89,7 @@
    (argument-types :accessor argument-types :initform nil)
    (return-type :initarg :return-type :accessor return-type)))
 
-(defun replace-constraint-type (new old constraint)
-  (when (eq (return-type constraint) old)
-    (setf (return-type constraint) new))
-  (flag-modified-constraint constraint)
-  (setf (argument-types constraint)
-        (substitute new old (argument-types constraint))))
-
-(defclass cast-constraint (constraint)
+(defclass implicit-cast-constraint (constraint)
   ;; represents a possible implicit cast from IN-TYPE to OUT-TYPE
   ;; (can't just unify them, since we might have other incompatible
   ;; uses for IN. for example in (setf a 1) (setf b a) (* a uvec)
@@ -100,9 +103,25 @@
   ;; on update, if none of the input or output types can be involved
   ;; in an implicit cast (like structs or samplers), it should remove
   ;; itself from in/out and unify them normally
-  ((in-type :initarg :in-type :accessor in-type)
-   (out-type :initarg :out-type :accessor out-type)))
+  ((in-type :initarg :in :accessor in-type)
+   (out-type :initarg :out :accessor out-type)))
 
+(defmethod replace-constraint-type (new old constraint)
+  ;; shouldn't modify CONSTRAINTS field of callers, since they may
+  ;; be iterating it... wait for update pass before removing any
+  ;; no-longer-useful constraints
+  (when (eq (return-type constraint) old)
+    (setf (return-type constraint) new))
+  (flag-modified-constraint constraint)
+  (setf (argument-types constraint)
+        (substitute new old (argument-types constraint))))
+
+(defmethod replace-constraint-type (new old
+                                    (constraint implicit-cast-constraint))
+  (when (eq (in-type constraint) old)
+    (setf (in-type constraint) new))
+  (when (eq (out-type constraint) old)
+    (setf (out-type constraint) new)))
 
 
 (defmacro defmethod2 (name (a b) &body body)
@@ -177,7 +196,7 @@
 
 (defmethod2 unify ((a constrained-type) (b concrete-type))
   (assert (gethash b (types a)))
-  (format t "replacing ~s with ~s~%" a b)
+  (format t "replacing1 ~s with ~s~%" a b)
   (loop for c being the hash-keys of (constraints a) using (hash-value v)
         do (format t "  ~s? in ~s~%" v c)
         when v
@@ -185,7 +204,7 @@
   b)
 (defmethod2 unify ((a any-type) (b concrete-type))
   (assert (gethash b (types a)))
-  (format t "replacing ~s with ~s~%" a b)
+  (format t "replacing2 ~s with ~s~%" a b)
   (loop for c being the hash-keys of (constraints a) using (hash-value v)
         do (format t "  ~s? in ~s~%" v c)
         when v
@@ -196,7 +215,7 @@
 (defmethod2 unify ((a constrained-type) (b any-type))
   ;; replace B with A in all of its constraints (if not already there)
   ;; and add Bs constraints to A
-  (format t "replacing ~s with ~s~%" b a)
+  (format t "replacing3 ~s with ~s~%" b a)
   (loop for c being the hash-keys of (constraints b) using (hash-value v)
         do (format t "  ~s? in ~s~%" v c)
         when v
@@ -208,7 +227,7 @@
 
 (defmethod2 unify ((a constrained-type) (b null))
   (assert (gethash b (types a)))
-  (format t "replacing ~s with ~s~%" a b)
+  (format t "replacing4 ~s with ~s~%" a b)
   (loop for c being the hash-keys of (constraints a) using (hash-value v)
         do (format t "  ~s? in ~s~%" v c)
         when v
@@ -246,7 +265,7 @@
        (loop for i in types
              when (symbolp i)
                do (setf i (or (get-type-binding i) i))
-             do (setf (gethash i set) i))
+             do (setf (gethash i set) t))
        (make-instance 'constrained-type :types set
                       :constraints (alexandria:plist-hash-table
                                     (when constraint (list constraint t))))))))
@@ -315,10 +334,18 @@
     copy))
 
 
-(defun copy-unify-constraints (type unify-type)
+(defun copy-unify-constraints (type unify-type &key cast)
   (let ((copy (copy-constraints type)))
     (format t "c-unify ~s ~s~%" copy unify-type)
-    (unify copy unify-type)))
+    (if cast
+        (let ((cast-constraint (make-instance 'implicit-cast-constraint
+                                              :in unify-type
+                                              :out copy)))
+          (add-constraint copy cast-constraint)
+          (add-constraint unify-type cast-constraint)
+          (push cast-constraint *inference-worklist*)
+          copy)
+        (unify copy unify-type))))
 
 (defmethod walk ((form function-call) (walker infer-build-constraints))
   (format t "infer ~s (~s) =~%" (name (called-function form)) form)
@@ -346,7 +373,8 @@
                    (value-type binding)
                    (if arg
                        (walk arg walker)
-                       nil)))
+                       nil)
+                   :cast (and arg (allow-casts binding))))
     ;; copy return type and any linked constraints
     ;; (may have already been copied if it depends on arguments)
     (format t "~s =>~s~%" (name called) (value-type called ))
@@ -525,28 +553,26 @@
           if (typep (return-type constraint) 'concrete-type)
             do (assert (unifiable-types-p ret (return-type constraint)))
           else
-            do (setf (gethash ret
-                              (types (return-type constraint)))
-                     ret))
+            do (setf (gethash ret (types (return-type constraint)))
+                     t))
     (loop for ftype in (function-types constraint)
           for (args .ret) = ftype
           for ret = (or (get-type-binding .ret) .ret)
-          do (format t "add ftype? ~s -> ~s~%" args ret)
+          ;do (format t "add ftype? ~s -> ~s~%" args ret)
           if (typep (return-type constraint) 'concrete-type)
             do (assert (unifiable-types-p ret (return-type constraint)))
           else
             do (assert (nth-value 1 (gethash ret (types (return-type constraint)))))
-            do (loop with arg-types = (argument-types constraint)
-                     for .ftype-arg in args
-                     for ftype-arg = (or (get-type-binding .ftype-arg)
-                                         .ftype-arg)
-                     for arg = (pop arg-types)
-                     do (format t "add arg type? ~s -> ~s~%" ftype-arg arg)
-                     unless (typep arg 'concrete-type)
-                       do (assert (nth-value 1 (gethash ftype-arg (types arg))))
-                          (setf (gethash ftype-arg (types arg))
-                                ftype-arg)
-                          (incf removed2)))
+          do (loop with arg-types = (argument-types constraint)
+                   for .ftype-arg in args
+                   for ftype-arg = (or (get-type-binding .ftype-arg)
+                                       .ftype-arg)
+                   for arg = (pop arg-types)
+                   do (format t "add arg type? ~s -> ~s~%" ftype-arg arg)
+                   unless (typep arg 'concrete-type)
+                     do (assert (nth-value 1 (gethash ftype-arg (types arg))))
+                        (setf (gethash ftype-arg (types arg)) t)
+                        (incf removed2)))
     ;; (possibly loop through arg types again and remove NIL values?
     (format t "updated constraint, removed ~s ftypes, ~s arg types~%" removed removed2)
     (print-bindings/ret (name constraint) (argument-types constraint) (return-type constraint))
@@ -554,6 +580,92 @@
     )
 
 )
+
+(defmethod update-constraint ((constraint implicit-cast-constraint))
+  (let ((in-casts (make-hash-table))
+        (out-casts (make-hash-table))
+        (any-in (typep (in-type constraint) 'any-type))
+        (any-out (typep (out-type constraint) 'any-type)))
+    (format t "update cast constraint ~s:~%  ~s -> ~s~%"
+            constraint
+            (debug-type-names(in-type constraint))
+            (debug-type-names(out-type constraint)))
+    (labels ((add-casts (type casts hash)
+               ;; possbily should just include 'type' in its cast lists
+               ;; instead of handling specially here?
+               (setf (gethash type hash) t)
+               (loop for cast in casts
+                     do (setf (gethash cast hash) t)))
+             (map-concrete-types (type fun)
+               (etypecase type
+                 (null)
+                 (concrete-type
+                  (funcall fun type))
+                 (constrained-type
+                  (maphash (lambda (k v) (when v (map-concrete-types k fun)))
+                           (types type)))))
+             (handle-fixed-constraint ()
+               (when (or (and (print (not any-in))
+                              (zerop (hash-table-count in-casts)))
+                         (and (print (not any-out))
+                              (zerop (hash-table-count out-casts))))
+                 (error "can't resolve constraint?"))
+               (when (and (or any-in (= 1 (hash-table-count in-casts)))
+                          (or any-out (= 1 (hash-table-count out-casts))))
+                 ;; constraint is an equality constraint, just unify the types
+                 (remhash constraint (constraints (in-type constraint)))
+                 (remhash constraint (constraints (out-type constraint)))
+                 (unify (in-type constraint) (out-type constraint))
+                 (format t "constraint resolved to ~s~%"
+                         (debug-type-names (in-type constraint)))
+                 t)))
+      (unless any-in
+        (map-concrete-types (in-type constraint)
+                            (lambda (x)
+                              (add-casts x (implicit-casts-to x) in-casts))))
+      (unless any-out
+        (map-concrete-types (out-type constraint)
+                            (lambda (x)
+                              (add-casts x (implicit-casts-from x) out-casts))))
+
+      (cond
+        ((and any-in any-out)
+         ;; do nothing, can't constrain either type...
+         )
+        (any-in
+         (or (handle-fixed-constraint)
+             (unify (in-type constraint)
+                    (make-instance 'constrained-type
+                                   :types out-casts))))
+        (any-out
+         (or (handle-fixed-constraint)
+             (not (print "  update any-type/out in cast"))
+             (unify (out-type constraint)
+                    (make-instance 'constrained-type
+                                   :types in-casts))))
+        ((or (not (in-type constraint))
+             (not (out-type constraint)))
+         (unify (in-type constraint)
+                (out-type constraint)))
+        (t
+         (flet ((c (type cast-types)
+                  (when (typep type 'constrained-type)
+                    (let ((old (hash-table-count (types type))))
+                      (maphash (lambda (k v)
+                                 (unless (and v (gethash k cast-types))
+                                   (remhash k (types type))))
+                               (types type))
+                      (assert (plusp (hash-table-count (types type))))
+                      (when (/= old (hash-table-count (types type)))
+                        (flag-modified-type type))))))
+           (c (in-type constraint) out-casts)
+           (c (out-type constraint) in-casts)
+           (handle-fixed-constraint))))
+
+      (format t "  updated cast constraint:~%  ~s -> ~s~%"
+              (debug-type-names(in-type constraint))
+              (debug-type-names(out-type constraint)))
+)))
 
 (defmethod update-constraint ((constraint global-function-constraint))
   (format t "updated global-function-constraint ~s:~%" (name constraint))
@@ -656,7 +768,7 @@
 (multiple-value-list
  (compile-block '((defun h (a b)
 ;                    (declare (:float b))
-                    (+ (glsl::vec4 a b) 2)))
+                    (+ (glsl::vec3 a b) 2.0)))
                    'h
                    :vertex))
 

@@ -307,14 +307,15 @@
                  `(progn
                     ,@(loop for (.name lambda-list arg-types return-type)
                               in definitions
-                            for (name glsl-name) = (alexandria:ensure-list
-                                                    .name)
+                            for (name glsl-name . keys)
+                              = (alexandria:ensure-list .name)
                             collect `(add-internal-function/s ',name
                                                               ',lambda-list
                                                               ,arg-types
                                                               ,return-type
                                                               :glsl-name
-                                                              ,glsl-name))))
+                                                              ,glsl-name
+                                                              ,@keys))))
                (add/f (&rest definitions)
                  `(progn
                     ,@(loop for (.name lambda-list ftype)
@@ -331,15 +332,16 @@
                  `(progn
                     ,@(loop for (.name lambda-list args ret)
                               in definitions
-                            for (name glsl-name) = (alexandria:ensure-list
-                                                    .name)
+                            for (name glsl-name . keys)
+                              = (alexandria:ensure-list .name)
                             for ftype = `(mapcar (lambda (a) (list a ,ret))
-                                                ,args)
+                                                 ,args)
                             collect `(add-internal-function/full ',name
                                                                  ',lambda-list
                                                                  ,ftype
                                                                  :glsl-name
-                                                                 ,glsl-name))))
+                                                                 ,glsl-name
+                                                                 ,@keys))))
                (add/m (&rest definitions)
                  `(progn
                     ,@(loop for (.name lambda-list count arg-type ret)

@@ -23,9 +23,11 @@
 
 (defclass concrete-type (generic-type)
   ;; list of types we can implicitly cast this type to
-  ((implicit-casts-to :initform nil :accessor implicit-casts-to)
+  ((implicit-casts-to :initform nil :accessor implicit-casts-to
+                      :initarg :casts-to)
    ;; list of types that can be implicitly cast to this one
-   (implicit-casts-from :initform nil :accessor implicit-casts-from)))
+   (implicit-casts-from :initform nil :accessor implicit-casts-from
+                        :initarg :casts-from)))
 
 ;; should these be concrete-type? or some common superclass?
 ;; for now assuming everything not a constrained-type is a concrete type
@@ -396,6 +398,39 @@
   (add-concrete-type :usampler-cube-array "usamplerCubeArray"))
 
 
+;; add implicit casts to types
+(let ((*environment* glsl::*glsl-base-environment*))
+  (flet ((c (&rest types)
+           (loop for (.type . to) on types
+                 for type = (get-type-binding .type)
+                 do ;; (format t "~s -> ~s ->~s~%" from .type to)
+                    (setf (implicit-casts-to type)
+                          (print (mapcar 'get-type-binding to)))
+                    (setf (implicit-casts-from type)
+                          (print (mapcar 'get-type-binding from)))
+                 collect .type into from)))
+    (macrolet ((add-implicit-conversions (&rest conversions)
+                 `(progn
+                    ,@(mapcar (lambda (a) (cons 'c a))
+                              conversions))))
+      (add-implicit-conversions
+       (:int :uint :float :double)
+       (:ivec2 :uvec2 :vec2 :dvec2)
+       (:ivec3 :uvec3 :vec3 :dvec3)
+       (:ivec4 :uvec4 :vec4 :dvec4)
+       (:mat2 :dmat2)
+       (:mat3 :dmat3)
+       (:mat4 :dmat4)
+       (:mat2x3 :dmat2x3)
+       (:mat2x4 :dmat2x4)
+       (:mat3x2 :dmat3x2)
+       (:mat3x4 :dmat3x4)
+       (:mat4x2 :dmat4x2)
+       (:mat4x3 :dmat4x3)
+       ))))
+
+
+
 
 ;; not sure if these are directly useful or not? mainly used in defining
 ;; function types, which want a bunch of (concrete-type1 ..) -> concrete-typeN
@@ -425,33 +460,4 @@
                        :mat3x2 :mat3   :mat3x4
                        :mat4x2 :mat4x3 :mat4)))
 
-#++
-(let ((*environment* glsl::*glsl-base-environment*))
-  (flet ((c (&rest types)
-           (loop for (.type . to) on types
-                 for type = (get-type-binding .type)
-                 do (format t "~s -> ~s ->~s~%" from .type to)
-                    (setf (implicit-casts-to type)
-                          (print (mapcar 'get-type-binding to)))
-                    (setf (implicit-casts-from type)
-                          (print (mapcar 'get-type-binding from)))
-                 collect .type into from)))
-    (macrolet ((add-implicit-conversions (&rest conversions)
-                 `(progn
-                    ,@(mapcar (lambda (a) (cons 'c a))
-                              conversions))))
-      (add-implicit-conversions
-       (:int :uint :float :double)
-       (:ivec2 :uvec2 :vec2 :dvec2)
-       (:ivec3 :uvec3 :vec3 :dvec3)
-       (:ivec4 :uvec4 :vec4 :dvec4)
-       (:mat2 :dmat2)
-       (:mat3 :dmat3)
-       (:mat4 :dmat4)
-       (:mat2x3 :dmat2x3)
-       (:mat2x4 :dmat2x4)
-       (:mat3x2 :dmat3x2)
-       (:mat3x4 :dmat3x4)
-       (:mat4x2 :dmat4x2)
-       (:mat4x3 :dmat4x3)
-       ))))
+
