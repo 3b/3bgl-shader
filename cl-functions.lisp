@@ -84,9 +84,7 @@
     (setf (argument-types constraint)
           (loop for i below count
                 for arg-type across arg-types
-                when (plusp i)
-                  do (pushnew nil arg-type)
-                collect (make-instance
+                for ct = (make-instance
                          'constrained-type
                          :types (alexandria:alist-hash-table
                                  (mapcar (lambda (a)
@@ -95,7 +93,11 @@
                                                  t))
                                          arg-type))
                          :constraints (alexandria:plist-hash-table
-                                       (list constraint t)))))
+                                       (list constraint t)))
+                collect (if (plusp i)
+                            (make-instance 'optional-arg-type
+                                           :arg-type ct)
+                            ct)))
     ;; and bindings in fn
     (setf (bindings fn)
             (loop with types = (argument-types constraint)
@@ -152,21 +154,25 @@
     ;; allowing &optional in lambda list, no other l-l-keywords though
     ;; just plain symbols for optional args, no default or -p arg
     (flet ((make-type (n)
-             (let ((type (make-instance 'constrained-type
-                                        :types
-                                        (alexandria:alist-hash-table
-                                         (mapcar (lambda (a)
-                                                   (cons (or (get-type-binding a)
-                                                             a
-                                                             nil)
-                                                         t))
-                                                 (delete-duplicates
-                                                  (mapcar (lambda (a)
-                                                            (nth n (car a)))
-                                                          type))))
-                                        :constraints
-                                        (alexandria:plist-hash-table
-                                         (list constraint t)))))
+             (let* ((types (delete-duplicates
+                            (mapcar (lambda (a)
+                                      (nth n (car a)))
+                                    type)))
+                    (type (make-instance 'constrained-type
+                                         :types
+                                         (alexandria:alist-hash-table
+                                          (mapcar (lambda (a)
+                                                    (cons (or (get-type-binding a)
+                                                              a
+                                                              nil)
+                                                          t))
+                                                  (remove nil types)))
+                                         :constraints
+                                         (alexandria:plist-hash-table
+                                          (list constraint t)))))
+               (when (position nil types)
+                 (setf type (make-instance 'optional-arg-type
+                                           :arg-type type)))
                (push type (argument-types constraint))
                type)))
       (setf (bindings fn)

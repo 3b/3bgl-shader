@@ -5,6 +5,11 @@
 (defclass any-type ()
   ((constraints :initform (make-hash-table) :accessor constraints :initarg :constraints)))
 
+(defclass optional-arg-type ()
+  ;; used to indicate optional args, replaced by actual type
+  ;; when actual number of args passed is known
+  ((arg-type :initarg :arg-type :accessor arg-type)))
+
 ;;; would be better to have a singleton for the 'nil type', since we
 ;;; want to look for it in hash tables, so rather than having an
 ;;; actual singleton instance of 'nil-type', just using actual NIL for now...
@@ -33,6 +38,8 @@
               (remove nil (alexandria:hash-table-alist
                            (types type))
                       :key 'cdr))))
+    (optional-arg-type
+     (format nil "(or NIL ~s)" (debug-type-names (arg-type type))))
     (t (error "foo!"))))
 
 
@@ -58,6 +65,8 @@
   (setf (gethash constraint (constraints ctype)) t))
 (defmethod add-constraint ((ctype any-type) constraint)
   (setf (gethash constraint (constraints ctype)) t))
+(defmethod add-constraint ((ctype optional-arg-type) constraint)
+  (add-constraint (arg-type ctype) constraint))
 
 
 ;; having a separate constant-type instead of a set-type with 1 type seems
@@ -100,9 +109,8 @@
    ;; ftype is list of list of concrete arg types + concrete return type
    ;;   ex ((int int int) vec3)
    (function-types-by-arity :initarg :function-types-by-arity
-                            :accessor function-types-by-arity)
-)
-)
+                            :accessor function-types-by-arity)))
+
 (defclass global-function-constraint (constraint)
   ;; doesn't actually constrain things, just a place to track changes
   ;; to argument bindings' types
@@ -263,13 +271,6 @@
 (defclass infer-build-constraints (glsl::glsl-walker)
   ())
 
-#++
-(defun copy-type (type)
-  (if (consp type)
-      (copy-list type)
-      type))
-
-
 (defun set-type (types &key constraint)
   (typecase types
     ((eql t)
@@ -298,11 +299,15 @@
   "used to track already copied constraints when copying type inference data")
 
 (defmethod copy-constraints :around (x)
-  (or (gethash (if (typep x 'generic-type)
+  ;; we might have NIL as cached value, so check 2nd value of gethash
+  (multiple-value-bind (cached found)
+      (gethash (if (typep x 'generic-type)
                    (get-equiv-type x)
                    x)
                *copy-constraints-hash*)
-      (call-next-method)))
+    (if found
+        cached
+        (call-next-method))))
 
 (defmethod copy-constraints ((constraint function-application))
   (let ((copy (make-instance 'function-application
@@ -375,10 +380,36 @@
           (copy-constraints (types type)))
     copy))
 
+(defun expand-optional-arg-type (o-a-t)
+  (if (typep o-a-t 'optional-arg-type)
+      (let ((new (arg-type o-a-t)))
+        (format t "expand optional type ~s to ~s~%" o-a-t new)
+        (when (or (typep new 'any-type)
+                  (typep new 'constrained-type))
+          (maphash (lambda (c v) (when v
+                                   (replace-constraint-type new o-a-t c)))
+                   (constraints new)))
+        new)
+      o-a-t))
+
+(defmethod copy-constraints ((type optional-arg-type))
+  (let* ((copy (make-instance 'optional-arg-type)))
+    ;; we need to update cache before copying constraints because they
+    ;; link back to type
+    (setf (gethash type *copy-constraints-hash*) copy)
+    (setf (slot-value copy 'arg-type)
+          (copy-constraints (arg-type type)))
+    (expand-optional-arg-type copy)))
+
+
+
 
 (defun copy-unify-constraints (type unify-type &key cast)
+  (unless unify-type
+    (assert (typep type 'optional-arg-type))
+    (return-from copy-unify-constraints nil))
   (let ((copy (copy-constraints type)))
-    (format t "c-unify ~s ~s~%" copy unify-type)
+    (format t "~&c-unify ~s ~s~%" copy unify-type)
     (if cast
         (let ((cast-constraint (make-instance 'cast-constraint
                                               :in unify-type
@@ -391,7 +422,7 @@
         (unify copy unify-type))))
 
 (defmethod walk ((form function-call) (walker infer-build-constraints))
-  (format t "infer ~s (~s) =~%" (name (called-function form)) form)
+  (format t "~&infer ~s (~s) =~%" (name (called-function form)) form)
   (let* ((called (called-function form))
          (*copy-constraints-hash* (make-hash-table)))
     (when (typep called 'unknown-function-binding)
@@ -409,6 +440,15 @@
             (bindings called))
     (assert (<= (length (arguments form))
                 (length (bindings called))))
+    ;; store NIL in the cache for any unused args, so we don't try to copy them
+    ;; while walking other args
+    (loop for binding in (nthcdr (length (arguments form)) (bindings called))
+          do (setf (gethash (value-type binding) *copy-constraints-hash*) nil)
+             (when (typep (value-type binding) 'optional-arg-type)
+               (setf (gethash (arg-type (value-type binding))
+                              *copy-constraints-hash*)
+                     nil)))
+    ;; walk remaining args and copy as usual
     (loop with args = (arguments form)
           for arg = (pop args)
           for binding in (bindings called)
@@ -420,7 +460,7 @@
                    :cast (and arg (allow-casts binding))))
     ;; copy return type and any linked constraints
     ;; (may have already been copied if it depends on arguments)
-    (format t "~s =>~s~%" (name called) (value-type called ))
+    (format t "~&~s =>~s~%" (name called) (value-type called ))
     (copy-constraints (value-type called))))
 
 (defmethod walk ((form variable-read) (walker infer-build-constraints))
@@ -519,12 +559,10 @@
   ;; function-application with that arity
   ;; (or error if we don't have any matching ftypes)
   (let ((arity (or (position nil (argument-types constraint))
-                       (length (argument-types constraint)))))
+                   (length (argument-types constraint)))))
     (assert (and (array-in-bounds-p (function-types-by-arity constraint) arity)
                  (plusp
                   (length (aref (function-types-by-arity constraint) arity)))))
-    (setf (argument-types constraint)
-          (subseq (argument-types constraint) 0 arity))
     (setf (function-types constraint)
           (aref (function-types-by-arity constraint) arity))
     (change-class constraint 'function-application)
@@ -673,7 +711,9 @@
                   (funcall fun type))
                  (constrained-type
                   (maphash (lambda (k v) (when v (map-concrete-types k fun)))
-                           (types type)))))
+                           (types type)))
+                 (optional-arg-type
+                  (map-concrete-types (arg-type type) fun))))
              (handle-fixed-constraint ()
                (when (or (and (print (not any-in))
                               (zerop (hash-table-count in-casts)))
@@ -750,9 +790,6 @@
   (print-bindings/ret (name constraint) (argument-types constraint) (return-type constraint)))
 
 (defun infer (function)
-  #++(format t "~&infer ~s (~s ~s)~%" (name function)
-          (function-type function)
-          (old-function-type function))
   (let* ((*inference-worklist* nil)
          (gfc (walk function (make-instance 'infer-build-constraints))))
     ;; leaves are at end of list, so we process them before interior nodes
