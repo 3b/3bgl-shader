@@ -35,12 +35,16 @@
                       :key 'cdr))))
     (t (error "foo!"))))
 
+
 (defun print-bindings/ret (name bindings ret)
   (when name (format t "inferred ~s:~%" name))
   (loop for i in bindings
-        do (format t "  ~a = ~s~%" (if (typep i 'generic-type)
+        do (format t "  ~a ~@[(~s) ~]=~%       ~s~%" (if (typep i 'generic-type)
                                        (name i)
                                        i)
+                   (if (typep i 'binding)
+                       (value-type i)
+                       nil)
                    (debug-type-names (if (typep i 'binding)
                                          (value-type i)
                                          i))))
@@ -82,6 +86,23 @@
    (name :initarg :name :accessor name :initform nil) ;; for debugging
    ))
 
+;;; used to store types for variable arity built-in functions (or ones with
+;;; optional args)
+;;; converted to a normal function-application with specific arity
+;;; before type inference, when we know how many arguments are passed
+;;; to it
+(defclass variable-arity-function-application (function-application)
+  ((min-arity :initarg :min-arity :accessor min-arity :initform 0)
+   (max-arity :initarg :max-arity :accessor max-arity :initform 0)
+   ;; array of MAX-ARITY+1 lists of ftypes
+   ;;   entry N contains ftypes of arity N, or NIL if function doesn't
+   ;;   accept that arity
+   ;; ftype is list of list of concrete arg types + concrete return type
+   ;;   ex ((int int int) vec3)
+   (function-types-by-arity :initarg :function-types-by-arity
+                            :accessor function-types-by-arity)
+)
+)
 (defclass global-function-constraint (constraint)
   ;; doesn't actually constrain things, just a place to track changes
   ;; to argument bindings' types
@@ -89,8 +110,8 @@
    (argument-types :accessor argument-types :initform nil)
    (return-type :initarg :return-type :accessor return-type)))
 
-(defclass implicit-cast-constraint (constraint)
-  ;; represents a possible implicit cast from IN-TYPE to OUT-TYPE
+(defclass cast-constraint (constraint)
+  ;; represents a possible cast from IN-TYPE to OUT-TYPE
   ;; (can't just unify them, since we might have other incompatible
   ;; uses for IN. for example in (setf a 1) (setf b a) (* a uvec)
   ;; (setf b 1.2), A needs to be :INT or :UINT for the multiplication
@@ -103,7 +124,11 @@
   ;; on update, if none of the input or output types can be involved
   ;; in an implicit cast (like structs or samplers), it should remove
   ;; itself from in/out and unify them normally
-  ((in-type :initarg :in :accessor in-type)
+  ;;
+  ;; cast-type can be :implicit or :explicit, which use corresponding
+  ;; slots in the types
+  ((cast-type :initform :implicit :accessor cast-type :initarg :cast-type)
+   (in-type :initarg :in :accessor in-type)
    (out-type :initarg :out :accessor out-type)))
 
 (defmethod replace-constraint-type (new old constraint)
@@ -116,8 +141,7 @@
   (setf (argument-types constraint)
         (substitute new old (argument-types constraint))))
 
-(defmethod replace-constraint-type (new old
-                                    (constraint implicit-cast-constraint))
+(defmethod replace-constraint-type (new old (constraint cast-constraint))
   (when (eq (in-type constraint) old)
     (setf (in-type constraint) new))
   (when (eq (out-type constraint) old)
@@ -294,6 +318,24 @@
     (setf (slot-value copy 'return-type)
           (copy-constraints (return-type constraint)))
     (push copy *inference-worklist*)
+    copy)
+  )
+
+(defmethod copy-constraints ((constraint variable-arity-function-application))
+  (let ((copy (make-instance 'variable-arity-function-application
+                             :name (name constraint)
+                             :function-types-by-arity
+                             (map 'vector #'copy-list
+                                  (function-types-by-arity constraint)))))
+    ;; we need to update cache before copying constrained types because they
+    ;; link back to constraint
+    (setf (gethash constraint *copy-constraints-hash*)
+          copy)
+    (setf (slot-value copy 'argument-types)
+          (mapcar 'copy-constraints (argument-types constraint)))
+    (setf (slot-value copy 'return-type)
+          (copy-constraints (return-type constraint)))
+    (push copy *inference-worklist*)
     copy))
 
 (defmethod copy-constraints ((type generic-type))
@@ -338,9 +380,10 @@
   (let ((copy (copy-constraints type)))
     (format t "c-unify ~s ~s~%" copy unify-type)
     (if cast
-        (let ((cast-constraint (make-instance 'implicit-cast-constraint
+        (let ((cast-constraint (make-instance 'cast-constraint
                                               :in unify-type
-                                              :out copy)))
+                                              :out copy
+                                              :cast-type cast)))
           (add-constraint copy cast-constraint)
           (add-constraint unify-type cast-constraint)
           (push cast-constraint *inference-worklist*)
@@ -471,16 +514,38 @@
     (when at
       (unifiable-types-p at b))))
 
+(defmethod update-constraint ((constraint variable-arity-function-application))
+  ;; figure out how many actual arguments we have, and convert to a normal
+  ;; function-application with that arity
+  ;; (or error if we don't have any matching ftypes)
+  (let ((arity (or (position nil (argument-types constraint))
+                       (length (argument-types constraint)))))
+    (assert (and (array-in-bounds-p (function-types-by-arity constraint) arity)
+                 (plusp
+                  (length (aref (function-types-by-arity constraint) arity)))))
+    (setf (argument-types constraint)
+          (subseq (argument-types constraint) 0 arity))
+    (setf (function-types constraint)
+          (aref (function-types-by-arity constraint) arity))
+    (change-class constraint 'function-application)
+    (update-constraint constraint)))
+
 
 (defmethod update-constraint ((constraint function-application))
   ;; fixme: keep track of which args were modified and only process them...
   ;; fixme: rearrange data structures to avoid copies here?
   (let ((removed 0)
-        (removed2 0))
+        (removed2 0)
+        (arg-type-counts (make-array (length (argument-types constraint))
+                                     :initial-element 0)))
     ;; no point in processing a T*->T function, since it won't
     ;; restrict any of the arguments or return type, so it shouldn't
     ;; have a constraint in the first place...
     (assert (not (eql t (function-types constraint))))
+    (loop for a in (argument-types constraint)
+          for i from 0
+          when (typep a 'constrained-type)
+            do (setf (aref arg-type-counts i) (hash-table-count (types a))))
     (format t "~&update constraint ~s (~s ftypes)~%" constraint (length (function-types constraint)))
     (format t "  constrained = ~{~s~%                 ~}-> ~s~%"
             (argument-types constraint)
@@ -568,11 +633,18 @@
                    for ftype-arg = (or (get-type-binding .ftype-arg)
                                        .ftype-arg)
                    for arg = (pop arg-types)
-                   do (format t "add arg type? ~s -> ~s~%" ftype-arg arg)
+                   ;;do (format t "add arg type? ~s -> ~s~%" ftype-arg arg)
                    unless (typep arg 'concrete-type)
                      do (assert (nth-value 1 (gethash ftype-arg (types arg))))
                         (setf (gethash ftype-arg (types arg)) t)
                         (incf removed2)))
+    ;; flag any modified types
+    (loop for a in (argument-types constraint)
+          for i from 0
+          when (and (typep a 'constrained-type)
+                    (/= (aref arg-type-counts i)))
+            do (flag-modified-type a))
+    
     ;; (possibly loop through arg types again and remove NIL values?
     (format t "updated constraint, removed ~s ftypes, ~s arg types~%" removed removed2)
     (print-bindings/ret (name constraint) (argument-types constraint) (return-type constraint))
@@ -581,7 +653,7 @@
 
 )
 
-(defmethod update-constraint ((constraint implicit-cast-constraint))
+(defmethod update-constraint ((constraint cast-constraint))
   (let ((in-casts (make-hash-table))
         (out-casts (make-hash-table))
         (any-in (typep (in-type constraint) 'any-type))
@@ -591,8 +663,6 @@
             (debug-type-names(in-type constraint))
             (debug-type-names(out-type constraint)))
     (labels ((add-casts (type casts hash)
-               ;; possbily should just include 'type' in its cast lists
-               ;; instead of handling specially here?
                (setf (gethash type hash) t)
                (loop for cast in casts
                      do (setf (gethash cast hash) t)))
@@ -622,11 +692,19 @@
       (unless any-in
         (map-concrete-types (in-type constraint)
                             (lambda (x)
-                              (add-casts x (implicit-casts-to x) in-casts))))
+                              (add-casts x (if (eq :explicit
+                                                   (cast-type constraint))
+                                               (explicit-casts x)
+                                               (implicit-casts-to x))
+                                         in-casts))))
       (unless any-out
         (map-concrete-types (out-type constraint)
                             (lambda (x)
-                              (add-casts x (implicit-casts-from x) out-casts))))
+                              (add-casts x (if (eq :explicit
+                                                   (cast-type constraint))
+                                               (explicit-casts x)
+                                               (implicit-casts-from x))
+                                         out-casts))))
 
       (cond
         ((and any-in any-out)
@@ -767,10 +845,19 @@
 #++
 (multiple-value-list
  (compile-block '((defun h (a b)
-;                    (declare (:float b))
+                    (declare (:float b))
                     (+ (glsl::vec3 a b) 2.0)))
                    'h
                    :vertex))
+
+#++
+(multiple-value-list
+ (compile-block '((defun h (a b)
+                    (declare (:float b))
+                    (+ (glsl::mat3 a b) 2)))
+                'h
+                :vertex))
+
 
 #++
 (multiple-value-list

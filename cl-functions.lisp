@@ -14,9 +14,14 @@
 ;; general case: just list all possibly combinations by hand
 ;;     ex: *, textureSize
 (defun add-internal-function/s (name lambda-list arg-types return-type &key glsl-name)
+  #++
+  (let ((args ()))
+    (loop for )
 )
 
-(defun add-internal-function/mat (name lambda-list count arg-types return-type
+)
+
+(defun add-internal-function/mat (name lambda-list count return-type
                                   &key glsl-name)
   ;; matrix constructors types are too complex to enumerate explicitly
   ;; (nearly 3 million for mat3), so we need to use a special
@@ -24,18 +29,100 @@
   ;; (may just accept 1-COUNT of ARG-TYPES for now, eventually should
   ;;  enforce that it is passed either 1 matrix type or a combination
   ;;  of arg-types that adds up to exactly COUNT elements)
+  ;; for now just enumerating the combinations of sizes, and handling
+  ;;  them like implicit casts except allowing cast to any same-size
+  ;;  type still a bit big (24k for mat4, 5.2k at worst arity for
+  ;;  mat4), but relatively manageable
+  ;; fixme: test performance of stuff with lots of calls to mat4
+  (let* ((fn (make-instance 'internal-function
+                            :name name
+                            :glsl-name glsl-name
+                            :lambda-list lambda-list
+                            ;; :declared-type ?
+                            :value-type (get-type-binding return-type)))
+         (arity-types (make-array (1+ count) :initial-element nil))
+         (arg-types (make-array (1+ count) :initial-element nil))
+         (constraint (make-instance
+                      'variable-arity-function-application
+                      :name name
+                      :return-type (get-type-binding return-type)
+                      :function-types-by-arity arity-types))
+         (base-types '((:float 1) (:vec2 2) (:vec3 3) (:vec4 4) (:mat2x3 6)
+                       (:mat2x4 8) (:mat3 9) (:mat3x4 12) (:mat4 16))))
+    ;; accept any of the base types (or anything that casts to them)
+    ;; for 1ary function
+    (setf (aref arity-types 1)
+          (mapcar (lambda (a) (list (list (car a)) return-type))
+                  base-types))
 
-)
+    ;; accept any combination of args that adds up to COUNT elements
+    ;; for n-ary functions where (<= 2 N COUNT)
+    (labels ((vec/mat-constructor (n)
+               (if (zerop n)
+                   (list nil)
+                   (loop for (type count) in base-types
+                         when (<= count n)
+                           append (mapcar (lambda (a) (cons type a))
+                                          (vec/mat-constructor (- n count)))))))
+      (loop for type in (vec/mat-constructor count)
+            for l = (length type)
+            when (> l 1)
+              do (push (list type return-type)
+                       (aref arity-types l))))
+
+    ;; figure out which types are valid for specific args
+    ;; (for example last type is always nil/scalar only)
+    ;; fixme: probably should calculate this directly
+    (loop for i from 1 to count
+          for ftypes = (aref arity-types i)
+          do (loop for ftype in ftypes
+                   do (loop for j below i
+                            do (pushnew (nth j (car ftype))
+                                        (aref arg-types j)))))
+    #++(break "foo" (list arity-types arg-types))
+    ;; update arg types in constraint
+    (setf (argument-types constraint)
+          (loop for i below count
+                for arg-type across arg-types
+                when (plusp i)
+                  do (pushnew nil arg-type)
+                collect (make-instance
+                         'constrained-type
+                         :types (alexandria:alist-hash-table
+                                 (mapcar (lambda (a)
+                                           (cons (or (get-type-binding a)
+                                                     a)
+                                                 t))
+                                         arg-type))
+                         :constraints (alexandria:plist-hash-table
+                                       (list constraint t)))))
+    ;; and bindings in fn
+    (setf (bindings fn)
+            (loop with types = (argument-types constraint)
+                  with i = 0
+                  for binding in lambda-list
+                  unless (eq binding '&optional)
+                    collect (make-instance 'binding
+                                           :name binding
+                                           :value-type (pop types)
+                                           :allow-casts :explicit)
+                    and do (incf i)))
+    ;; and add function binding
+   (setf (gethash name (function-bindings *environment*))
+         fn)))
+
 (defun add-internal-function/full (name lambda-list type &key glsl-name (allow-casts t))
   (let* ((fn (make-instance 'internal-function
                             :name name
                             :glsl-name glsl-name
                             :lambda-list lambda-list
                             :declared-type type))
+         (arity-types (make-array (1+ (length (remove '&optional lambda-list)))
+                                  :initial-element nil))
          (constraint (make-instance
-                      'function-application
+                      'variable-arity-function-application
                       :name name
-                      :function-types type))
+                      :function-types-by-arity arity-types))
          (ret-types (mapcar (lambda (a) (cons (get-type-binding a) t))
                             (delete-duplicates
                              (mapcar 'second type))))
@@ -46,6 +133,19 @@
                                          ret-types)
                                  :constraints (alexandria:plist-hash-table
                                                (list constraint t))))))
+
+    (loop for ftype in type
+          for l = (length (first ftype))
+          minimizing l into min
+          maximizing l into max
+          do (push ftype (aref arity-types l))
+          finally (setf (min-arity constraint) min
+                        (max-arity constraint) max))
+
+    (when (= (min-arity constraint) (max-arity constraint))
+      (change-class constraint 'function-application
+                    :function-types type))
+
     (setf (return-type constraint) ret
           (value-type fn) ret)
 
@@ -344,14 +444,13 @@
                                                                  ,@keys))))
                (add/m (&rest definitions)
                  `(progn
-                    ,@(loop for (.name lambda-list count arg-type ret)
+                    ,@(loop for (.name lambda-list count ret)
                               in definitions
                             for (name glsl-name) = (alexandria:ensure-list
                                                     .name)
                             collect `(add-internal-function/mat ',name
                                                                  ',lambda-list
                                                                  ,count
-                                                                 ,arg-type
                                                                  ,ret
                                                                  :glsl-name
                                                                  ,glsl-name)))))
@@ -424,7 +523,7 @@
                                                                    base)
                                               ))))))
 
-        (add/f1
+        #++(add/f1
                 ((glsl::bvec2 nil :allow-casts nil) (a &optional b)
                  (vec/mat-constructor 2 :bool) :bvec2)
                 ((glsl::bvec3 nil :allow-casts nil) (a &optional b c)
@@ -462,25 +561,35 @@
 
 
         (add/m
-         (glsl::mat2 (a &optional b c d)
-                     4 (append scalar vec mat) :mat2)
+         (glsl::bvec2 (a &optional b) 2 :bvec2)
+         (glsl::bvec3 (a &optional b c) 3 :bvec3)
+         (glsl::bvec4 (a &optional b c d) 4 :bvec4)
 
-         (glsl::mat2x3 (a &optional b c d e f)
-                       6  (append scalar vec mat) :mat2x3)
-         (glsl::mat2x4 (a &optional b c d e f g h)
-                       8 (append scalar vec mat) :mat2x4)
-         (glsl::mat3x2 (a &optional b c d e f)
-                       6 (append scalar vec mat) :mat3x2)
-         (glsl::mat3 (a &optional b c d e f g h i)
-                     9 (append scalar vec mat) :mat3)
-         (glsl::mat3x4 (a &optional b c d e f g h i j k l)
-                 12 (append scalar vec mat) :mat3x4)
-         (glsl::mat4x2 (a &optional b c d e f g h)
-                 8 (append scalar vec mat) :mat4x2)
-         (glsl::mat4x3 (a &optional b c d e f g h i j k l)
-                 12 (append scalar vec mat) :mat4x3)
-         (glsl::mat4 (a &optional b c d e f g h i j k l m n)
-               16 (append scalar vec mat) :mat4))
+         (glsl::ivec2 (a &optional b) 2 :ivec2)
+         (glsl::ivec3 (a &optional b c) 3 :ivec3)
+         (glsl::ivec4 (a &optional b c d) 4 :ivec4)
+
+         (glsl::uvec2 (a &optional b) 2 :uvec2)
+         (glsl::uvec3 (a &optional b c) 3 :uvec3)
+         (glsl::uvec4 (a &optional b c d) 4 :uvec4)
+
+         (glsl::vec2 (a &optional b) 2 :vec2)
+         (glsl::vec3 (a &optional b c) 3 :vec3)
+         (glsl::vec4 (a &optional b c d) 4 :vec4)
+
+         (glsl::dvec2 (a &optional b) 2 :dvec2)
+         (glsl::dvec3 (a &optional b c) 3 :dvec3)
+         (glsl::dvec4 (a &optional b c d) 4 :dvec4)
+
+         (glsl::mat2 (a &optional b c d) 4 :mat2)
+         (glsl::mat2x3 (a &optional b c d e f) 6 :mat2x3)
+         (glsl::mat2x4 (a &optional b c d e f g h) 8 :mat2x4)
+         (glsl::mat3x2 (a &optional b c d e f) 6 :mat3x2)
+         (glsl::mat3 (a &optional b c d e f g h i) 9  :mat3)
+         (glsl::mat3x4 (a &optional b c d e f g h i j k l) 12  :mat3x4)
+         (glsl::mat4x2 (a &optional b c d e f g h) 8  :mat4x2)
+         (glsl::mat4x3 (a &optional b c d e f g h i j k l) 12 :mat4x3)
+         (glsl::mat4 (a &optional b c d e f g h i j k l m n o p) 16 :mat4))
                 ;; todo :dmat*
 
 

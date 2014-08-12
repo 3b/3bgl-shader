@@ -27,7 +27,12 @@
                       :initarg :casts-to)
    ;; list of types that can be implicitly cast to this one
    (implicit-casts-from :initform nil :accessor implicit-casts-from
-                        :initarg :casts-from)))
+                        :initarg :casts-from)
+   ;; same thing, but for types allowed by constructors
+   ;; (constructors accept all base numerical types with same number
+   ;;  of components, so don't need to separate to/from)
+   (explicit-casts :initform nil :accessor explicit-casts
+                   :initarg :explicit-casts)))
 
 ;; should these be concrete-type? or some common superclass?
 ;; for now assuming everything not a constrained-type is a concrete type
@@ -427,6 +432,31 @@
        (:mat3x4 :dmat3x4)
        (:mat4x2 :dmat4x2)
        (:mat4x3 :dmat4x3)
+       ))))
+
+;;; add explicit casts to types
+(let ((*environment* glsl::*glsl-base-environment*))
+  (flet ((c (&rest types)
+           (loop for type in types
+                 do (setf (explicit-casts (get-type-binding type))
+                          (mapcar 'get-type-binding
+                                  (remove type types))))))
+    (macrolet ((add-explicit-conversions (&rest conversions)
+                 `(progn
+                    ,@(mapcar (lambda (a) (cons 'c a))
+                              conversions))))
+      (add-explicit-conversions
+       ;; scalar types
+       (:bool :int :uint :float :double)
+       ;; non-scalar types with same number of elements
+       (:bvec2 :ivec2 :uvec2 :vec2 :dvec2) ;; 2
+       (:bvec3 :ivec3 :uvec3 :vec3 :dvec3) ;; 3
+       (:bvec4 :ivec4 :uvec4 :vec4 :dvec4 :mat2 :dmat2) ;; 4
+       (:mat2x3 :dmat2x3 :mat3x2 :dmat3x2) ;; 6
+       (:mat2x4 :dmat2x4 :mat4x2 :dmat4x2) ;; 8
+       (:mat3 :dmat3) ;; 9
+       (:mat3x4 :dmat3x4 :mat4x3 :dmat4x3);; 12
+       (:mat4 :dmat4) ;; 16
        ))))
 
 
