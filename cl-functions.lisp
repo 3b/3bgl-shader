@@ -14,12 +14,67 @@
 ;; general case: just list all possibly combinations by hand
 ;;     ex: *, textureSize
 (defun add-internal-function/s (name lambda-list arg-types return-type &key glsl-name)
-  #++
-  (let ((args ()))
-    (loop for )
-)
-
-)
+  (let ((fn (make-instance 'internal-function
+                           :name name
+                           :glsl-name glsl-name
+                           :lambda-list lambda-list))
+        (types (make-array (count '&optional lambda-list :test-not #'eql)
+                           :initial-element nil)))
+    (setf (bindings fn)
+          (loop with optional = nil
+                with arg-type = nil
+                with i = 0
+                for variable-name in lambda-list
+                when (eq variable-name '&optional)
+                  do (setf optional t)
+                else
+                  do (setf arg-type (pop arg-types))
+                     (etypecase arg-type
+                       ;; (= ##) same types as arg ##
+                       ((cons (eql =))
+                        (setf (aref types i)
+                              (aref types (second arg-type))))
+                       ;; (=s ##) same type as or scalar base type of arg ##
+                       ((cons (eql =s))
+                        (format t "todo: =s in arg ~s of ~s~%" i name)
+                        )
+                       ;; (=# ## base-type) same element count as arg ## but
+                       ;; specified base type (ex :bool => vec3 -> bvec3)
+                       ((cons (eql =#))
+                        (format t "todo: =# in arg ~s of ~s~%" i name)
+                        )
+                       ;; (or ...) list of types
+                       ((cons (eql or))
+                        (setf (aref types i)
+                              ;; no constraints, since we only have
+                              ;; equality constraints here, which are
+                              ;; just represented with same type
+                              ;; object
+                              (make-instance 'constrained-type
+                                             :types (cdr arg-type))))
+                       ((eql t)
+                        (setf (aref types i)
+                              (make-instance 'any-type)))
+                       (symbol
+                        (setf (aref types i)
+                              (or (get-type-binding arg-type)
+                                  (error "unknown type ~s?" arg-type)))))
+                  and collect (make-instance 'binding
+                                             :name variable-name
+                                             :value-type (aref types i)
+                                             :allow-casts t)
+                  and do (incf i)))
+    (etypecase return-type
+      ;; (OR) types not allowed for return type, has to either match
+      ;; an arg type or be a specific type
+      ((cons (eql =#))
+       (format t "todo: =# in return type of ~s~%" name))
+      ((cons (eql t))
+       (setf (value-type fn) (aref types (second return-type))))
+      (symbol
+       (setf (value-type fn) (get-type-binding return-type))))
+    (setf (gethash name (function-bindings *environment*))
+          fn)))
 
 (defun add-internal-function/mat (name lambda-list count return-type
                                   &key glsl-name)
@@ -462,54 +517,62 @@
                                                                  ,glsl-name)))))
       (add/s
        ;; todo: check specs and update these types...
-       ((texture-2d "texture2D") (sampler uv) `(:sampler2D ,vec :float) :vec4)
-       (texture (sampler uv bias) `(:sampler2D ,vec :float) :vec4)
-       (texel-fetch (sampler texcoord lod sample) `(:sampler2D ,ivec :int :int) :vec4)
-       (normalize (vec) '(:vec) '(t 0))
-       (length (vec) '(:vec) :float)
-       (sign (x) `(,gen-type) '(t 0))
+       ((texture-2d "texture2D") (sampler uv) `(:sampler-2d ,(cons 'or vec)
+                                                :float) :vec4)
+       (texture (sampler uv bias) `(:sampler-2d ,(cons 'or vec) :float) :vec4)
+       (texel-fetch (sampler texcoord lod sample) `(:sampler-2d ,(cons 'or ivec)
+                                                    :int :int) :vec4)
+       (normalize (vec) `(,(cons 'or vec)) '(t 0))
+       (length (vec) `(,(cons 'or vec)) :float)
+       (sign (x) `(,(cons 'or gen-type)) '(t 0))
        (min (a b) '(:float :float) :float)
        (max (a b) '(:float :float) :float)
-       (dot (a b) `(,vec (t 0)) :float)
+       (dot (a b) `(,(cons 'or vec) (t 0)) :float)
        (abs (a) '(:float) :float)
        (sqrt (a) '(:float) :float)
        (pow (a b) '(:float :float) :float)
        (exp (a) '(:float) :float)
        (exp2 (a) '(:float) :float)
-       (floor (a) `(,gen-type) '(t 0))
-       (fract (a) `(,gen-type) '(t 0))
-       (less-than (a b) `(,gen-type (t 0)) '(t 0))
+       (floor (a) `(,(cons 'or gen-type)) '(t 0))
+       (fract (a) `(,(cons 'or gen-type)) '(t 0))
+       (less-than (a b) `(,(cons 'or gen-type) (t 0)) '(t 0))
        ;; GLSL 'step' instead of CL STEP
-       (step (x a b) `(,gen-type (t 0) (t 0)) '(t 0))
-       (clamp (a b) `(,gen-type (t 0)) '(t 0))
-       (noise4 (a) `(,gen-type) :vec4)
-       (cross (a b) `(,vec (t 0)) '(t 0))
+       (step (x a b) `(,(cons 'or gen-type) (t 0) (t 0)) '(t 0))
+       (clamp (a b) `(,(cons 'or gen-type) (t 0)) '(t 0))
+       (noise4 (a) `(,(cons 'or gen-type)) :vec4)
+       (cross (a b) `(,(cons 'or vec) (t 0)) '(t 0))
        ((emit-vertex "EmitVertex") () () :void)
        ((end-primitive "EndPrimitive") () () :void)
        (reflect (a b) '(:vec3 :vec3) :vec3)
-       ((smooth-step "smoothstep") (edge0 edge1 x) `(,gen-type (t 0) :float) '(t 0))
-       (any (x) `(,bvec) :bool)
-       (all (x) `(,bvec) :bool)
+       ((smooth-step "smoothstep") (edge0 edge1 x) `(,(cons 'or gen-type) (t 0) :float) '(t 0))
+       (any (x) `(,(cons 'or bvec)) :bool)
+       (all (x) `(,(cons 'or bvec)) :bool)
        #++(not (x) :bvec (:bvec))
        ;; fixme: add constraint for same size vectors of different types?
-       (equal (x y) `(,vec (t 0)) bvec)
-       (not-equal (x y) `(,vec (t 0)) bvec)
-       (less-than (x y) `(,vec (t 0)) bvec)
-       (less-than-equal (x y) `(,vec (t 0)) bvec)
-       (greater-than (x y) `(,vec (t 0)) bvec)
-       (greater-than-equal (x y) `(,vec (t 0)) bvec)
+       (equal (x y) `(,(cons 'or vec) (t 0))
+              `(count= 0 ,(cons 'or bvec)))
+       (not-equal (x y) `(,(cons 'or vec) (t 0))
+                  `(count= 0 ,(cons 'or bvec)))
+       (less-than (x y) `(,(cons 'or vec) (t 0))
+                  `(count= 0 ,(cons 'or bvec)))
+       (less-than-equal (x y) `(,(cons 'or vec) (t 0))
+                        `(count= 0 ,(cons 'or bvec)))
+       (greater-than (x y) `(,(cons 'or vec) (t 0))
+                     `(count= 0 ,(cons 'or bvec)))
+       (greater-than-equal (x y) `(,(cons 'or vec) (t 0))
+                           `(count= 0 ,(cons 'or bvec)))
        ;; not completely sure if mat is allowed here?
        ;; might also allow arrays?
-       (int (x) `((:int :uint :bool :float
-                   :double ,ivec ,uvec ,vec ,dvec ,mat)) :int)
-       (uint (x) `((:int :uint :bool :float
-                    :double  ,ivec ,uvec ,vec ,dvec ,mat)) :uint)
-       (bool (x) `((:int :uint :bool :float
-                    :double ,ivec ,uvec ,vec ,dvec ,mat)) :bool)
-       (float (x) `((:int :uint :bool :float
-                     :double ,ivec ,uvec ,vec ,dvec ,mat)) :float)
-       (double (x) `((:int :uint :bool :float
-                      :double ,ivec ,uvec ,vec ,dvec ,mat)) :double)
+       (int (x) `((or :int :uint :bool :float
+                   :double ,@ivec ,@uvec ,@vec ,@dvec ,@mat)) :int)
+       (uint (x) `((or :int :uint :bool :float
+                    :double  ,@ivec ,@uvec ,@vec ,@dvec ,@mat)) :uint)
+       (bool (x) `((or :int :uint :bool :float
+                    :double ,@ivec ,@uvec ,@vec ,@dvec ,@mat)) :bool)
+       (float (x) `((or :int :uint :bool :float
+                     :double ,@ivec ,@uvec ,@vec ,@dvec ,@mat)) :float)
+       (double (x) `((or :int :uint :bool :float
+                      :double ,@ivec ,@uvec ,@vec ,@dvec ,@mat)) :double)
 )
 
       (labels ((vec/mat-constructor (n &optional (base :float))

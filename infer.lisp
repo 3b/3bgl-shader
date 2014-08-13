@@ -401,7 +401,14 @@
           (copy-constraints (arg-type type)))
     (expand-optional-arg-type copy)))
 
-
+(defmethod copy-constraints ((type any-type))
+  (let* ((copy (make-instance 'any-type)))
+    ;; we need to update cache before copying constraints because they
+    ;; link back to type
+    (setf (gethash type *copy-constraints-hash*) copy)
+    (setf (slot-value copy 'constraints)
+          (copy-constraints (constraints type)))
+    copy))
 
 
 (defun copy-unify-constraints (type unify-type &key cast)
@@ -901,5 +908,13 @@
  (compile-block '((defun h (a)
                     (declare (:int a))
                     (< a 2)))
+                   'h
+                   :vertex))
+
+#++
+(multiple-value-list
+ (compile-block '((defun h (a b)
+                    (declare (:float b))
+                    (= (+ a 2) b)))
                    'h
                    :vertex))
