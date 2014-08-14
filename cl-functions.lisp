@@ -36,13 +36,24 @@
                               (aref types (second arg-type))))
                        ;; (=s ##) same type as or scalar base type of arg ##
                        ((cons (eql =s))
-                        (format t "todo: =s in arg ~s of ~s~%" i name)
-                        )
+                        (let ((c (make-instance
+                                  'same-type-or-scalar-constraint
+                                  :ctype (setf (aref types i)
+                                               (make-instance 'any-type))
+                                  :other-type (aref types (second arg-type)))))
+                          (add-constraint (aref types (second arg-type)) c)
+                          (add-constraint (aref types i) c)))
                        ;; (=# ## base-type) same element count as arg ## but
                        ;; specified base type (ex :bool => vec3 -> bvec3)
                        ((cons (eql =#))
-                        (format t "todo: =# in arg ~s of ~s~%" i name)
-                        )
+                        (let ((c (make-instance
+                                  'same-size-different-base-type-constraint
+                                  :other-type (aref types (second arg-type))
+                                  :base-type (get-type-binding (third arg-type))
+                                  :ctype (setf (aref types i)
+                                               (make-instance 'any-type)))))
+                          (add-constraint (aref types (second arg-type)) c)
+                          (add-constraint (aref types i) c)))
                        ;; (or ...) list of types
                        ((cons (eql or))
                         (setf (aref types i)
@@ -50,8 +61,14 @@
                               ;; equality constraints here, which are
                               ;; just represented with same type
                               ;; object
-                              (make-instance 'constrained-type
-                                             :types (cdr arg-type))))
+                              (make-instance
+                               'constrained-type
+                               :types (alexandria:alist-hash-table
+                                       (mapcar (lambda (a)
+                                                 (cons (or (get-type-binding a)
+                                                           a)
+                                                       t))
+                                               (cdr arg-type))))))
                        ((eql t)
                         (setf (aref types i)
                               (make-instance 'any-type)))
@@ -68,8 +85,15 @@
       ;; (OR) types not allowed for return type, has to either match
       ;; an arg type or be a specific type
       ((cons (eql =#))
-       (format t "todo: =# in return type of ~s~%" name))
-      ((cons (eql t))
+       (let ((c (make-instance 'same-size-different-base-type-constraint
+                               :ctype (setf (value-type fn)
+                                            (make-instance 'any-type))
+                               :other-type (aref types (second return-type))
+                               :base-type (get-type-binding
+                                           (third return-type)))))
+         (add-constraint (aref types (second return-type)) c)
+         (add-constraint (value-type fn) c)))
+      ((cons (eql =))
        (setf (value-type fn) (aref types (second return-type))))
       (symbol
        (setf (value-type fn) (get-type-binding return-type))))
@@ -414,8 +438,8 @@
     (add-internal-function/full 'logand '(a b) log*)
     (add-internal-function/full 'logxor '(a b) log*)
     ;; args like (T x) will be constrained to same type as arg X
-    (add-internal-function/s '= '(a b) '(T (T 0)) :bool)
-    (add-internal-function/s '/= '(a b) '(T (T 0)) :bool)
+    (add-internal-function/s '= '(a b) '(T (= 0)) :bool)
+    (add-internal-function/s '/= '(a b) '(T (= 0)) :bool)
     ;; should these work on vectors etc too?
     ;; (would need to be able to see types in printer to expand to
     ;;  lessThan etc)
@@ -461,7 +485,7 @@
                                                 (append ivec uvec uvec ivec
                                                         ixv uxv uxv ixv))))
     (add-internal-function/s 'return '(value)
-                             '(t) '(t 0))
+                             '(t) '(= 0))
 
     ;; fixme: most of these belong in glsl: package
     (macrolet ((add/s (&rest definitions)
@@ -522,45 +546,45 @@
        (texture (sampler uv bias) `(:sampler-2d ,(cons 'or vec) :float) :vec4)
        (texel-fetch (sampler texcoord lod sample) `(:sampler-2d ,(cons 'or ivec)
                                                     :int :int) :vec4)
-       (normalize (vec) `(,(cons 'or vec)) '(t 0))
+       (normalize (vec) `(,(cons 'or vec)) '(= 0))
        (length (vec) `(,(cons 'or vec)) :float)
-       (sign (x) `(,(cons 'or gen-type)) '(t 0))
+       (sign (x) `(,(cons 'or gen-type)) '(= 0))
        (min (a b) '(:float :float) :float)
        (max (a b) '(:float :float) :float)
-       (dot (a b) `(,(cons 'or vec) (t 0)) :float)
+       (dot (a b) `(,(cons 'or vec) (= 0)) :float)
        (abs (a) '(:float) :float)
        (sqrt (a) '(:float) :float)
        (pow (a b) '(:float :float) :float)
        (exp (a) '(:float) :float)
        (exp2 (a) '(:float) :float)
-       (floor (a) `(,(cons 'or gen-type)) '(t 0))
-       (fract (a) `(,(cons 'or gen-type)) '(t 0))
-       (less-than (a b) `(,(cons 'or gen-type) (t 0)) '(t 0))
+       (floor (a) `(,(cons 'or gen-type)) '(= 0))
+       (fract (a) `(,(cons 'or gen-type)) '(= 0))
+       (less-than (a b) `(,(cons 'or gen-type) (= 0)) '(= 0))
        ;; GLSL 'step' instead of CL STEP
-       (step (x a b) `(,(cons 'or gen-type) (t 0) (t 0)) '(t 0))
-       (clamp (a b) `(,(cons 'or gen-type) (t 0)) '(t 0))
+       (step (x a b) `(,(cons 'or gen-type) (= 0) (= 0)) '(= 0))
+       (clamp (a b) `(,(cons 'or gen-type) (= 0)) '(= 0))
        (noise4 (a) `(,(cons 'or gen-type)) :vec4)
-       (cross (a b) `(,(cons 'or vec) (t 0)) '(t 0))
+       (cross (a b) `(,(cons 'or vec) (= 0)) '(= 0))
        ((emit-vertex "EmitVertex") () () :void)
        ((end-primitive "EndPrimitive") () () :void)
        (reflect (a b) '(:vec3 :vec3) :vec3)
-       ((smooth-step "smoothstep") (edge0 edge1 x) `(,(cons 'or gen-type) (t 0) :float) '(t 0))
+       ((smooth-step "smoothstep") (edge0 edge1 x) `(,(cons 'or gen-type) (= 0) :float) '(= 0))
        (any (x) `(,(cons 'or bvec)) :bool)
        (all (x) `(,(cons 'or bvec)) :bool)
        #++(not (x) :bvec (:bvec))
        ;; fixme: add constraint for same size vectors of different types?
-       (equal (x y) `(,(cons 'or vec) (t 0))
-              `(count= 0 ,(cons 'or bvec)))
-       (not-equal (x y) `(,(cons 'or vec) (t 0))
-                  `(count= 0 ,(cons 'or bvec)))
-       (less-than (x y) `(,(cons 'or vec) (t 0))
-                  `(count= 0 ,(cons 'or bvec)))
-       (less-than-equal (x y) `(,(cons 'or vec) (t 0))
-                        `(count= 0 ,(cons 'or bvec)))
-       (greater-than (x y) `(,(cons 'or vec) (t 0))
-                     `(count= 0 ,(cons 'or bvec)))
-       (greater-than-equal (x y) `(,(cons 'or vec) (t 0))
-                           `(count= 0 ,(cons 'or bvec)))
+       (equal (x y) `(,(cons 'or (append vec ivec uvec bvec dvec)) (= 0))
+              `(=# 0 :bool))
+       (not-equal (x y) `(,(cons 'or vec) (= 0))
+                  `(=# 0 :bool))
+       (less-than (x y) `(,(cons 'or vec) (= 0))
+                  `(=# 0 :bool))
+       (less-than-equal (x y) `(,(cons 'or vec) (= 0))
+                        `(=# 0 :bool))
+       (greater-than (x y) `(,(cons 'or vec) (= 0))
+                     `(=# 0 :bool))
+       (greater-than-equal (x y) `(,(cons 'or vec) (= 0))
+                           `(=# 0 :bool))
        ;; not completely sure if mat is allowed here?
        ;; might also allow arrays?
        (int (x) `((or :int :uint :bool :float

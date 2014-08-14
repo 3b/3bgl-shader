@@ -32,7 +32,17 @@
    ;; (constructors accept all base numerical types with same number
    ;;  of components, so don't need to separate to/from)
    (explicit-casts :initform nil :accessor explicit-casts
-                   :initarg :explicit-casts)))
+                   :initarg :explicit-casts)
+   ;; size of type if a member of a scalar/vector base type set, or nil
+   ;; ex :float -> 1, :vec2 -> 2, etc
+   (scalar/vector-size :initarg :scalar/vector-size :initform nil
+                       :accessor scalar/vector-size)
+   ;; types in scalar/vector base type set that includes this type, if any
+   ;; vector of concrete types, ex #(:bool :bvec2 :bvec3 :bvec4)
+   ;; (aref scalar/vector-set scalar/vector-size) == this type, if set
+   (scalar/vector-set :initarg :scalar/vector-set :initform nil
+                      :accessor scalar/vector-set)
+))
 
 ;; should these be concrete-type? or some common superclass?
 ;; for now assuming everything not a constrained-type is a concrete type
@@ -458,6 +468,27 @@
        (:mat3x4 :dmat3x4 :mat4x3 :dmat4x3);; 12
        (:mat4 :dmat4) ;; 16
        ))))
+
+;;; add scalar/vector set/size to types
+(let ((*environment* glsl::*glsl-base-environment*))
+  (flet ((c (&rest types)
+           (loop with set = (coerce (cons nil (mapcar 'get-type-binding types)) 'vector)
+                 for i from 0
+                 for type across set
+                 when type
+                   do (setf (scalar/vector-size type) i
+                            (scalar/vector-set type) set))))
+    (macrolet ((add-explicit-conversions (&rest conversions)
+                 `(progn
+                    ,@(mapcar (lambda (a) (cons 'c a))
+                              conversions))))
+      (add-explicit-conversions
+       (:bool :bvec2 :bvec3 :bvec4)
+       (:int :ivec2 :ivec3 :ivec4)
+       (:uint :uvec2 :uvec3 :uvec4)
+       (:float :vec2 :vec3 :vec4)
+       (:double :dvec2 :dvec3 :dvec4)))))
+
 
 
 
