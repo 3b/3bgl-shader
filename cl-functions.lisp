@@ -13,7 +13,7 @@
 ;;     ex: +, clamp, smoothstep
 ;; general case: just list all possibly combinations by hand
 ;;     ex: *, textureSize
-(defun add-internal-function/s (name lambda-list arg-types return-type &key glsl-name)
+(defun add-internal-function/s (name lambda-list arg-types return-type &key glsl-name (cast t))
   (let ((fn (make-instance 'internal-function
                            :name name
                            :glsl-name glsl-name
@@ -58,7 +58,7 @@
                                              :name variable-name
                                              :value-type (or (aref types i)
                                                              arg-type)
-                                             :allow-casts t)
+                                             :allow-casts cast)
                   and do (incf i)))
     (loop for binding in (bindings fn)
           for arg-type = (value-type binding)
@@ -201,7 +201,7 @@
    (setf (gethash name (function-bindings *environment*))
          fn)))
 
-(defun add-internal-function/full (name lambda-list type &key glsl-name (allow-casts t))
+(defun add-internal-function/full (name lambda-list type &key glsl-name (cast t))
   (let* ((fn (make-instance 'internal-function
                             :name name
                             :glsl-name glsl-name
@@ -273,7 +273,7 @@
                     collect (make-instance 'binding
                                            :name binding
                                            :value-type (make-type i)
-                                           :allow-casts allow-casts)
+                                           :allow-casts cast)
                     and do (incf i))))
     (setf (argument-types constraint) (reverse (argument-types constraint)))
 
@@ -297,6 +297,7 @@
          (bvec (list :bvec2 :bvec3 :bvec4))
          (dvec (list :dvec2 :dvec3 :dvec4))
          (mat (list :mat2 :mat3 :mat4 :mat2x3 :mat2x4 :mat3x2 :mat3x4 :mat4x3 :mat4x2))
+         (dmat (list :dmat2 :dmat3 :dmat4 :dmat2x3 :dmat2x4 :dmat3x2 :dmat3x4 :dmat4x3 :dmat4x2))
          ;; for defining vector/matrix constructors
          ;;(2-vector (list :bvec2 :ivec2 :uvec2 :vec2 :dvec2))
          ;;(3-vector (list :bvec3 :ivec3 :uvec3 :vec3 :dvec3))
@@ -309,25 +310,32 @@
          ;; N scalars to simplify floatxvec and floatxmat signatures
          (fxv (make-list (length vec) :initial-element :float))
          (fxm (make-list (length mat) :initial-element :float))
+         (dxv (make-list (length dvec) :initial-element :double))
+         (dxm (make-list (length dmat) :initial-element :double))
          (ixv (make-list (length ivec) :initial-element :int))
          (uxv (make-list (length uvec) :initial-element :uint))
          ;; todo: decide if these should have signatures matching
          ;; implicit cats, or if those should be separate or not
          ;; available at all?
          (binop-args (make-ftype
-                      (append gen-type gen-itype gen-utype
-                              vec mat ivec vec mat ivec uvec uvec)
-                      (append gen-type gen-itype gen-utype
-                              vec mat ivec fxv fxm ixv uxv uvec)
-                      (append gen-type gen-itype gen-utype
-                              fxv fxm ixv vec mat ivec uvec uxv)))
+                      (append gen-type gen-itype gen-utype gen-dtype
+                              vec mat vec mat dvec dmat dvec dmat
+                              ivec ivec uvec uvec)
+                      (append gen-type gen-itype gen-utype gen-dtype
+                              vec mat fxv fxm dvec dmat dxv dxm
+                              ivec ixv uxv uvec)
+                      (append gen-type gen-itype gen-utype gen-dtype
+                              fxv fxm vec mat dxv dxm dvec dmat
+                              ixv ivec uvec uxv)))
          (unary-gentypes+mats (make-ftype
-                               (append gen-type gen-itype gen-utype mat)
-                               (append gen-type gen-itype gen-utype mat)))
+                               (append gen-type gen-itype gen-utype gen-dtype
+                                       mat dmat)
+                               (append gen-type gen-itype gen-utype gen-dtype
+                                       mat dmat)))
          (scalar-compare (make-ftype
-                          (list :bool :bool :bool)
-                          (list :int :uint :float)
-                          (list :int :uint :float)))
+                          (list :bool :bool :bool :bool)
+                          (list :int :uint :float :double)
+                          (list :int :uint :float :double)))
          (log* (make-ftype (append gen-itype gen-utype
                                    ivec ivec uvec uvec)
                            (append gen-itype gen-utype
@@ -335,27 +343,33 @@
                            (append gen-itype gen-utype
                                    ixv ivec uxv uvec)
                            )))
-    #++'(((:float :float) :float) ((:vec2 :vec2) :vec2)
-         ((:vec3 :vec3) :vec3) ((:vec4 :vec4) :vec4)
-         ((:mat2 :mat2) :mat2) ((:mat3 :mat3) :mat3)
-         ((:mat4 :mat4) :mat4) ((:vec2 :mat2) :vec2)
-         ((:vec3 :mat3) :vec3) ((:vec4 :mat4) :vec4)
-         ((:mat2 :vec2) :vec2) ((:mat3 :vec3) :vec3)
-         ((:mat4 :vec4) :vec4) ((:mat2 :float) :mat2)
-         ((:mat3 :mat2) :mat3) ((:mat4 :mat3) :mat4)
-         ((:float :mat4) :mat2) ((:vec2 :float) :mat3)
-         ((:vec3 :vec2) :mat4) ((:vec4 :vec3) :vec2)
-         ((:float :vec4) :vec3))
     ;;
-    ;; these are all assumed to be binary at this point, any 0/1/n>2 -ary
+    ;; these are all assumed to be binary at this point, any n>2 -ary
     ;; uses should have been expanded to binary calls in earlier passes
+    ;; todo: decide if unary + is worth adding?
     (add-internal-function/full '+ '(a b) binop-args)
+
+    ;; not sure if - should have a unary version or just print
+    ;; (- 0 x) as -x ?
+    ;; unary version is probably easier for type inference
+    (add-internal-function/full '- '(a &optional b)
+                           (append binop-args
+                                   ;; unary version
+                                   unary-gentypes+mats))
+    ;; expanding (/ x) to (1/x) in printer as well, in hopes of simplifying
+    ;; type inference
+    (add-internal-function/full '/ '(a &optional b)
+                           (append binop-args
+                                   unary-gentypes+mats))
+
+
     ;; fixme: verify the non-square matric types for *
     (add-internal-function/full '* '(a b)
                            ;;A right vector operand is treated as a
                            ;;column vector and a left vector operand as
                            ;;a row vector.
-                           `( ;; 1xN Mx1 -> NxM
+                           `(;; fixme: generate these?
+                             ;; 1xN Mx1 -> NxM
                              ;; -x-
                              ;; 2xN Mx2 -> MxN
                              ((:vec2 :vec2) :float)
@@ -411,45 +425,90 @@
                              ((:mat4 :mat2x4) :mat4x2)
                              ((:mat4 :mat3x4) :mat4x3)
                              ((:mat4 :mat4) :mat4)
+                             ;; double
+                             ;; 2xN Mx2 -> MxN
+                             ((:dvec2 :dvec2) :double)
+                             ((:dvec2 :dmat2) :dvec2)
+                             ((:dvec2 :dmat3x2) :dvec3)
+                             ((:dvec2 :dmat4x2) :dvec4)
+                             ((:dmat2 :dvec2) :dvec2)
+                             ((:dmat3x2 :dvec2) :dvec3)
+                             ((:dmat4x2 :dvec2) :dvec4)
+                             ((:dmat2 :dmat2) :dmat2)
+                             ((:dmat2 :dmat3x2) :dmat3x2)
+                             ((:dmat2 :dmat4x2) :dmat4x2)
+                             ((:dmat2x3 :dmat2) :dmat3x2)
+                             ((:dmat2x3 :dmat3x2) :dmat3)
+                             ((:dmat2x3 :dmat4x2) :dmat3x4)
+                             ((:dmat2x4 :dmat2) :dmat4x2)
+                             ((:dmat2x4 :dmat3x2) :dmat4x3)
+                             ((:dmat2x4 :dmat4x2) :dmat4)
+                             ;; 3xN Mx3 -> MxN
+                             ((:dvec3 :dvec3) :double)
+                             ((:dvec3 :dmat2x3) :dvec2)
+                             ((:dvec3 :dmat3) :dvec3)
+                             ((:dvec3 :dmat4x3) :dvec4)
+                             ((:dmat2x3 :dvec3) :dvec2)
+                             ((:dmat3 :dvec3) :dvec3)
+                             ((:dmat4x3 :dvec3) :dvec4)
+                             ((:dmat3x2 :dmat2x3) :dmat2)
+                             ((:dmat3x2 :dmat3) :dmat3x2)
+                             ((:dmat3x2 :dmat4x3) :dmat4x2)
+                             ((:dmat3 :dmat2x3) :dmat3x2)
+                             ((:dmat3 :dmat3) :dmat3)
+                             ((:dmat3 :dmat4x3) :dmat3x4)
+                             ((:dmat3x4 :dmat2x3) :dmat4x2)
+                             ((:dmat3x4 :dmat3) :dmat4x3)
+                             ((:dmat3x4 :dmat4x3) :dmat4)
+                             ;; 4xN Mx4 -> MxN
+                             ((:dvec4 :dvec4) :double)
+                             ((:dvec4 :dmat2x4) :dvec2)
+                             ((:dvec4 :dmat3x4) :dvec3)
+                             ((:dvec4 :dmat4) :dvec4)
+                             ((:dmat2x4 :dvec4) :dvec2)
+                             ((:dmat3x4 :dvec4) :dvec3)
+                             ((:dmat4 :dvec4) :dvec4)
+                             ((:dmat4x2 :dmat2x4) :dmat2)
+                             ((:dmat4x2 :dmat3x4) :dmat3x2)
+                             ((:dmat4x2 :dmat4) :dmat4x2)
+                             ((:dmat4x3 :dmat2x4) :dmat3x2)
+                             ((:dmat4x3 :dmat3x4) :dmat3)
+                             ((:dmat4x3 :dmat4) :dmat3x4)
+                             ((:dmat4 :dmat2x4) :dmat4x2)
+                             ((:dmat4 :dmat3x4) :dmat4x3)
+                             ((:dmat4 :dmat4) :dmat4)
                              ;; scalars
                              ((:int :int) :int)
                              ((:uint :uint) :uint)
                              ((:float :float) :float)
+                             ((:double :double) :double)
                              ,@(make-ftype (append vec mat ivec vec mat ivec)
                                            (append fxv fxm ixv vec mat ivec)
                                            (append vec mat ivec fxv fxm ixv))))
-    ;; not sure if - should have a unary version or just print
-    ;; (- 0 x) as -x ?
-    ;; unary version is probably easier for type inference
-    (add-internal-function/full '- '(a &optional b)
-                           (append binop-args
-                                   ;; unary version
-                                   unary-gentypes+mats))
-    ;; expanding (/ x) to (1/x) in printer as well, in hopes of simplifying
-    ;; type inference
-    (add-internal-function/full '/ '(a b)
-                           (append binop-args
-                                   unary-gentypes+mats))
-    (add-internal-function/full 'mod '(a b) (make-ftype (append gen-itype gen-utype
-                                                           ivec uvec ivec uvec)
-                                                   (append gen-itype gen-utype
-                                                           ivec uvec ixv uxv)
-                                                   (append gen-itype gen-utype
-                                                           ixv uxv ivec uvec)))
-    ;;
-    (add-internal-function/full 'or '(a b) '(((:bool :bool) :bool)))
-    (add-internal-function/full 'and '(a b) '(((:bool :bool) :bool)))
-    ;; is this glsl '!' or glsl 'not' or both?
-    ;; assuming we can get type info during printing to pick right one...
-    (add-internal-function/full 'not '(a) (append
-                                      '(((:bool) :bool))
-                                      (make-ftype bvec bvec)))
-    (add-internal-function/full 'logior '(a b) log*)
-    (add-internal-function/full 'logand '(a b) log*)
-    (add-internal-function/full 'logxor '(a b) log*)
-    ;; args like (T x) will be constrained to same type as arg X
-    (add-internal-function/s '= '(a b) '(T (= 0)) :bool)
-    (add-internal-function/s '/= '(a b) '(T (= 0)) :bool)
+    ;; glsl % operator (no 2nd value from CL operator for now)
+    (add-internal-function/full 'mod '(a b) (make-ftype
+                                             (append gen-itype gen-utype
+                                                     ivec uvec ivec uvec)
+                                             (append gen-itype gen-utype
+                                                     ivec uvec ixv uxv)
+                                             (append gen-itype gen-utype
+                                                     ixv uxv ivec uvec)))
+
+    ;; glsl ++ and -- are post-[in/de]crement for now (incf/decf are pre)
+    ;; (incf/decf work on vec/mat also, so might want to shadow cl:
+    ;;  versions at some point)
+    (add-internal-function/s 'glsl::incf '(a) `(,(cons 'or unary-gentypes+mats))
+                             (= 0)
+                             :cast nil)
+    (add-internal-function/s 'glsl::decf '(a) `(,(cons 'or unary-gentypes+mats))
+                             (= 0)
+                             :cast nil)
+    (add-internal-function/s 'glsl::++ '(a) `(,(cons 'or unary-gentypes+mats))
+                             (= 0)
+                             :cast nil)
+    (add-internal-function/s 'glsl::-- '(a) `(,(cons 'or unary-gentypes+mats))
+                             (= 0)
+                             :cast nil)
     ;; should these work on vectors etc too?
     ;; (would need to be able to see types in printer to expand to
     ;;  lessThan etc)
@@ -457,16 +516,38 @@
     (add-internal-function/full '> '(a b) scalar-compare)
     (add-internal-function/full '<= '(a b) scalar-compare)
     (add-internal-function/full '>= '(a b) scalar-compare)
-    ;; including 1+ and 1- to simplify type inference, so we don't have
-    ;; to know what type of 1 to use
-    (add-internal-function/full '1- '(number) unary-gentypes+mats)
-    (add-internal-function/full '1+ '(number) unary-gentypes+mats)
-    ;; todo ++, --, ash
-    ;;(add-internal-function/full 'ash '(integer count))
+    ;; args like (= ##) will be constrained to same type as arg ##
+    ;; = is glsl == operator, /= is glsl !=
+    ;; (possibly closer to equal or equalp in CL terms, since it works
+    ;;  on aggregates and compares contents)
+    (add-internal-function/s '= '(a b) '(T (= 0)) :bool)
+    (add-internal-function/s '/= '(a b) '(T (= 0)) :bool)
+
+    ;; || && ^^
+    (add-internal-function/full 'or '(a b) '(((:bool :bool) :bool))
+                                :cast nil)
+    (add-internal-function/full 'and '(a b) '(((:bool :bool) :bool))
+                                :cast nil)
+    (add-internal-function/full 'glsl::^^ '(a b) '(((:bool :bool) :bool))
+                                :cast nil)
+    ;; is this glsl '!' or glsl 'not' or both?
+    ;; assuming we can get type info during printing to pick right one...
+    (add-internal-function/full 'not '(a) (append
+                                           '(((:bool) :bool))
+                                           (make-ftype bvec bvec))
+                                :cast nil)
+
+    ;; ?: (if is handled as special operator, but might use this to
+    ;; avoid building constraints by hand...)
+    (add-internal-function/s 'glsl::|?:| '(c then else) '(:bool T (= 1)) '(= 1))
+    ;;(add-internal-function/s 'if (c then else) (:bool T (= 1)) (= 1))
+
+    ;; ~
+    (add-internal-function/s 'lognot '(a) `((or :int :uint ,@ivec ,@uvec))
+                             '(= 0)
+                             :cast nil)
 
 
-    ;; glsl specific things
-    (add-internal-function/full 'glsl::^^ '(a b) '(((:bool :bool) :bool)))
     ;; fixme: verify types for <<
     ;; possibly also simplify?
     ;;  return is same type as first arg
@@ -482,7 +563,8 @@
                                                 (append ivec uvec ivec uvec
                                                         ivec uvec ivec uvec)
                                                 (append ivec uvec uvec ivec
-                                                        ixv uxv uxv ixv))))
+                                                        ixv uxv uxv ixv)))
+                                :cast nil)
     (add-internal-function/full 'glsl::>> '(integer count)
                                 `(((:int :int) :int)
                                   ((:int :uint) :int)
@@ -493,7 +575,26 @@
                                                 (append ivec uvec ivec uvec
                                                         ivec uvec ivec uvec)
                                                 (append ivec uvec uvec ivec
-                                                        ixv uxv uxv ixv))))
+                                                        ixv uxv uxv ixv)))
+                                :cast nil)
+
+    ;; | & ^
+    ;; fixme: do these allow casts?
+    (add-internal-function/full 'logior '(a b) log* :cast nil)
+    (add-internal-function/full 'logand '(a b) log* :cast nil)
+    (add-internal-function/full 'logxor '(a b) log* :cast nil)
+
+
+    ;; including 1+ and 1- to simplify type inference, so we don't have
+    ;; to know what type of 1 to use
+    (add-internal-function/full '1- '(number) unary-gentypes+mats
+                                :cast nil)
+    (add-internal-function/full '1+ '(number) unary-gentypes+mats
+                                :cast nil)
+    ;; todo ++, --, ash
+    ;;(add-internal-function/full 'ash '(integer count))
+
+
     (add-internal-function/s 'return '(value)
                              '(t) '(= 0))
 
@@ -636,39 +737,39 @@
                                               ))))))
 
         #++(add/f1
-                ((glsl::bvec2 nil :allow-casts nil) (a &optional b)
+                ((glsl::bvec2 nil :cast nil) (a &optional b)
                  (vec/mat-constructor 2 :bool) :bvec2)
-                ((glsl::bvec3 nil :allow-casts nil) (a &optional b c)
+                ((glsl::bvec3 nil :cast nil) (a &optional b c)
                  (vec/mat-constructor 3 :bool) :bvec3)
-                ((glsl::bvec4 nil :allow-casts nil) (a &optional b c d)
+                ((glsl::bvec4 nil :cast nil) (a &optional b c d)
                  (append '((:mat2)) (vec/mat-constructor 4 :bool)) :bvec4)
 
-                ((glsl::ivec2 nil :allow-casts nil) (a &optional b)
+                ((glsl::ivec2 nil :cast nil) (a &optional b)
                  (vec/mat-constructor 2 :int) :ivec2)
-                ((glsl::ivec3 nil :allow-casts nil) (a &optional b c)
+                ((glsl::ivec3 nil :cast nil) (a &optional b c)
                  (vec/mat-constructor 3 :int) :ivec3)
-                ((glsl::ivec4 nil :allow-casts nil) (a &optional b c d)
+                ((glsl::ivec4 nil :cast nil) (a &optional b c d)
                  (append '((:mat2)) (vec/mat-constructor 4 :int)) :ivec4)
 
-                ((glsl::uvec2 nil :allow-casts nil) (a &optional b)
+                ((glsl::uvec2 nil :cast nil) (a &optional b)
                  (vec/mat-constructor 2 :uint) :uvec2)
-                ((glsl::uvec3 nil :allow-casts nil) (a &optional b c)
+                ((glsl::uvec3 nil :cast nil) (a &optional b c)
                  (vec/mat-constructor 3 :uint) :uvec3)
-                ((glsl::uvec4 nil :allow-casts nil) (a &optional b c d)
+                ((glsl::uvec4 nil :cast nil) (a &optional b c d)
                  (append '((:mat2)) (vec/mat-constructor 4 :uint)) :uvec4)
 
-                ((glsl::vec2 nil :allow-casts nil) (a &optional b)
+                ((glsl::vec2 nil :cast nil) (a &optional b)
                  (vec/mat-constructor 2 :float) :vec2)
-                ((glsl::vec3 nil :allow-casts nil) (a &optional b c)
+                ((glsl::vec3 nil :cast nil) (a &optional b c)
                  (vec/mat-constructor 3 :float) :vec3)
-                ((glsl::vec4 nil :allow-casts nil) (a &optional b c d)
+                ((glsl::vec4 nil :cast nil) (a &optional b c d)
                  (append '((:mat2)) (vec/mat-constructor 4 :float)) :vec4)
 
-                ((glsl::dvec2 nil :allow-casts nil) (a &optional b)
+                ((glsl::dvec2 nil :cast nil) (a &optional b)
                  (vec/mat-constructor 2 :double) :dvec2)
-                ((glsl::dvec3 nil :allow-casts nil) (a &optional b c)
+                ((glsl::dvec3 nil :cast nil) (a &optional b c)
                  (vec/mat-constructor 3 :double) :dvec3)
-                ((glsl::dvec4 nil :allow-casts nil) (a &optional b c d)
+                ((glsl::dvec4 nil :cast nil) (a &optional b c d)
                  (append '((:mat2)) (vec/mat-constructor 4 :double)) :dvec4))
 
 
