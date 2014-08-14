@@ -69,9 +69,30 @@
      (3bgl-shaders::add-macro ',name
                               (lambda (form env)
                                 (declare (ignorable env))
-                                (destructuring-bind ,lambda-list
-                                    (cdr form)
-                                  ,@body)))))
+                                (let (,@(when (eq '&whole (car lambda-list))
+                                          (pop lambda-list)
+                                          (list
+                                           (list (pop lambda-list)
+                                                 'form))))
+                                  (destructuring-bind ,lambda-list
+                                      (cdr form)
+                                    ,@body))))))
+
+(defmacro %glsl-compiler-macro (name lambda-list &body body)
+  (print
+   `(let ((3bgl-shaders::*environment* glsl::*glsl-base-environment*))
+      (3bgl-shaders::add-compiler-macro ',name
+                                        (lambda (form env)
+                                          (declare (ignore env))
+                                          (let (,@(when (eq '&whole
+                                                            (car lambda-list))
+                                                    (pop lambda-list)
+                                                    (list
+                                                     (list (pop lambda-list)
+                                                           'form))))
+                                            (destructuring-bind ,lambda-list
+                                                (cdr form)
+                                              ,@body)))))))
 
 (%glsl-macro defstruct (name args &body slots)
   (declare (ignore args))

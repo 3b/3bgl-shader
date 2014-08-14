@@ -1138,3 +1138,12 @@
                     (smooth-step a b c)))
                    'h
                    :vertex))
+
+#++
+(multiple-value-list
+ (compile-block '((defun h (a b c)
+                    (declare (:vec2 c) (:float a))
+                    (+ a b c)))
+                   'h
+                   :vertex))
+

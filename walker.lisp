@@ -27,6 +27,8 @@
   ((parent-scope :reader parent-scope :initarg :parent :initform nil)
    ;; map of name -> FUNCTION-BINDING instance
    (function-bindings :reader function-bindings :initform (make-hash-table))
+   ;; name -> MACRO-DEFINITION instance
+   (compiler-macro-bindings :reader compiler-macro-bindings :initform (make-hash-table))
    ;; map of name -> BINDING instance
    (variable-bindings :reader variable-bindings :initform (make-hash-table))
    (types :reader types :initform (make-hash-table))))
@@ -47,6 +49,15 @@
        (or (gethash name (function-bindings env))
            (get-function-binding name :env (parent-scope env)))))
 
+(defun get-compiler-macro-binding (name &key (env *environment*))
+  ;; find a compiler macro in any env no deeper than current
+  ;; function-binding
+  ;; (function bindings shadow compiler macro bindings)
+  (and env
+       (or (gethash name (compiler-macro-bindings env))
+           (and (not (gethash name (function-bindings env)))
+                (get-compiler-macro-binding name :env (parent-scope env))))))
+
 (defun get-type-binding (name &key (env *environment*))
   (if (consp name)
       (make-instance 'array-type :base-type (get-type-binding (car name)
@@ -64,6 +75,19 @@
         (make-instance 'macro-definition
                        :name name
                        :expression lambda)))
+
+(defun add-compiler-macro (name lambda &key (env *environment*))
+  (setf (gethash name (compiler-macro-bindings env))
+        (make-instance 'macro-definition
+                       :name name
+                       :expression lambda)))
+
+(defun get-compiler-macro-function (name)
+  (let ((mf (get-compiler-macro-binding name :env *environment*)))
+    (when (typep mf 'macro-definition)
+      (when (not (expander mf))
+        (setf (expander mf) (compile 'nil (expression mf))))
+      (expander mf))))
 
 (defun get-macro-function (name)
   (let ((mf (get-function-binding name :env *environment*)))
@@ -481,12 +505,23 @@
   ;; expand normally
   ;; fixme: rearrange this so we can hook function application without
   ;; having to check for macros by hand
-  (let ((macro (get-macro-function car)))
-    #++(format t "check for macro ~s -> ~s~%" car macro)
-    (if macro
-        (walk (funcall macro (list* car cdr) *environment*)
-              walker)
-        (call-next-method))))
+  (let* ((macro (get-macro-function car))
+         (cmacro (unless macro
+                   (get-compiler-macro-function car)))
+         (form (list* car cdr)))
+    #++(format t "check for macro ~s -> ~s / ~s~%" car macro cmacro)
+    (cond
+      (cmacro
+       (let ((expanded (funcall cmacro form *environment*)))
+         (if (eq expanded form)
+             (if macro
+                 (walk (funcall macro form *environment*) walker)
+                 (call-next-method))
+             (walk expanded walker))))
+      (macro
+       (walk (funcall macro form *environment*) walker))
+      (t
+       (call-next-method)))))
 
 (defmethod walk (form (walker cl-walker))
   ;; expand symbol macros

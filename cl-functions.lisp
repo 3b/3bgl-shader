@@ -713,15 +713,27 @@
                                                      '(:mat2 :mat3 :mat4
                                                        :mat3x2 :mat4x2
                                                        :mat2x3 :mat4x3
-                                                       :mat2x4 :mat3x4))))
+                                                       :mat2x4 :mat3x4)))))))
 
+;; define compiler macros for binary ops like + which accept any
+;; number of args in CL
+;; todo: add compiler macros for more complicated cases like =, <, etc
+(macrolet ((define-binop (x)
+             (print
+              `(%glsl-compiler-macro ,x (&whole w &rest r)
+                   (format t "expanding ~s / ~s: ~%" w r)
+                 (labels ((rec (rr)
+                            (if (> (length rr) 2)
+                                `(,(car w) ,(rec (cdr rr)) ,(car rr))
+                                `(,(car w) ,(cadr rr) ,(car rr)))))
+                   (if (> (length r) 2)
+                       (print (rec (reverse r)))
+                       (print w))))))
+           (define-binops (&rest r)
+             `(progn
+                ,@(loop for i in r collect `(define-binop ,i)))))
+  (define-binops + - / * and or logior logxor logand))
 
-)
-      )
-
-
-
-    )
 
 ;; (defmacro add-binop (name  name.2 &optional default)
 ;;   `(defclmacro ,name (&rest args)

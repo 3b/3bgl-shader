@@ -83,9 +83,17 @@
            ,@(when (cdr body)
                `((cond ,@(cdr body)))))))
 
-(%glsl-macro define-compiler-macro (&body body)
-  (declare (ignore body))
-  `(error "DEFINE-COMPILER-MACRO not implemented yet for GLSL"))
+
+(%glsl-macro define-compiler-macro (name lambda-list &body body)
+  ;; fixme: extract docstrings/declarations from body
+  (3bgl-shaders::add-compiler-macro name
+                                    `(lambda (form env)
+                                       (declare (ignore env))
+                                       (destructuring-bind ,lambda-list
+                                           (cdr form)
+                                         ,@body)))
+  nil)
+
 
 (%glsl-macro define-modify-macro (&body body)
   (declare (ignore body))
@@ -380,7 +388,8 @@
   ;; we also handle a few special cases here for now:
   ;;  symbols starting with #\. are treated as struct slot accessors/swizzle
   ;;  aref forms are converted specially
-  (let ((binding (3bgl-shaders::get-function-binding car)))
+  (let ((binding (3bgl-shaders::get-function-binding car))
+        (cmacro (3bgl-shaders::get-compiler-macro-function car)))
     #++(format t "~&looking up binding ~s got ~s~%" car binding)
     (flet ((add-dependencies (called)
              #++
@@ -393,6 +402,13 @@
                     *current-function*))
              called))
       (cond
+        ((and cmacro
+              (let* ((form (list* car cdr))
+                     (expanded (funcall cmacro form
+                                        3bgl-shaders::*environment*)))
+                (if (eq expanded form)
+                    nil
+                    (3bgl-shaders::walk expanded walker)))))
         ((typep binding '3bgl-shaders::function-binding-function)
          (add-dependencies binding)
          (make-instance '3bgl-shaders::function-call
