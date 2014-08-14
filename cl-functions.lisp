@@ -20,6 +20,8 @@
                            :lambda-list lambda-list))
         (types (make-array (count '&optional lambda-list :test-not #'eql)
                            :initial-element nil)))
+    ;; 2 passes, so types can be constrained by later args
+    ;; (ex smoothstep, first 2 args are constrained by 3rd)
     (setf (bindings fn)
           (loop with optional = nil
                 with arg-type = nil
@@ -29,31 +31,7 @@
                   do (setf optional t)
                 else
                   do (setf arg-type (pop arg-types))
-                     (etypecase arg-type
-                       ;; (= ##) same types as arg ##
-                       ((cons (eql =))
-                        (setf (aref types i)
-                              (aref types (second arg-type))))
-                       ;; (=s ##) same type as or scalar base type of arg ##
-                       ((cons (eql =s))
-                        (let ((c (make-instance
-                                  'same-type-or-scalar-constraint
-                                  :ctype (setf (aref types i)
-                                               (make-instance 'any-type))
-                                  :other-type (aref types (second arg-type)))))
-                          (add-constraint (aref types (second arg-type)) c)
-                          (add-constraint (aref types i) c)))
-                       ;; (=# ## base-type) same element count as arg ## but
-                       ;; specified base type (ex :bool => vec3 -> bvec3)
-                       ((cons (eql =#))
-                        (let ((c (make-instance
-                                  'same-size-different-base-type-constraint
-                                  :other-type (aref types (second arg-type))
-                                  :base-type (get-type-binding (third arg-type))
-                                  :ctype (setf (aref types i)
-                                               (make-instance 'any-type)))))
-                          (add-constraint (aref types (second arg-type)) c)
-                          (add-constraint (aref types i) c)))
+                     (typecase arg-type
                        ;; (or ...) list of types
                        ((cons (eql or))
                         (setf (aref types i)
@@ -78,9 +56,40 @@
                                   (error "unknown type ~s?" arg-type)))))
                   and collect (make-instance 'binding
                                              :name variable-name
-                                             :value-type (aref types i)
+                                             :value-type (or (aref types i)
+                                                             arg-type)
                                              :allow-casts t)
                   and do (incf i)))
+    (loop for binding in (bindings fn)
+          for arg-type = (value-type binding)
+          for i from 0
+          when (consp arg-type)
+            do (etypecase arg-type
+                 ;; (= ##) same types as arg ##
+                 ((cons (eql =))
+                  (setf (aref types i)
+                        (aref types (second arg-type))))
+                 ;; (=s ##) same type as or scalar base type of arg ##
+                 ((cons (eql =s))
+                  (let ((c (make-instance
+                            'same-type-or-scalar-constraint
+                            :ctype (setf (aref types i)
+                                         (make-instance 'any-type))
+                            :other-type (aref types (second arg-type)))))
+                    (add-constraint (aref types (second arg-type)) c)
+                    (add-constraint (aref types i) c)))
+                 ;; (=# ## base-type) same element count as arg ## but
+                 ;; specified base type (ex :bool => vec3 -> bvec3)
+                 ((cons (eql =#))
+                  (let ((c (make-instance
+                            'same-size-different-base-type-constraint
+                            :other-type (aref types (second arg-type))
+                            :base-type (get-type-binding (third arg-type))
+                            :ctype (setf (aref types i)
+                                         (make-instance 'any-type)))))
+                    (add-constraint (aref types (second arg-type)) c)
+                    (add-constraint (aref types i) c))))
+               (setf (value-type binding) (aref types i)))
     (etypecase return-type
       ;; (OR) types not allowed for return type, has to either match
       ;; an arg type or be a specific type
@@ -294,8 +303,9 @@
          ;;(4-vector (list :bvec4 :ivec4 :uvec4 :vec4 :dvec4))
          ;;(sqmat (list :mat2 :mat3 :mat4))
          (gen-type (cons :float vec))
-         (igen-type (cons :int ivec))
-         (ugen-type (cons :uint uvec))
+         (gen-itype (cons :int ivec))
+         (gen-utype (cons :uint uvec))
+         (gen-dtype (cons :double dvec))
          ;; N scalars to simplify floatxvec and floatxmat signatures
          (fxv (make-list (length vec) :initial-element :float))
          (fxm (make-list (length mat) :initial-element :float))
@@ -305,24 +315,24 @@
          ;; implicit cats, or if those should be separate or not
          ;; available at all?
          (binop-args (make-ftype
-                      (append gen-type igen-type ugen-type
+                      (append gen-type gen-itype gen-utype
                               vec mat ivec vec mat ivec uvec uvec)
-                      (append gen-type igen-type ugen-type
+                      (append gen-type gen-itype gen-utype
                               vec mat ivec fxv fxm ixv uxv uvec)
-                      (append gen-type igen-type ugen-type
+                      (append gen-type gen-itype gen-utype
                               fxv fxm ixv vec mat ivec uvec uxv)))
          (unary-gentypes+mats (make-ftype
-                               (append gen-type igen-type ugen-type mat)
-                               (append gen-type igen-type ugen-type mat)))
+                               (append gen-type gen-itype gen-utype mat)
+                               (append gen-type gen-itype gen-utype mat)))
          (scalar-compare (make-ftype
                           (list :bool :bool :bool)
                           (list :int :uint :float)
                           (list :int :uint :float)))
-         (log* (make-ftype (append igen-type ugen-type
+         (log* (make-ftype (append gen-itype gen-utype
                                    ivec ivec uvec uvec)
-                           (append igen-type ugen-type
+                           (append gen-itype gen-utype
                                    ivec ixv uvec uxv)
-                           (append igen-type ugen-type
+                           (append gen-itype gen-utype
                                    ixv ivec uxv uvec)
                            )))
     #++'(((:float :float) :float) ((:vec2 :vec2) :vec2)
@@ -420,11 +430,11 @@
     (add-internal-function/full '/ '(a b)
                            (append binop-args
                                    unary-gentypes+mats))
-    (add-internal-function/full 'mod '(a b) (make-ftype (append igen-type ugen-type
+    (add-internal-function/full 'mod '(a b) (make-ftype (append gen-itype gen-utype
                                                            ivec uvec ivec uvec)
-                                                   (append igen-type ugen-type
+                                                   (append gen-itype gen-utype
                                                            ivec uvec ixv uxv)
-                                                   (append igen-type ugen-type
+                                                   (append gen-itype gen-utype
                                                            ixv uxv ivec uvec)))
     ;;
     (add-internal-function/full 'or '(a b) '(((:bool :bool) :bool)))
@@ -561,14 +571,23 @@
        (fract (a) `(,(cons 'or gen-type)) '(= 0))
        (less-than (a b) `(,(cons 'or gen-type) (= 0)) '(= 0))
        ;; GLSL 'step' instead of CL STEP
-       (step (x a b) `(,(cons 'or gen-type) (= 0) (= 0)) '(= 0))
-       (clamp (a b) `(,(cons 'or gen-type) (= 0)) '(= 0))
+       (step (edge x) `((=s 1) ,(cons 'or gen-type)) '(= 1))
+       (clamp (a b) `(,(cons 'or gen-type) (=s 0)) '(= 0))
        (noise4 (a) `(,(cons 'or gen-type)) :vec4)
        (cross (a b) `(,(cons 'or vec) (= 0)) '(= 0))
        ((emit-vertex "EmitVertex") () () :void)
        ((end-primitive "EndPrimitive") () () :void)
        (reflect (a b) '(:vec3 :vec3) :vec3)
-       ((smooth-step "smoothstep") (edge0 edge1 x) `(,(cons 'or gen-type) (= 0) :float) '(= 0))
+       ;; not completely sure about this signature...
+       ;; genType,genType,genType->genType
+       ;; float,float,genType->genType
+       ;; same for genDType and double
+       ((smooth-step "smoothstep") (edge0 edge1 x) `((=s 2)
+                                                     (=s 0)
+                                                     ,(cons 'or
+                                                            (append gen-type
+                                                                    gen-dtype)))
+        '(= 2))
        (any (x) `(,(cons 'or bvec)) :bool)
        (all (x) `(,(cons 'or bvec)) :bool)
        #++(not (x) :bvec (:bvec))
@@ -753,8 +772,8 @@
          (mat (list :mat2 :mat3 :mat4 :mat2x3 :mat2x4 :mat3x2 :mat3x4 :mat4x3 :mat4x2))
          (sqmat (list :mat2 :mat3 :mat4))
          (gen-type (cons :float vec))
-         (igen-type (cons :int ivec))
-         (ugen-type (cons :uint uvec))
+         (gen-itype (cons :int ivec))
+         (gen-utype (cons :uint uvec))
         ;; 3 scalars to simplify floatxvec and floatxmat signatures
         (fxv (make-list (length vec) :initial-element :float))
         (fxm (make-list (length mat) :initial-element :float))
@@ -764,11 +783,11 @@
         ;; implicit cats, or if those should be separate or not
         ;; available at all?
         (binop-args (make-ftype
-                     (append gen-type igen-type ugen-type
+                     (append gen-type gen-itype gen-utype
                              vec mat ivec vec mat ivec uvec uvec)
-                     (append gen-type igen-type ugen-type
+                     (append gen-type gen-itype gen-utype
                              vec mat ivec fxv fxm ixv uxv uvec)
-                     (append gen-type igen-type ugen-type
+                     (append gen-type gen-itype gen-utype
                              fxv fxm ixv vec mat ivec uvec uxv))))
    (format t "~:{~(~s -> ~s~)~%~}"
                           ;;A right vector operand is treated as a
