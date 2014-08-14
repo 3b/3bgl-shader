@@ -536,6 +536,21 @@
   (format t "infer ~s =~%" form)
   (print  (set-type :float)))
 
+(defmethod walk ((form binding-scope) (walker infer-build-constraints))
+  (format t "infer ~s  (~s)=~%" form (body form))
+;  (break "foo " form)
+  (loop for binding in (bindings form)
+        for declared-type = (declared-type binding)
+        if (eq declared-type t)
+          do (setf (value-type binding)
+                   (walk (initial-value-form binding) walker))
+        else do (setf (value-type binding)
+                      (unify declared-type
+                             (walk (initial-value-form binding) walker))))
+  (loop for a in (body form)
+        for ret = (walk a walker)
+        finally (return ret)))
+
 (defmethod walk ((form global-function) (walker infer-build-constraints))
   (format t "infer ~s  (~s)=~%" form (body form))
   (let ((c (make-instance 'global-function-constraint)))
@@ -1147,3 +1162,13 @@
                    'h
                    :vertex))
 
+
+#++
+(multiple-value-list
+ (compile-block '((defun h (a b)
+                    (let ((c (+ a 2))
+                          (d (+ b 2)))
+                      (declare (:vec2 c) (:int d))
+                      (+ c d))))
+                'h
+                :vertex))
