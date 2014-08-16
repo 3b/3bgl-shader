@@ -154,6 +154,12 @@
   ((ctype :initarg :ctype :accessor ctype)
    (other-type :initarg :other-type :accessor other-type)))
 
+(defclass scalar-type-of-constraint (constraint)
+  ;; CTYPE is scalar base type of OTHER-TYPE
+  ;; ex :float -> :float, :ivec2 -> :int, :vec3 -> :float
+  ((ctype :initarg :ctype :accessor ctype)
+   (other-type :initarg :other-type :accessor other-type)))
+
 (defmethod replace-constraint-type (new old constraint)
   ;; shouldn't modify CONSTRAINTS field of callers, since they may
   ;; be iterating it... wait for update pass before removing any
@@ -351,10 +357,10 @@
     ;; link back to constraint
     (setf (gethash constraint *copy-constraints-hash*)
           copy)
-    (setf (slot-value copy 'argument-types)
-          (mapcar 'copy-constraints (argument-types constraint)))
     (setf (slot-value copy 'return-type)
           (copy-constraints (return-type constraint)))
+    (setf (slot-value copy 'argument-types)
+          (mapcar 'copy-constraints (argument-types constraint)))
     (push copy *inference-worklist*)
     copy))
 
@@ -365,8 +371,19 @@
     ;; link back to constraint
     (setf (gethash constraint *copy-constraints-hash*)
           copy)
-    ;; not sure if we need to actually copy base type, it should be concrete?
-    ;; (probably should enforce that before skipping copy though)
+    (setf (slot-value copy 'ctype)
+          (copy-constraints (ctype constraint)))
+    (setf (slot-value copy 'other-type)
+          (copy-constraints (other-type constraint)))
+    (push copy *inference-worklist*)
+    copy))
+
+(defmethod copy-constraints ((constraint scalar-type-of-constraint))
+  (let ((copy (make-instance 'scalar-type-of-constraint)))
+    ;; we need to update cache before copying constrained types because they
+    ;; link back to constraint
+    (setf (gethash constraint *copy-constraints-hash*)
+          copy)
     (setf (slot-value copy 'ctype)
           (copy-constraints (ctype constraint)))
     (setf (slot-value copy 'other-type)
@@ -447,7 +464,8 @@
     (setf (gethash type *copy-constraints-hash*) copy)
     (setf (slot-value copy 'arg-type)
           (copy-constraints (arg-type type)))
-    (expand-optional-arg-type copy)))
+    (setf (gethash type *copy-constraints-hash*) 
+          (expand-optional-arg-type copy))))
 
 (defmethod copy-constraints ((type any-type))
   (let* ((copy (make-instance 'any-type)))
@@ -460,6 +478,7 @@
 
 
 (defun copy-unify-constraints (type unify-type &key cast)
+  (format t "~&c-u-c ~s ~s~%" type unify-type)
   (unless unify-type
     (assert (typep type 'optional-arg-type))
     (return-from copy-unify-constraints nil))
@@ -558,6 +577,7 @@
     (setf (argument-types c)
           (loop for binding in (bindings form)
                 for declared-type = (declared-type binding)
+                ;; fixme: is this still right/useful?
                 if (typep declared-type '(cons (eql T) (cons unsigned-byte)))
                   collect (setf (value-type binding)
                                 (value-type (elt (bindings form)
@@ -881,7 +901,7 @@
                   (remhash constraint (constraints (ctype constraint)))))
                ((or (zerop (hash-table-count (types (ctype constraint))))
                     (zerop (hash-table-count (types (other-type constraint)))))
-                (error "can't resolve =# constraint?")))
+                (error "can't resolve =s constraint?")))
              (format t "  updated =s constraint: ~s -> ~s~%"
                      (debug-type-names (other-type constraint))
                      (debug-type-names (ctype constraint)))))
@@ -930,6 +950,77 @@
     ;; collapse constraint if possible
     (handle-fixed-constraint)))
 
+;; fixme: see if this can be simplified, and/or factor out common
+;; parts with other constraints?
+(defmethod update-constraint ((constraint scalar-type-of-constraint))
+  ;; not allowing any-type for other-type for now, since constraint
+  ;; only makes sense for some types, so it should have been
+  ;; restricted to those types in definition
+  (when (typep (other-type constraint) 'any-type)
+    (error "don't know how to handle scalar-type-of-constraint from any-type?"))
+  (format t "s constraint: ~s -> ~s~%"
+          (debug-type-names (other-type constraint))
+          (debug-type-names (ctype constraint)))
+  (labels ((scalar (type)
+             (aref (scalar/vector-set type) 1))
+           (handle-fixed-constraint ()
+             ;; can't unify types since they might not have same
+             ;; base type. once ctype is down to a single type we can
+             ;; remove the constraint since any types remaining in
+             ;; OTHER-TYPE should satisfy the constraint, and
+             ;; something else should complain if it ends up empty
+             (cond
+               ((= 1 (hash-table-count (types (ctype constraint))))
+                (when (typep (other-type constraint) 'constrained-type)
+                  (remhash constraint (constraints (other-type constraint))))
+                (when (or (typep (ctype constraint) 'any-type)
+                          (typep (ctype constraint) 'constrained-type))
+                  (remhash constraint (constraints (ctype constraint)))))
+               ((or (zerop (hash-table-count (types (ctype constraint))))
+                    (zerop (hash-table-count (types (other-type constraint)))))
+                (error "can't resolve s constraint?")))
+             (format t "  updated s constraint: ~s -> ~s~%"
+                     (debug-type-names (other-type constraint))
+                     (debug-type-names (ctype constraint)))))
+    (cond
+      ((typep (other-type constraint) 'concrete-type)
+       ;; expand any-type when other-type is concrete
+       (error "not done yet..."))
+      ;; expand any-type when other-type is constrained
+      ((typep (ctype constraint) 'any-type)
+       (change-class (ctype constraint) 'constrained-type)
+       (maphash (lambda (k v)
+                  (when v
+                    ;; add scalar version
+                    (setf (gethash (scalar k) (types (ctype constraint)))
+                          t)))
+                (types (other-type constraint))))
+      (t
+       ;; otherwise, loop through both types, removing any that don't match
+       (let ((valid-types (make-hash-table))
+             (ctype-types (types (ctype constraint)))
+             (other-type-types (types (other-type constraint)))
+             (ctype-removed 0)
+             (other-type-removed 0))
+         (maphash (lambda (k v)
+                    (if (and v (gethash (scalar k) ctype-types))
+                        (setf (gethash (scalar k) valid-types) t)
+                        (progn
+                          (remhash k other-type-types)
+                          (incf other-type-removed))))
+                  other-type-types)
+         (maphash (lambda (k v)
+                    (unless (and v (gethash k valid-types))
+                      (remhash k ctype-types)
+                      (incf ctype-removed)))
+                  ctype-types)
+         (when (plusp ctype-removed)
+           (flag-modified-type (ctype constraint)))
+         (when (plusp other-type-removed)
+           (flag-modified-type (other-type constraint))))))
+    ;; collapse constraint if possible
+    (handle-fixed-constraint)))
+
 
 (defmethod update-constraint ((constraint same-size-different-base-type-constraint))
   ;; not allowing any-type for other-type for now, since constraint
@@ -941,8 +1032,7 @@
           (debug-type-names (other-type constraint))
           (debug-type-names (base-type constraint))
           (debug-type-names (ctype constraint)))
-  (labels ((make-concrete (type))
-           (handle-fixed-constraint ()
+  (labels ((handle-fixed-constraint ()
              ;; can't unify types since they don't generally have same
              ;; base type. once ctype is down to a single type we can
              ;; remove the constraint since any types remaining in
@@ -1103,6 +1193,13 @@
                      (function-type function))))
     ;;
     ))
+#++
+(multiple-value-list
+ (compile-block '((defun h (a b)
+                    (declare (:float b))
+                    (glsl::vec3 a b)))
+                   'h
+                   :vertex))
 
 #++
 (multiple-value-list
@@ -1166,9 +1263,26 @@
 #++
 (multiple-value-list
  (compile-block '((defun h (a b)
-                    (let ((c (+ a 2))
-                          (d (+ b 2)))
-                      (declare (:vec2 c) (:int d))
-                      (+ c d))))
+                    (let* ((c (+ a 2))
+                           (d (+ c b)))
+                      (declare (:int c) (:vec2 d))
+                      (+ a b c d))))
+                'h
+                :vertex))
+
+#++
+(multiple-value-list
+ (compile-block '((defun h (a b)
+                    (declare (:ivec3 a))
+                    (length a)))
+                'h
+                :vertex))
+
+
+
+#++
+(multiple-value-list
+ (compile-block '((defun h (a b)
+                    (if a (+ b 2) (- b 3))))
                 'h
                 :vertex))
