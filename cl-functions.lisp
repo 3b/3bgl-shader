@@ -843,7 +843,7 @@
 
       (add/s
        (glsl::step (edge x) `((=s 1) (or ,@gen-type ,@gen-dtype)) '(= 1))
-       ((glsl::smooth-step "smoothstep") (edge0 edge1 x) `((=s 2)
+       ((glsl::smooth-step "smoothStep") (edge0 edge1 x) `((=s 2)
                                                            (=s 0)
                                                            (or ,@gen-type
                                                                ,@gen-dtype))
