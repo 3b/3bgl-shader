@@ -268,7 +268,8 @@
 
     (print forms)
     (let ((*print-as-main* (when print-as-main
-                             (get-function-binding print-as-main))))
+                             (get-function-binding print-as-main)))
+          (inferred-types))
       (multiple-value-bind (shaken shaken-types)
           (tree-shaker tree-shaker-root)
         (values
@@ -277,25 +278,30 @@
          shaken
          shaken-types
          (infer-modified-functions *new-function-definitions*)
-#++         (with-output-to-string (*standard-output*)
-           (format t "#version 330~%")
+         (setf inferred-types
+               (finalize-inference (get-function-binding tree-shaker-root)))
+         (with-output-to-string (*standard-output*)
+           (format t "#version 450~%")
            (pprint-glsl forms)
            (loop with dumped = (make-hash-table)
-              for type in shaken-types
-              for stage-binding = (stage-binding type)
-              for interface-block = (when stage-binding
-                                      (interface-block stage-binding))
-              #+do   (format *debug-io* "add type? ~s (~s) ib ~s~%"
-                             type (name type) interface-block)
-              unless (or (internal type) (gethash interface-block dumped))
-              do (pprint-glsl type)
-              (when interface-block
-                (setf (gethash interface-block dumped) t)))
+                 for type in shaken-types
+                 for stage-binding = (stage-binding type)
+                 for interface-block = (when stage-binding
+                                         (interface-block stage-binding))
+                 #+do   (format *debug-io* "add type? ~s (~s) ib ~s~%"
+                                type (name type) interface-block)
+                 unless (or (internal type) (gethash interface-block dumped))
+                   do (pprint-glsl type)
+                      (when interface-block
+                        (setf (gethash interface-block dumped) t)))
            (loop for name in shaken
-              for def = (gethash name (function-bindings *environment*))
-              when (typep def 'global-function)
-                do (pprint-glsl def)
-              ))
+                 for def = (gethash name (function-bindings *environment*))
+                 for overloads = (gethash def inferred-types)
+                 when (typep def 'global-function)
+                   do (assert overloads)
+                      (loop for *binding-types* in overloads
+                            do (pprint-glsl def))
+                 ))
          )))))
 
 
@@ -322,7 +328,7 @@
  (compile-block '((defun foo (a b)
                     (+ a (* 3 (/ b)) 2))
                   (defparameter *foo-bar* (+ 123 4))
-                  (defconstant +hoge-piyo+ 45.6)
+                  (defconstant +hoge-piyo+ 45)
                   (defmacro bar (c d)
                     `(- ,c ,(+ d 10)))
                   (defun not-called (g)
@@ -332,35 +338,36 @@
                   (defun complicated (a &optional (b 1.0) &key (c 2 cp)
                                                             (d 3))
                     (if cp (+ a b c) (+ a b)))
-                  (defun main (e)
-                    (declare (:int e))
+                  (defun main ()
                     "do baz stuff"
                     #++(flet ((a (b)
                                 (+ 1 b)))
                          (a 2))
                     (let ((e)
-                          (f 1.0))
+                          (f 1))
                       (when e
                         (foo 1 2)
                         (bar 2 3)
                         )
                       (if e
                           (calls-foo (foo e 1) (bar f 9))
-                          (complicated (if f (ash f 1) (ash e -1)) (glsl::<< 4 +hoge-piyo+)
+                          (complicated (if f (glsl::<< f 1) (glsl::>> e 1)) (glsl::<< 4 +hoge-piyo+)
                                        :d 4)))))
                 'main
                 :vertex))
 
 #++
 (multiple-value-list
- (compile-block '((defun a (aa) (+ aa (b aa) (c) (d)))
-                  (defun a2 (a) (+ (b a) (c a)))
-                  (defun b (bb) (+ (e) (f)))
+ (compile-block '((defun a () (let ((aa 1.0))
+
+                                (+ aa (b aa) (b 1) (c) (d))))
+                  (defun a2 (a) (+ (b a) (c)))
+                  (defun b (bb) (+ (e) (f) bb))
                   (defun c () (b 2))
                   (defun d () (f))
                   (defun e () (d))
                   (defun f () (+ (g) (h)))
                   (defun g () 1)
                   (defun h () 2))
-                   'a
-                   :vertex))
+                'a
+                :vertex))

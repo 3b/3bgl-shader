@@ -201,7 +201,7 @@
           ;; from other functions
           (format t "old = ~s (in ~s)~%" old env)
           (flet ((add-or-update (&rest args)
-                   (typecase old
+                   (etypecase old
                      (unknown-function-binding
                       (format t "update unknown function ~s~%" (name old))
                       (apply #'change-class old function-type

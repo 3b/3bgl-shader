@@ -115,6 +115,7 @@
   ;; doesn't actually constrain things, just a place to track changes
   ;; to argument bindings' types
   ((name :accessor name :initarg :name :initform nil)
+   (function :accessor global-function :initarg :function)
    (argument-types :accessor argument-types :initform nil)
    (return-type :initarg :return-type :accessor return-type)))
 
@@ -365,6 +366,22 @@
     copy))
 
 
+(defmethod copy-constraints ((constraint global-function-constraint))
+  (let ((copy (make-instance 'global-function-constraint
+                             :name (name constraint)
+                             :function (global-function constraint))))
+    ;; we need to update cache before copying constrained types because they
+    ;; link back to constraint
+    (setf (gethash constraint *copy-constraints-hash*)
+          copy)
+    (setf (slot-value copy 'argument-types)
+          (mapcar 'copy-constraints (argument-types constraint)))
+    (setf (slot-value copy 'return-type)
+          (copy-constraints (return-type constraint)))
+    (push copy *inference-worklist*)
+    copy)
+  )
+
 (defmethod copy-constraints ((constraint same-type-or-scalar-constraint))
   (let ((copy (make-instance 'same-type-or-scalar-constraint)))
     ;; we need to update cache before copying constrained types because they
@@ -390,6 +407,21 @@
           (copy-constraints (other-type constraint)))
     (push copy *inference-worklist*)
     copy))
+
+(defmethod copy-constraints ((constraint cast-constraint))
+  (let ((copy (make-instance 'cast-constraint
+                             :cast-type (cast-type constraint))))
+    ;; we need to update cache before copying constrained types because they
+    ;; link back to constraint
+    (setf (gethash constraint *copy-constraints-hash*)
+          copy)
+    (setf (slot-value copy 'in-type)
+          (copy-constraints (in-type constraint)))
+    (setf (slot-value copy 'out-type)
+          (copy-constraints (out-type constraint)))
+    (push copy *inference-worklist*)
+    copy))
+
 
 (defmethod copy-constraints ((constraint same-size-different-base-type-constraint))
   (let ((copy (make-instance 'same-size-different-base-type-constraint)))
@@ -504,7 +536,7 @@
              (name called)))
     (unless (eq t (type-inference-state called))
       (format t "got call to function ~s with incomplete or failed type inference ~s?" (name called) (type-inference-state called))
-      (throw :incomplete-dependent called))
+      #++(throw :incomplete-dependent called))
     ;; make local copies of any types/constraints affected by function
     ;; args, and unify with actual arg types
     ;; (unify will add modified constraints to work list)
@@ -539,8 +571,17 @@
 
 (defmethod walk ((form variable-read) (walker infer-build-constraints))
   (format t "infer ~s =~%" form)
-  (print (value-type (binding form)))
-)
+  (walk (binding form) walker))
+
+(defmethod walk ((form local-variable) (walker infer-build-constraints))
+  (format t "infer ~s =~%" form)
+  (print (value-type form)))
+
+(defmethod walk ((form constant-binding) (walker infer-build-constraints))
+  (format t "infer ~s =~%" form)
+  (if (member (value-type form) '(t nil))
+      (walk (initial-value-form form) walker)
+      (value-type form)))
 
 (defmethod walk ((form function-argument) (walker infer-build-constraints))
   (format t "infer ~s =~%" form)
@@ -558,21 +599,34 @@
 (defmethod walk ((form binding-scope) (walker infer-build-constraints))
   (format t "infer ~s  (~s)=~%" form (body form))
 ;  (break "foo " form)
-  (loop for binding in (bindings form)
-        for declared-type = (declared-type binding)
-        if (eq declared-type t)
-          do (setf (value-type binding)
-                   (walk (initial-value-form binding) walker))
-        else do (setf (value-type binding)
-                      (unify declared-type
-                             (walk (initial-value-form binding) walker))))
-  (loop for a in (body form)
-        for ret = (walk a walker)
-        finally (return ret)))
+  (let ((c (make-instance 'global-function-constraint
+                          :name 'let
+                          :function form)))
+    (setf (argument-types c)
+          (loop for binding in (bindings form)
+                for declared-type = (if (eq t (declared-type binding))
+                                        (make-instance 'any-type)
+                                        (set-type (list (declared-type binding))))
+                for initial-value-type = (walk (initial-value-form binding) walker)
+                when initial-value-type
+                  do (let ((cast (make-instance 'cast-constraint
+                                                :cast-type :implicit
+                                                :in initial-value-type
+                                                :out declared-type)))
+                       (add-constraint declared-type cast)
+                       (add-constraint initial-value-type cast))
+                do (add-constraint declared-type c)
+                collect (setf (value-type binding) declared-type)))
+    (setf (return-type c)
+          (loop for a in (body form)
+                for ret = (walk a walker)
+                finally (return ret)))))
 
 (defmethod walk ((form global-function) (walker infer-build-constraints))
   (format t "infer ~s  (~s)=~%" form (body form))
-  (let ((c (make-instance 'global-function-constraint)))
+  (let ((c (make-instance 'global-function-constraint
+                          :name (name form)
+                          :function form)))
     (setf (return-type c) (set-type t :constraint c))
     (setf (argument-types c)
           (loop for binding in (bindings form)
@@ -776,7 +830,9 @@
     ;; (possibly loop through arg types again and remove NIL values?
     (format t "updated constraint, removed ~s ftypes, ~s arg types~%" removed removed2)
     (print-bindings/ret (name constraint) (argument-types constraint) (return-type constraint))
-    (assert (or (plusp removed) (plusp removed2)))
+    #++(assert (or (plusp removed) (plusp removed2)))
+    (unless (or (plusp removed) (plusp removed2))
+      (warn "couldn't narrow constraint?"))
     )
 
 )
@@ -1101,8 +1157,16 @@
     (handle-fixed-constraint)))
 
 (defmethod update-constraint ((constraint global-function-constraint))
+;  (break "foo" constraint)
+  (loop for arg in (argument-types constraint)
+        for binding in (bindings (global-function constraint))
+        do (setf (value-type binding) arg))
+  (when (typep (global-function constraint) 'global-function)
+    (setf (value-type (global-function constraint))
+          (return-type constraint)))
   (format t "updated global-function-constraint ~s:~%" (name constraint))
   (print-bindings/ret (name constraint) (argument-types constraint) (return-type constraint)))
+
 
 (defun infer (function)
   (let* ((*inference-worklist* nil)
@@ -1119,11 +1183,12 @@
     (loop for b in (bindings function)
           for type in (argument-types gfc)
           do (setf (value-type b) type))
+    ;; store return type of function
     (setf (value-type function) (return-type gfc))
     (print-bindings/ret (name function) (bindings function) (return-type gfc))
-    (return-type gfc)
-)
-)
+    (return-type gfc)))
+
+
 (defun infer-modified-functions (functions)
   ;; find dependents of modified functions, and add to a list in
   ;; dependency order
@@ -1247,7 +1312,7 @@
 (multiple-value-list
  (compile-block '((defun h (a b c)
                     (declare (:vec2 c) (:float a b))
-                    (smooth-step a b c)))
+                    (glsl::smooth-step a b c)))
                    'h
                    :vertex))
 

@@ -112,8 +112,17 @@
   (string type)
   #++(error "don't know how to compile type ~s" type))
 
+(defmethod translate-type ((type any-type))
+  ;; fixme: just for debugging, should be an error once things are working properly
+  "T")
+
 (defmethod translate-type ((type concrete-type))
   (glsl-name type))
+
+(defmethod translate-type ((type constrained-type))
+  (let ((types))
+    (maphash (lambda (k v) (when v (push k types))) (types type))
+    (mapcar #'glsl-name types)))
 
 (defmethod translate-type ((type generic-type))
   (let ((e (get-equiv-type type)))
@@ -266,7 +275,8 @@
   (let ((*in-expression* t))
     (format t "~{~(~a ~)~}~@[~a ~]~a~@[ = ~a~]"
             (qualifiers o)
-            (translate-type (value-type o))
+            (translate-type (or (gethash o *binding-types*)
+                                (value-type o)))
             (translate-name o)
             (initial-value-form o))))
 
@@ -275,7 +285,8 @@
   (let ((*in-expression* t))
     (format t "~{~a ~}~@[~a ~]~a"
             (qualifiers o)
-            (translate-type (get-equiv-type (value-type o)))
+            (translate-type (or (gethash o *binding-types*
+                                         ) (value-type o)))
             (translate-name o))))
 
 (defprint slot-access (o)
@@ -331,7 +342,8 @@
 
   ;; print function def
   (format t "~a ~a ~<(~;~@{~:_~a~#[~:;, ~]~}~;)~:> {~%"
-          (or (translate-type (get-equiv-type (return-type o))) "void")
+          (or (translate-type (or (gethash o *binding-types*)
+                                  (value-type o))) "void")
           (translate-name o)
           (bindings o))
   (call-next-method)
@@ -342,7 +354,13 @@
         (args (arguments o)))
     (typecase f
       (internal-function
-       (funcall (gethash (name f) *internal-function-printers*)
+       (funcall (gethash (name f) *internal-function-printers*
+                         (lambda (s args)
+                           (let ((*in-expression* t))
+                             (format s "~a~<(~;~@{~:_~a~#[~:;, ~]~}~;)~:>"
+                                     (or (translate-name f) (name f))
+                                     args))
+                           ))
                 *standard-output* args))
       (t
        #++(with-standard-io-syntax
