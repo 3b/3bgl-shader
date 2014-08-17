@@ -389,8 +389,9 @@
   ;;  symbols starting with #\. are treated as struct slot accessors/swizzle
   ;;  aref forms are converted specially
   (let ((binding (3bgl-shaders::get-function-binding car))
+        (macro (3bgl-shaders::get-macro-function car))
         (cmacro (3bgl-shaders::get-compiler-macro-function car)))
-    #++(format t "~&looking up binding ~s got ~s~%" car binding)
+    #++(format t "~&looking up binding ~s got ~s / ~s~%" car binding cmacro)
     (flet ((add-dependencies (called)
              #++
              (when *current-function*
@@ -409,6 +410,10 @@
                 (if (eq expanded form)
                     nil
                     (3bgl-shaders::walk expanded walker)))))
+        (macro
+         (3bgl-shaders::walk (funcall macro (list* car cdr)
+                                      3bgl-shaders::*environment*)
+                             walker))
         ((typep binding '3bgl-shaders::function-binding-function)
          (add-dependencies binding)
          (make-instance '3bgl-shaders::function-call
