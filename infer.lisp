@@ -681,6 +681,19 @@
   (format t "infer ~s =~%" form)
   (walk (binding form) walker))
 
+(defmethod walk ((form variable-write) (walker infer-build-constraints))
+  (format t "infer ~s =~%" form)
+  (let* ((binding (walk (binding form) walker))
+         (value (walk (value form) walker))
+         ;; todo: avoid creating cast constraint if we know both types?
+         (cast (make-instance 'cast-constraint
+                              :out value
+                              :in binding)))
+    (add-constraint binding cast)
+    (add-constraint value cast)
+    (flag-modified-constraint cast)
+    value))
+
 (defmethod walk ((form local-variable) (walker infer-build-constraints))
   (format t "infer ~s =~%" form)
   (print (value-type form)))
@@ -1379,7 +1392,8 @@
     (setf *inference-worklist* (nreverse *inference-worklist*))
     (loop for constraint = (pop *inference-worklist*)
           while constraint
-          repeat 1000
+          for i from 1
+          when (zerop (mod i 1000)) do (break "~a loops in inference?" i)
           do (update-constraint constraint)
              ;; clear flag after updating so it doesn't get put back
              ;; when constrained types change

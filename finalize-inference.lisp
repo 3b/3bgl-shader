@@ -154,11 +154,22 @@
                                                 (gethash (binding form)
                                                          *binding-types* :???)))
      (gethash (binding form) *binding-types* :???))
-    (interface-binding (walk (binding form) walker))))
+    (interface-binding (walk (binding form) walker))
+    (constant-binding (walk (binding form) walker))))
 
 (defmethod walk ((form variable-write) (walker finalize))
   (format t "variable-write ~s~%" form)
-  (call-next-method))
+  (walk (value form) walker)
+  #++(let* ((binding (walk (binding form) walker))
+         (value (walk (value form) walker))
+         ;; todo: avoid creating cast constraint if we know both types?
+         (cast (make-instance 'cast-constraint
+                              :out value
+                              :in binding)))
+    (add-constraint binding cast)
+    (add-constraint value cast)
+    (flag-modified-constraint cast)
+    value))
 
 (defmethod walk ((form binding) (walker finalize))
   (format t "binding ~s~%" form)
@@ -166,7 +177,9 @@
 
 (defmethod walk ((form constant-binding) (walker finalize))
   (format t "constant-binding ~s~%" form)
-  (call-next-method))
+  (if (member (value-type form) '(t nil))
+      (walk (initial-value-form form) walker)
+      (value-type form)))
 
 
 (defmethod walk ((form interface-binding) (walker finalize))
@@ -178,7 +191,10 @@
   (prin1
    ;; check for a direct match for function signature
    (loop with args = (mapcar 'name arg-types)
-         for ftype in (function-types c)
+         with ftypes = (if (typep c 'variable-arity-function-application)
+                           (aref (function-types-by-arity c) (length args))
+                           (function-types c))
+         for ftype in ftypes
          when (equalp (car ftype) args)
            return (get-type-binding (second ftype)))))
 

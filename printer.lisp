@@ -279,7 +279,8 @@
   (let ((*in-expression* t))
     (format t "~{~(~a ~)~}~@[~a ~]~a~@[ = ~a~]"
             (qualifiers o)
-            (translate-type (or (gethash o *binding-types*)
+            (translate-type (or  (and (boundp '*binding-types*)
+                                     (gethash o *binding-types*))
                                 (value-type o)))
             (translate-name o)
             (initial-value-form o))))
