@@ -59,11 +59,17 @@
                         (setf (aref types i)
                               (or (get-type-binding arg-type)
                                   (error "unknown type ~s?" arg-type)))))
-                  and collect (make-instance 'binding
-                                             :name variable-name
-                                             :value-type (or (aref types i)
-                                                             arg-type)
-                                             :allow-casts cast)
+                  and collect (make-instance
+                               'binding
+                               :name variable-name
+                               :value-type (if optional
+                                               (make-instance
+                                                'optional-arg-type
+                                                :arg-type (or (aref types i)
+                                                              arg-type))
+                                               (or (aref types i)
+                                                   arg-type))
+                               :allow-casts cast)
                   and do (incf i)))
     (loop for binding in (bindings fn)
           for arg-type = (value-type binding)
@@ -1293,7 +1299,7 @@
          :vec4 (:sampler-2D-Rect-Shadow :vec2 :float (:ivec2 4)))))
 
       ;; 8.9.4 compatibility profile
-      #++
+
       (add/s
        (glsl::texture-1d (sampler coord &optional bias)
                          '(:sampler-1d :float :float) :vec4)

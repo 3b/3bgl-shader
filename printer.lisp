@@ -62,6 +62,10 @@
   (format nil "~a.~a" (binding x)
           (translate-slot-name (field x) (binding x))))
 
+(defmethod translate-name ((x swizzle-access))
+  (format nil "~a.~a" (binding x)
+          (translate-slot-name (field x) (binding x))))
+
 (defmethod translate-name ((x array-access))
   (format nil "~a[~a]" (binding x)
           (index x)))
@@ -285,11 +289,15 @@
   (let ((*in-expression* t))
     (format t "~{~a ~}~@[~a ~]~a"
             (qualifiers o)
-            (translate-type (or (gethash o *binding-types*
-                                         ) (value-type o)))
+            (translate-type (or (and (boundp '*binding-types*)
+                                     (gethash o *binding-types*))
+                                (value-type o)))
             (translate-name o))))
 
 (defprint slot-access (o)
+  (format t "~a" (translate-name o)))
+
+(defprint swizzle-access (o)
   (format t "~a" (translate-name o)))
 
 (defprint array-access (o)

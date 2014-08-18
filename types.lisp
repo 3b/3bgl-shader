@@ -94,17 +94,26 @@
                                                 (cdr form)
                                               ,@body)))))))
 
-(%glsl-macro defstruct (name args &body slots)
-  (declare (ignore args))
-  `(setf (gethash ',name (types *environment*))
-         (make-instance 'struct-type
-                        :name ',name
-                        :bindings
-                        ,(loop for (sname type . args) in slots
-                              ;; should these be some 'slot-binding' type?
-                              collect `(make-instance 'binding
-                                                      :name ',sname
-                                                      :value-type ',type)))))
+(%glsl-macro defstruct (name-and-options &body slots)
+  ;; fixme: compile-time side effects of macros is a bit ugly
+  ;; not completely sure it matters though for this sort of cross-compiler?
+  ;; eval-when is sort of messy, not sure there will be much code that can
+  ;; meaningfully run on host and target?
+  (format t "expand defstruct ~s  ~s~%" name-and-options slots)
+  (destructuring-bind (name &rest ignore)
+      (alexandria:ensure-list name-and-options)
+    (declare (ignore ignore))
+    (setf (gethash name (types *environment*))
+          (make-instance 'struct-type
+                         :name name
+                         :bindings
+                         (print
+                          (loop for (sname type . args) in slots
+                                ;; should these be some 'slot-binding' type?
+                                collect (make-instance 'binding
+                                                       :name sname
+                                                       :value-type (get-type-binding type)))))))
+  nil)
 
 (defclass interface-stage-binding (place)
   ((binding :accessor binding :initarg :binding)

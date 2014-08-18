@@ -430,16 +430,39 @@
                         :binding (3bgl-shaders::walk (first cdr) walker)
                         :index (3bgl-shaders::walk (second cdr) walker)))
         ;; not sure about syntax for slot/swizzle, for now
-        ;; trying magic .slot accessors
-        ;; and (@ struct slot) style...
-        ((eq car '@)
+        ;; using (@ struct slot) or (slot-value struct 'slot) for slot access
+        ;; and (.xyz vec) for swizzle
+        ((or (eq car '@)
+             (and (eq car 'slot-value)
+                  (eq (caadr cdr) 'quote)))
          (make-instance '3bgl-shaders::slot-access
                         :binding (3bgl-shaders::walk (first cdr) walker)
-                        :field (second cdr)))
-        ((and (symbolp car) (char= (char (string car) 0) #\.))
-         (make-instance '3bgl-shaders::slot-access
+                        :field (if (consp (second cdr))
+                                   (second (second cdr))
+                                   (second cdr))))
+        ((and (symbolp car)
+              (char= (char (symbol-name car) 0) #\.)
+              ;; fixme: do this more efficiently
+              ;; swizzle should look like .AAAA where AAAA is up to 4
+              ;; characters from either XYZW, RGBA, or STPQ
+              ;; (repeats allowed)
+              (= 1 (count #\. (symbol-name car) :test #'char=))
+              (<= 2 (length (symbol-name car)) 5)
+              (or (every (lambda (a) (position a ".XYZW" :test #'char=))
+                          (symbol-name car))
+                  (every (lambda (a) (position a ".RGBA" :test #'char=))
+                         (symbol-name car))
+                  (every (lambda (a) (position a ".STPQ" :test #'char=))
+                         (symbol-name car))))
+         (format t "swizzle: ~s / ~s~%  " car cdr)
+         (make-instance '3bgl-shaders::swizzle-access
                         :binding (3bgl-shaders::walk (first cdr) walker)
-                        :field (subseq (string car) 1)))
+                        :field (subseq (string car) 1)
+                        :min-size (loop for i from 1 below (length (string car))
+                                        for c = (aref (string car) i)
+                                        maximize (or (position c "RGBA")
+                                                     (position c "XYZW")
+                                                     (position c "STPQ")))))
         ((symbolp car)
          (format t "unknown function ~s?~%" car)
          (make-instance '3bgl-shaders::function-call
@@ -458,13 +481,23 @@
   ;; (would be nice to expand constants inline, but we might not
   ;;  know the actual value yet, and the form used to initialize the constant
   ;;  might be expensive to evaluate repeatedly)
-  (let ((binding (if (symbolp form)
-                     (3bgl-shaders::get-variable-binding form)
-                     form)))
-    (if (typep binding '3bgl-shaders::binding)
-        (make-instance '3bgl-shaders::variable-read
-                       :binding binding)
-        form)))
+  (when form
+    (let ((binding (if (symbolp form)
+                       (3bgl-shaders::get-variable-binding form)
+                       form)))
+      (typecase binding
+        (3bgl-shaders::binding
+         (make-instance '3bgl-shaders::variable-read
+                        :binding binding))
+        (number
+         form)
+
+        ((or 3bgl-shaders::variable-read 3bgl-shaders::variable-write
+             3bgl-shaders::binding-scope
+             3bgl-shaders::slot-access 3bgl-shaders::swizzle-access
+             3bgl-shaders::function-call 3bgl-shaders::global-function)
+         form)
+        (t (break "unknown binding " binding))))))
 
 
 
@@ -518,7 +551,7 @@
                                         :glsl-name ',glsl-name
                                         :value-type ,type))))))
  (let ((3bgl-shaders::*environment* *glsl-base-environment*))
-   
+
    ))
 
 ;; fixme: this should probably use a weak hash table

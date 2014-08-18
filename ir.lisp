@@ -282,10 +282,17 @@
 ;; smarter once we start type inference?
 (defclass slot-access (place)
   ((binding :accessor binding :initarg :binding)
-   (field :accessor field :initarg :field)))
+   (field :accessor field :initarg :field)
+   (value-type :accessor value-type :initarg :value-type)))
+(defclass swizzle-access (place)
+  ((binding :accessor binding :initarg :binding)
+   (field :accessor field :initarg :field)
+   (min-size :accessor min-size :initarg :min-size)
+   (value-type :accessor value-type :initarg :value-type)))
 (defclass array-access (place)
   ((binding :accessor binding :initarg :binding)
-   (index :accessor index :initarg :index)))
+   (index :accessor index :initarg :index)
+   (value-type :accessor value-type :initarg :value-type)))
 
 
 

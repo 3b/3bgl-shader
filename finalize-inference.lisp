@@ -27,10 +27,13 @@
                         (gethash (in-type k) (types type)))
                    (return-from flatten-cast-type
                      (in-type k))
-                   (let ((in (mapcar 'car
-                                     (remove nil (alexandria:hash-table-alist
-                                                  (types (in-type k)))
-                                             :key 'cdr))))
+                   (let* ((in-types (if (typep (in-type k) 'concrete-type)
+                                        (list (cons (in-type k) t))
+                                        (remove nil
+                                                (alexandria:hash-table-alist
+                                                 (types (in-type k)))
+                                                :key 'cdr)))
+                          (in (mapcar 'car in-types)))
                      (setf in (sort in #'<
                                     :key (lambda (a)
                                            (length (implicit-casts-from a)))))
@@ -67,18 +70,91 @@
 
 (defmethod walk ((form slot-access) (walker finalize))
   (format t "slot-access ~s~%" form)
-  (call-next-method))
+  (let ((struct-type (walk (binding form) walker)))
+    ;; fixme: should structs have a hash for O(1) access?
+    ;; or should something earlier have already looked up the specific slot?
+    (loop for binding in (bindings struct-type)
+          do (format t "field = ~s, binding = ~s?~%" (field form)
+                     (name binding))
+          when (or (eql (name binding) (field form))
+                   ;; todo: decide if (.foo struct) accessor should be
+                   ;; kept?  if so, should it intern symbols instead
+                   ;; of doing string compare?
+                   (equal (string (name binding)) (field form)))
+            do (return-from walk (value-type binding)))
+   (break "finalize/slot-access" (list form struct-type) )
+))
+
+(defun flatten-constraints (return-type nil-bindings bindings arg-types)
+  (let* ((*copy-constraints-hash* (make-hash-table))
+         (*inference-worklist* ())
+         (ret (copy-constraints return-type)))
+    ;; fixme: this is duplicated from function-call/infer-build-constraints
+    ;; walk method, refactor it...
+
+    ;; store NIL in the cache for any unused args, so we don't try
+    ;; to copy them while walking other args
+    (loop for binding in nil-bindings
+          do (setf (gethash (value-type binding) *copy-constraints-hash*)
+                   nil)
+             (when (typep (value-type binding) 'optional-arg-type)
+               (setf (gethash (arg-type (value-type binding))
+                              *copy-constraints-hash*)
+                     nil)))
+    ;; walk remaining args and copy as usual
+    (loop with args = arg-types
+          for arg = (pop args)
+          for binding in bindings
+          collect (copy-unify-constraints
+                   (value-type binding)
+                   arg
+                   :cast (and arg (allow-casts binding))))
+    ;; update the constraints
+    (loop for constraint = (pop *inference-worklist*)
+          while constraint
+          do (update-constraint constraint)
+             (setf (modified constraint) nil))
+    (or (flatten-cast-type ret)
+        (break "couldn't flatten constraint?"))))
+
+(defmethod walk ((form swizzle-access) (walker finalize))
+  (let ((binding-type (walk (binding form) walker)))
+    (flatten-constraints (value-type form) nil (list (binding (binding form))) (list binding-type) )
+    #++(loop for binding in (bindings struct-type)
+          do (format t "field = ~s, binding = ~s?~%" (field form)
+                     (name binding))
+          when (or (eql (name binding) (field form))
+                   ;; todo: decide if (.foo struct) accessor should be
+                   ;; kept?  if so, should it intern symbols instead
+                   ;; of doing string compare?
+                   (equal (string (name binding)) (field form)))
+            do (return-from walk (value-type binding)))
+
+))
 
 (defmethod walk ((form integer) (walker finalize))
   (if (> form (expt 2 31))
       (get-type-binding :uint)
       (get-type-binding :int)))
 
+(defmethod walk ((form float) (walker finalize))
+  (get-type-binding :float))
+
+(defmethod walk ((form double-float) (walker finalize))
+  (get-type-binding :double))
+
+
+(defmethod walk ((form interface-binding) (walker finalize))
+  (value-type form))
+
 (defmethod walk ((form variable-read) (walker finalize))
-  (format t "variable-read ~s -> ~s~%" form (debug-type-names
-                                             (gethash (binding form)
-                                                      *binding-types* :???)))
-  (gethash (binding form) *binding-types* :???))
+  (etypecase (binding form)
+    ((or local-variable function-argument)
+     (format t "variable-read ~s -> ~s~%" form (debug-type-names
+                                                (gethash (binding form)
+                                                         *binding-types* :???)))
+     (gethash (binding form) *binding-types* :???))
+    (interface-binding (walk (binding form) walker))))
 
 (defmethod walk ((form variable-write) (walker finalize))
   (format t "variable-write ~s~%" form)
@@ -109,10 +185,19 @@
 
 (defmethod flatten-internal-function ((c same-size-different-base-type-constraint) arg-types)
     (break "same-size-different-base-type-constraint" c))
+
 (defmethod flatten-internal-function ((c same-type-or-scalar-constraint) arg-types)
   (break "same-type-or-scalar-constraint" c))
+
 (defmethod flatten-internal-function ((c scalar-type-of-constraint) arg-types)
-  (break "scalar-type-of-constraint" c))
+  (cond
+    ((typep (other-type c) 'concrete-type)
+     (other-type c))
+    ((typep (other-type c) 'constrained-type)
+     (let ((types))
+        (maphash (lambda (k v) (when v (push k types))) (types (other-type c)))
+       (when (= 1 (length types))
+         (car types))))))
 (defmethod flatten-internal-function ((c cast-constraint) arg-types)
     (break "cast-constraint" c))
 
@@ -121,51 +206,31 @@
   (etypecase (value-type function)
     (concrete-type
      (value-type function))
-    (constrained-type
+    ((or constrained-type any-type)
      ;; find a function application constraint or matrix constructor constraint
      ;; and try to get a type from that
      (maphash (lambda (k v)
-                (when (and v (typep k '(or function-application
-                                        same-size-different-base-type-constraint
-                                        same-type-or-scalar-constraint
-                                        scalar-type-of-constraint
-                                        cast-constraint)))
-                  (let ((type (flatten-internal-function k arg-types)))
-                    (when (typep type 'concrete-type)
-                      (return-from flatten-function-call type)))))
+                (when (and v)
+                  (typecase k
+                    ((or function-application
+                       cast-constraint)
+                     (let ((type (flatten-internal-function k arg-types)))
+                       (when (typep type 'concrete-type)
+                         (return-from flatten-function-call type))))
+                    ((or same-size-different-base-type-constraint
+                         same-type-or-scalar-constraint
+                         scalar-type-of-constraint)
+                     (when (eq (value-type function) (ctype k))
+                       (let ((type (flatten-internal-function k arg-types)))
+                         (when (typep type 'concrete-type)
+                           (return-from flatten-function-call type))))))))
               (constraints (value-type function)))
      ;; if we couldn't get a match from simple expansions,
      ;; copy the constraints and unify and see if it gets a result
-     (let* ((*copy-constraints-hash* (make-hash-table))
-            (*inference-worklist* ())
-            (ret (copy-constraints (value-type function))))
-       ;; fixme: this is duplicated from function-call/infer-build-constraints
-       ;; walk method, refactor it...
-
-       ;; store NIL in the cache for any unused args, so we don't try
-       ;; to copy them while walking other args
-       (loop for binding in (nthcdr (length arg-types) (bindings function))
-             do (setf (gethash (value-type binding) *copy-constraints-hash*)
-                      nil)
-                (when (typep (value-type binding) 'optional-arg-type)
-                  (setf (gethash (arg-type (value-type binding))
-                                 *copy-constraints-hash*)
-                        nil)))
-       ;; walk remaining args and copy as usual
-       (loop with args = arg-types
-             for arg = (pop args)
-             for binding in (bindings function)
-             collect (copy-unify-constraints
-                      (value-type binding)
-                      arg
-                      :cast (and arg (allow-casts binding))))
-       ;; update the constraints
-       (loop for constraint = (pop *inference-worklist*)
-             while constraint
-             do (update-constraint constraint)
-                (setf (modified constraint) nil))
-       (or (flatten-cast-type ret)
-           (break "couldn't flatten internal function?"))))))
+     (flatten-constraints (value-type function)
+                          (nthcdr (length arg-types) (bindings function))
+                          (bindings function)
+                          arg-types))))
 
 (defmethod flatten-function-call ((function global-function) arg-types walker)
   ;; make sure we have an entry in function hash for this function
