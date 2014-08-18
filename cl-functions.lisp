@@ -785,7 +785,7 @@
        (atanh (x) `((or ,@gen-type)) `(= 0))
 
        ;; 8.2 exponential functions
-       (pow (x y) `((or ,@gen-type) (= 0)) `(= 0))
+       (glsl::pow (x y) `((or ,@gen-type) (= 0)) `(= 0))
        (exp (x) `((or ,@gen-type)) `(= 0))
        (log (x) `((or ,@gen-type)) `(= 0))
        (glsl::exp2 (x) `((or ,@gen-type)) `(= 0))
