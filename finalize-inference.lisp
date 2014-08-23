@@ -13,9 +13,42 @@
 ;; hash of binding-object -> type, object removed at end of binding scope
 (defvar *binding-types*)
 
-(defmethod flatten-cast-type ((type concrete-type))
+(defun cache-binding (binding type)
+  (format t "~&setting type for binding ~s to ~s~%"
+          (name binding) (name type))
+  (when (eq :mat4x2 (name type))
+    (break "mat4x2?"))
+  (setf (gethash binding *binding-types*) type))
+
+(defmethod flatten-cast-type ((type concrete-type) in-type)
   type)
-(defmethod flatten-cast-type ((type constrained-type))
+(defmethod flatten-cast-type ((type null) (in-type concrete-type))
+  in-type)
+(defmethod flatten-cast-type ((type constrained-type) in-type)
+  ;; shouldn't happen?
+  (break "todo"))
+
+(defmethod flatten-cast-type ((out-type constrained-type)
+                              (in-type concrete-type))
+  ;; find a cast-constraint from in-type to type, pick lowest cast
+  ;; from in-type that is in type
+  (maphash (lambda (k v)
+             (when (and v
+                        (typep k 'cast-constraint)
+                       ; (eql in-type (in-type k))
+                        (eql out-type (out-type k)))
+               (case (cast-type k)
+                 (:explicit
+                  (break "todo"))
+                 ((:implicit t)
+                  (loop for cast in (cons in-type (implicit-casts-to in-type))
+                        when (gethash cast (types out-type))
+                          do (return-from flatten-cast-type cast))
+                  (error "broken cast?")))))
+           (constraints out-type))
+
+  )
+(defmethod flatten-cast-type ((type constrained-type) (in-type null))
   ;; if we have a cast constraint with this type as out-type, pick an
   ;; input type
   ;; fixme: optimize the mapcar/remove/alist junk
@@ -60,12 +93,13 @@
 (defmethod walk ((form binding-scope) (walker finalize))
   (format t "binding-scope ~s~%" form)
   (loop for binding in (bindings form)
-        for type = (flatten-cast-type (value-type binding))
+        for in-type = (when (initial-value-form binding)
+                        (walk (initial-value-form binding) walker))
+        for type = (flatten-cast-type (value-type binding) in-type)
         do (format t "  ~s(~s) -> ~s @ ~s~%" (name binding) binding
                    (debug-type-names type)
                    *binding-types*)
-           (setf (gethash binding *binding-types*)
-                    type))
+           (cache-binding binding type))
   (call-next-method))
 
 (defmethod walk ((form slot-access) (walker finalize))
@@ -114,7 +148,7 @@
           while constraint
           do (update-constraint constraint)
              (setf (modified constraint) nil))
-    (or (flatten-cast-type ret)
+    (or (flatten-cast-type ret nil)
         (break "couldn't flatten constraint?"))))
 
 (defmethod walk ((form swizzle-access) (walker finalize))
@@ -145,7 +179,13 @@
 
 
 (defmethod walk ((form interface-binding) (walker finalize))
-  (value-type form))
+  (let ((stage-binding (stage-binding form)))
+    (assert stage-binding)
+    (walk stage-binding walker)))
+
+(defmethod walk ((form interface-stage-binding) (walker finalize))
+  (walk (binding form) walker))
+
 
 (defmethod walk ((form variable-read) (walker finalize))
   (etypecase (binding form)
@@ -181,10 +221,6 @@
       (walk (initial-value-form form) walker)
       (value-type form)))
 
-
-(defmethod walk ((form interface-binding) (walker finalize))
-  (format t "interface-binding ~s~%" form)
-  (call-next-method))
 
 (defmethod flatten-internal-function ((c function-application) arg-types)
   (format t "fif ~s / ~s -> " (name c) (mapcar 'name arg-types))
@@ -223,13 +259,17 @@
     (concrete-type
      (value-type function))
     ((or constrained-type any-type)
+     ;; handle RETURN specially for now...
+     (when (eq (name function) 'return)
+       (return-from flatten-function-call
+         (car arg-types)))
      ;; find a function application constraint or matrix constructor constraint
      ;; and try to get a type from that
      (maphash (lambda (k v)
                 (when (and v)
                   (typecase k
                     ((or function-application
-                       cast-constraint)
+                         cast-constraint)
                      (let ((type (flatten-internal-function k arg-types)))
                        (when (typep type 'concrete-type)
                          (return-from flatten-function-call type))))
@@ -256,26 +296,27 @@
     ;; see if we already processed this type signature for this function
     (when (gethash arg-types cache)
       (format t "call to function (~s ~{~s~^ ~}), reusing ret ~s~%"
-              (name function) arg-types (gethash arg-types cache))
+              (name function) (mapcar 'name arg-types)
+              (gethash arg-types cache))
       (return-from flatten-function-call (car (gethash arg-types cache))))
     ;; otherwise bind arg types and process it normally
     (let ((*binding-types* (make-hash-table)))
       (loop with %at = arg-types
             for binding in (bindings function)
             for arg-type = (pop %at)
-            do (setf (gethash binding *binding-types*) arg-type))
+            do (cache-binding binding arg-type))
       (let ((ret))
         (loop for f in (body function)
               do (setf ret (walk f walker)))
         (setf (gethash arg-types cache) (list ret *binding-types*))
         (format t "call to function (~s ~{~s~^ ~}), new ret ~s~%"
-                (name function) arg-types ret)
+                (name function) (mapcar 'name arg-types) (name ret))
         ret))))
 
 (defmethod walk ((form function-call) (walker finalize))
   (format t "function call ~s -> ~s (~s~%" form (name (called-function form))
           (called-function form))
-
+  (assert (eq t (type-inference-state (called-function form))))
   (let* ((arg-types (loop for arg in (arguments form)
                           for type = (walk arg walker)
                           do (format t "  ~s -> ~s~%" arg (debug-type-names type))

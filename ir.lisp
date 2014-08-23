@@ -181,6 +181,13 @@
    ;; single types or not?)
    (type-inference-state :initform nil :accessor type-inference-state
                          :initarg :type-inference-state)
+   ;; T or list of names of stages in which the function is valid
+   ;; (not automatically updated when things are defined in more stages
+   ;;  that might make it valid, so possibly should try recompiling if
+   ;;  used from a different stage)
+   ;; used by type inference to decide which stages to run inference for
+   ;; fixme: is this actually used/useful?
+   (valid-stages :initform t :accessor valid-stages)
    ;; sexp lambda list (with &key, etc)
    ;; (no &rest though, since we don't have lists)
    (lambda-list :initarg :lambda-list :accessor lambda-list)

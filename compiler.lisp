@@ -42,6 +42,7 @@
 ;;;  defined and need things like dependencies added and type
 ;;;  inference by later passes)
 (defvar *new-function-definitions*)
+(defvar *function-stages*)
 
 (defwalker extract-functions (defun name lambda-list &body body+d)
   (format t "defun ~s~%" name)
@@ -50,19 +51,53 @@
     #++(add-function :toplevel-function name lambda-list
                      (with-lambda-list-vars (walker lambda-list) (@@ body))
                      declare doc)
+    (format t "declarations = ~s~%" declare)
     (let ((glsl::*current-function*
             (process-type-declarations-for-scope
              (add-function name lambda-list
                            nil
-                            :declarations declare :docs doc))))
+                           :declarations declare :docs doc)))
+          (*function-stages* t))
       (clrhash (function-dependencies glsl::*current-function*))
       (when (boundp '*new-function-definitions*)
         (pushnew glsl::*current-function* *new-function-definitions*))
       (setf (body glsl::*current-function*)
-            (with-lambda-list-vars (glsl::*current-function*) (@@ body))))
+            (with-lambda-list-vars (glsl::*current-function*) (@@ body)))
+      (format t "defun ~s stages = ~s~%" name *function-stages*)
+      ;; if *function-stages* is NIL, we got bindings that only exist
+      ;; in disjoint sets of stages...
+      (assert *function-stages*)
+      (setf (valid-stages glsl::*current-function*)
+            (alexandria:ensure-list *function-stages*)))
     #++(call-next-method)
     nil))
 
+
+(defmethod check-stages (interface-binding)
+  (let ((types
+          (loop for (nil sb) on (stage-bindings interface-binding) by #'cddr
+                collect (binding sb))))
+    (unless (every (lambda (a) (eq a (car types)))
+                   (cdr types))
+      (error "conflicting types for interface binding ~s : ~{~s~^ ~}"
+             (name interface-binding)
+             (remove-duplicates(mapcar 'name types))))))
+
+(defmethod walk :around (form (walker extract-functions))
+  (let ((r (call-next-method)))
+    (when (or (typep r 'variable-read)
+              (typep r 'variable-write))
+      (when (typep (binding r) 'interface-binding)
+        (check-stages (binding r))
+        (let ((stage-bindings (stage-bindings (binding r))))
+          (unless (getf stage-bindings t)
+            (let ((stages (loop for s in stage-bindings by #'cddr
+                                collect s)))
+              (if (eq t *function-stages*)
+                  (setf *function-stages* stages)
+                  (setf *function-stages*
+                        (intersection *function-stages* stages))))))))
+    r))
 
 ;;;; tree-shaker
 ;;;   given an entry point, return a list of all functions called by that
@@ -371,3 +406,8 @@
                   (defun h () 2))
                 'a
                 :vertex))
+
+
+#++
+(glsl::generate-stage :fragment 'skybox-shaders::fragment)
+

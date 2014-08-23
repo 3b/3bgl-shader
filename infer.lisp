@@ -1,9 +1,14 @@
 (in-package #:3bgl-shaders)
 
 (defvar *inference-worklist*)
-
+(defvar *current-function-constraint*)
+(defvar *current-function-stages*)
 (defclass any-type ()
   ((constraints :initform (make-hash-table) :accessor constraints :initarg :constraints)))
+
+
+(define-condition inference-failure () ())
+(define-condition incomplete-dependent (inference-failure) ())
 
 (defclass optional-arg-type ()
   ;; used to indicate optional args, replaced by actual type
@@ -214,6 +219,16 @@
     (error "can't unify ~s and ~s yet!" a b))
   a)
 
+(defmethod unify ((a any-type) (b any-type))
+  (unless (eq a b)
+    ;; replace B with A
+    (format t "replacing/aa ~s with ~s~%" b a)
+    (loop for c being the hash-keys of (constraints b) using (hash-value v)
+          do (format t "  ~s? in ~s~%" v c)
+          when v
+            do (replace-constraint-type a b c)))
+  a)
+
 (defmethod unify ((a constrained-type) (b constrained-type))
   ;; merge sets of types
   ;; if singleton
@@ -365,7 +380,7 @@
           (mapcar 'copy-constraints (argument-types constraint)))
     (setf (slot-value copy 'return-type)
           (copy-constraints (return-type constraint)))
-    (push copy *inference-worklist*)
+    (flag-modified-constraint copy)
     copy)
   )
 
@@ -383,7 +398,7 @@
           (copy-constraints (return-type constraint)))
     (setf (slot-value copy 'argument-types)
           (mapcar 'copy-constraints (argument-types constraint)))
-    (push copy *inference-worklist*)
+    (flag-modified-constraint copy)
     copy))
 
 
@@ -399,7 +414,7 @@
           (mapcar 'copy-constraints (argument-types constraint)))
     (setf (slot-value copy 'return-type)
           (copy-constraints (return-type constraint)))
-    (push copy *inference-worklist*)
+    (flag-modified-constraint copy)
     copy)
   )
 
@@ -413,7 +428,7 @@
           (copy-constraints (ctype constraint)))
     (setf (slot-value copy 'other-type)
           (copy-constraints (other-type constraint)))
-    (push copy *inference-worklist*)
+    (flag-modified-constraint copy)
     copy))
 
 (defmethod copy-constraints ((constraint scalar-type-of-constraint))
@@ -426,7 +441,7 @@
           (copy-constraints (ctype constraint)))
     (setf (slot-value copy 'other-type)
           (copy-constraints (other-type constraint)))
-    (push copy *inference-worklist*)
+    (flag-modified-constraint copy)
     copy))
 
 (defmethod copy-constraints ((constraint cast-constraint))
@@ -440,7 +455,7 @@
           (copy-constraints (in-type constraint)))
     (setf (slot-value copy 'out-type)
           (copy-constraints (out-type constraint)))
-    (push copy *inference-worklist*)
+    (flag-modified-constraint copy)
     copy))
 
 
@@ -458,7 +473,7 @@
           (copy-constraints (ctype constraint)))
     (setf (slot-value copy 'other-type)
           (copy-constraints (other-type constraint)))
-    (push copy *inference-worklist*)
+    (flag-modified-constraint copy)
     copy))
 
 (defmethod copy-constraints ((constraint same-base-type-different-size-constraint))
@@ -473,7 +488,7 @@
           (copy-constraints (ctype constraint)))
     (setf (slot-value copy 'other-type)
           (copy-constraints (other-type constraint)))
-    (push copy *inference-worklist*)
+    (flag-modified-constraint copy)
     copy))
 
 (defmethod copy-constraints ((type generic-type))
@@ -559,7 +574,7 @@
                                               :cast-type cast)))
           (add-constraint copy cast-constraint)
           (add-constraint unify-type cast-constraint)
-          (push cast-constraint *inference-worklist*)
+          (flag-modified-constraint cast-constraint)
           copy)
         (unify copy unify-type))))
 
@@ -567,6 +582,44 @@
   (break "walk" form)
   (call-next-method)
 )
+
+(defun cast-to-boolean (type)
+  ;; no implicit casts to bool, so just force type to be bool...
+  (let ((bool (get-type-binding :bool)))
+    (etypecase type
+      (any-type
+       (change-class type 'any-type)
+       (setf (gethash bool (types type)) t)
+       (flag-modified-type type))
+      (constrained-type
+       (assert (gethash bool (types type)))
+       (clrhash (types type))
+       (setf (gethash bool (types type)) t)
+       (flag-modified-type type))
+      (concrete-type
+       (assert (eq type bool))))))
+
+(defmethod walk ((form if-form) (walker infer-build-constraints))
+  ;; todo: unify test-form with types accepted by IF? (scalars? booleans?)
+  (cast-to-boolean (walk (test-form form) walker))
+  (if (and (then-form form) (else-form form))
+      (unify (walk (then-form form) walker)
+             (walk (else-form form) walker))
+      (if (then-form form)
+          (walk (then-form form) walker)
+          (walk (else-form form) walker))))
+
+(defmethod walk ((form for-loop) (walker infer-build-constraints))
+  ;; walk init/step forms, ignore ret?
+  ;; walk condition-forms, casts to boolean(or scalar?)?
+  ;; walk body (ignore ret?)
+  (loop for a in (init-forms form) do (walk a walker))
+  (loop for a in (step-forms form) do (walk a walker))
+  (loop for a in (condition-forms form)
+        for ret = (walk a walker)
+        finally (cast-to-boolean ret))
+  ;; for now ignoring return type, since 'for' is a statement in glsl
+  (loop for a in (body form) do (walk a walker)))
 
 (defmethod walk ((form swizzle-access) (walker infer-build-constraints))
   (let* ((binding-type (walk (binding form) walker))
@@ -644,7 +697,7 @@
              (name called)))
     (unless (eq t (type-inference-state called))
       (format t "got call to function ~s with incomplete or failed type inference ~s?" (name called) (type-inference-state called))
-      #++(throw :incomplete-dependent called))
+      (error 'incomplete-dependent))
     ;; make local copies of any types/constraints affected by function
     ;; args, and unify with actual arg types
     ;; (unify will add modified constraints to work list)
@@ -675,7 +728,16 @@
     ;; copy return type and any linked constraints
     ;; (may have already been copied if it depends on arguments)
     (format t "~&~s =>~s~%" (name called) (value-type called ))
-    (copy-constraints (value-type called))))
+    (let ((ret (copy-constraints (value-type called))))
+      ;; if we are calling RETURN, unify return type with function
+      ;; return as well
+      ;; fixme: decide what to do with type returned to caller, since
+      ;; it doesn't actually get returned?
+      (if (eq (called-function form)
+              (get-function-binding 'return
+                                    :env glsl::*glsl-base-environment*))
+          (unify ret (return-type *current-function-constraint*))
+          ret))))
 
 (defmethod walk ((form variable-read) (walker infer-build-constraints))
   (format t "infer ~s =~%" form)
@@ -698,10 +760,21 @@
   (format t "infer ~s =~%" form)
   (print (value-type form)))
 
+(defmethod walk ((form binding) (walker infer-build-constraints))
+  (format t "infer ~s =~%" form)
+  (print (value-type form)))
+
 
 (defmethod walk ((form interface-binding) (walker infer-build-constraints))
   (format t "infer ~s =~%" form)
-  (print (value-type form)))
+  (print
+   (let ((stage-binding (stage-binding form)))
+     (assert stage-binding)
+     (walk stage-binding walker))))
+
+(defmethod walk ((form interface-stage-binding) (walker infer-build-constraints))
+  (format t "infer ~s =~%" form)
+  (print (walk (binding form) walker)))
 
 (defmethod walk ((form constant-binding) (walker infer-build-constraints))
   (format t "infer ~s =~%" form)
@@ -721,6 +794,12 @@
 (defmethod walk ((form float) (walker infer-build-constraints))
   (format t "infer ~s =~%" form)
   (print  (set-type :float)))
+
+(defmethod walk ((form explicit-progn) (walker infer-build-constraints))
+  (format t "@infer ~s~%" form)
+  (loop for a in (body form)
+        for ret = (walk a walker)
+        finally (return ret)))
 
 (defmethod walk ((form binding-scope) (walker infer-build-constraints))
   (format t "infer ~s  (~s)=~%" form (body form))
@@ -755,9 +834,11 @@
 
 (defmethod walk ((form global-function) (walker infer-build-constraints))
   (format t "infer ~s  (~s)=~%" form (body form))
-  (let ((c (make-instance 'global-function-constraint
+  (let* ((c (make-instance 'global-function-constraint
                           :name (name form)
-                          :function form)))
+                          :function form))
+         (*current-function-constraint* c)
+         (*current-function-stages* (list t)))
     (setf (return-type c) (set-type t :constraint c))
     (setf (argument-types c)
           (loop for binding in (bindings form)
@@ -771,7 +852,8 @@
                                    (set-type declared-type
                                              :constraint c))))
     ;; fixme: add a constraint (or just a type?) if return type isn't T
-    (assert (eq t (value-type form)))
+    (assert (or (eq t (value-type form))
+                (typep (value-type form) 'any-type)))
     (setf (return-type c)
           (loop for a in (body form)
                 for ret = (walk a walker)
@@ -1049,6 +1131,10 @@
          (flet ((c (type cast-types)
                   (when (typep type 'constrained-type)
                     (let ((old (hash-table-count (types type))))
+                      (format t "try cast cast ~s -> ~s~%"
+                              (debug-type-names type)
+                              (mapcar 'name
+                                      (alexandria:hash-table-keys cast-types)))
                       (maphash (lambda (k v)
                                  (unless (and v (gethash k cast-types))
                                    (remhash k (types type))))
@@ -1393,7 +1479,9 @@
     (loop for constraint = (pop *inference-worklist*)
           while constraint
           for i from 1
-          when (zerop (mod i 1000)) do (break "~a loops in inference?" i)
+          when (zerop (mod i 1000))
+            do (break "~a loops in inference?" i)
+          do (assert (modified constraint))
           do (update-constraint constraint)
              ;; clear flag after updating so it doesn't get put back
              ;; when constrained types change
@@ -1463,7 +1551,16 @@
     ;; run type inference on list
     (loop for function in leaves
           ;; when (function-type-changed function)
-            collect (infer function)
+          ;; assuming all stages have compatible uniforms (has to be
+          ;;   true for anything linked into a single program anyway),
+          ;;   so we can just pick a stage
+          collect (handler-case
+                      (let ((*current-shader-stage* (car (valid-stages function))))
+                        (infer function)
+                        (setf (type-inference-state function) t))
+                    (inference-failure ()
+                      (setf (type-inference-state function) :failed))
+)
           do
              ;; not sure if we should check type-inference-state here?
              ;; assuming it THROWs to higher level for now...

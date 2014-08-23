@@ -220,7 +220,8 @@
                            :expander expander
                            :body body
                            :docs docs
-                           :declarations declarations))))))
+                           :declarations declarations
+                           :value-type t))))))
 
 (defun add-function-arguments (function &key (env *environment*))
   ;; add the bindings from a functions's arglist to current environment

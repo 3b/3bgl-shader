@@ -495,7 +495,9 @@
         ((or 3bgl-shaders::variable-read 3bgl-shaders::variable-write
              3bgl-shaders::binding-scope
              3bgl-shaders::slot-access 3bgl-shaders::swizzle-access
-             3bgl-shaders::function-call 3bgl-shaders::global-function)
+             3bgl-shaders::function-call 3bgl-shaders::global-function
+             3bgl-shaders::explicit-progn 3bgl-shaders::for-loop
+             3bgl-shaders::interface-type 3bgl-shaders::concrete-type)
          form)
         (t (break "unknown binding " binding))))))
 
@@ -624,7 +626,7 @@
                          (make-instance '3bgl-shaders::extract-functions))))
 
 (cl:defun generate-stage (stage main)
- (let ((*package* (or (symbol-package main) *package*)))
+ (let ((*package* (print (or (symbol-package main) *package*))))
    (nth-value 4
               (glsl::with-package-environment()
                 (3bgl-shaders::compile-block nil main stage
@@ -636,9 +638,14 @@
 ;;;  to be loaded as glsl code)
 
 (cl:defmacro defun (name args &body body)
-  `(with-package-environment ()
-     (3bgl-shaders::walk '(cl:defun ,name ,args ,@body)
-                         (make-instance '3bgl-shaders::extract-functions))))
+  (let ((f (gensym)))
+    `(with-package-environment ()
+       (let ((,f (3bgl-shaders::walk '(cl:defun ,name ,args ,@body)
+                                         (make-instance '3bgl-shaders::extract-functions))))
+         (format t "defined function ~s = ~s~%" ',name ,f)
+         (3bgl-shaders::infer-modified-functions
+          (list (3bgl-shaders::get-function-binding ',name))))
+       nil)))
 
 (cl:defmacro defconstant (name value type)
   `(with-package-environment ()
