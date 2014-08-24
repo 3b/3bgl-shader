@@ -183,7 +183,8 @@
   ;; shouldn't modify CONSTRAINTS field of callers, since they may
   ;; be iterating it... wait for update pass before removing any
   ;; no-longer-useful constraints
-  (when (eq (return-type constraint) old)
+  (when (and (slot-boundp constraint 'return-type)
+             (eq (return-type constraint) old))
     (flag-modified-constraint constraint)
     (setf (return-type constraint) new))
   (when (position old (argument-types constraint))
@@ -725,11 +726,8 @@
     ;; store NIL in the cache for any unused args, so we don't try to copy them
     ;; while walking other args
     (loop for binding in (nthcdr (length (arguments form)) (bindings called))
-          do (setf (gethash (value-type binding) *copy-constraints-hash*) nil)
-             (when (typep (value-type binding) 'optional-arg-type)
-               (setf (gethash (arg-type (value-type binding))
-                              *copy-constraints-hash*)
-                     nil)))
+          do (setf (gethash (value-type binding) *copy-constraints-hash*) nil))
+
     ;; walk remaining args and copy as usual
     (loop with args = (arguments form)
           for arg = (pop args)
@@ -751,7 +749,9 @@
       (if (eq (called-function form)
               (get-function-binding 'return
                                     :env glsl::*glsl-base-environment*))
-          (unify ret (return-type *current-function-constraint*))
+          (if (slot-boundp *current-function-constraint* 'return-type)
+              (unify ret (return-type *current-function-constraint*))
+              (setf (return-type *current-function-constraint*) ret))
           ret))))
 
 (defmethod walk ((form variable-read) (walker infer-build-constraints))
@@ -854,7 +854,6 @@
                           :function form))
          (*current-function-constraint* c)
          (*current-function-stages* (list t)))
-    (setf (return-type c) (set-type t :constraint c))
     (setf (argument-types c)
           (loop for binding in (bindings form)
                 for declared-type = (declared-type binding)
@@ -869,11 +868,13 @@
     ;; fixme: add a constraint (or just a type?) if return type isn't T
     (assert (or (eq t (value-type form))
                 (typep (value-type form) 'any-type)))
-    (setf (return-type c)
-          (loop for a in (body form)
-                for ret = (walk a walker)
-                do (format t "@ global-function / ~s~%" ret)
-                finally (return (setf (value-type form) ret))))
+    (loop for a in (body form)
+          for ret = (walk a walker)
+          do (format t "@ global-function / ~s~%" ret)
+          finally (return (setf (value-type form) ret)))
+    (if (slot-boundp c 'return-type)
+        (setf (value-type form) (unify (value-type form) (return-type c)))
+        (setf (return-type c) (value-type form)))
     c))
 
 

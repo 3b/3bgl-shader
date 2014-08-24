@@ -71,47 +71,59 @@
                                                    arg-type))
                                :allow-casts cast)
                   and do (incf i)))
+
     (loop for binding in (bindings fn)
-          for arg-type = (value-type binding)
+          for value-type = (value-type binding)
+          for arg-type = (if (typep value-type 'optional-arg-type)
+                             (arg-type value-type)
+                             value-type)
           for i from 0
           when (consp arg-type)
-            do (etypecase arg-type
-                 ;; (= ##) same types as arg ##
-                 ((cons (eql =))
-                  (setf (aref types i)
-                        (aref types (second arg-type))))
-                 ;; (s ##) scalar base type of arg ##
-                 ((cons (eql s))
-                  (let ((c (make-instance
-                            'scalar-type-of-constraint
-                            :ctype (setf (aref types i)
-                                         ;; fixme: limit this based on other-type
-                                         (make-instance 'any-type))
-                            :other-type (aref types (second arg-type)))))
-                    (add-constraint (aref types (second arg-type)) c)
-                    (add-constraint (aref types i) c)))
-                 ;; (=s ##) same type as or scalar base type of arg ##
-                 ((cons (eql =s))
-                  (let ((c (make-instance
-                            'same-type-or-scalar-constraint
-                            :ctype (setf (aref types i)
-                                         ;; fixme: limit this based on other-type
-                                         (make-instance 'any-type))
-                            :other-type (aref types (second arg-type)))))
-                    (add-constraint (aref types (second arg-type)) c)
-                    (add-constraint (aref types i) c)))
-                 ;; (=# ## base-type) same element count as arg ## but
-                 ;; specified base type (ex :bool => vec3 -> bvec3)
-                 ((cons (eql =#))
-                  (let ((c (make-instance
-                            'same-size-different-base-type-constraint
-                            :other-type (aref types (second arg-type))
-                            :base-type (get-type-binding (third arg-type))
-                            :ctype (setf (aref types i)
-                                         (make-instance 'any-type)))))
-                    (add-constraint (aref types (second arg-type)) c)
-                    (add-constraint (aref types i) c))))
-               (setf (value-type binding) (aref types i)))
+            do (flet ((update-type (i new)
+                        (if (typep value-type 'optional-arg-type)
+                            (setf (arg-type value-type) new
+                                  (aref types i) value-type)
+                            (setf (aref types i) new
+                                  (value-type binding) new))))
+                 (etypecase arg-type
+                   ;; (= ##) same types as arg ##
+                   ((cons (eql =))
+                    (update-type i (aref types (second arg-type))))
+                   ;; (s ##) scalar base type of arg ##
+                   ((cons (eql s))
+                    (let ((c (make-instance
+                              'scalar-type-of-constraint
+                              :ctype (update-type
+                                      i
+                                      ;; fixme: limit this based on other-type
+                                      (make-instance 'any-type))
+                              :other-type (aref types (second arg-type)))))
+                      (add-constraint (aref types (second arg-type)) c)
+                      (add-constraint (ctype c) c)))
+                   ;; (=s ##) same type as or scalar base type of arg ##
+                   ((cons (eql =s))
+                    (let ((c (make-instance
+                              'same-type-or-scalar-constraint
+                              :ctype (update-type
+                                      i
+                                      ;; fixme: limit this based on other-type
+                                      (make-instance 'any-type))
+                              :other-type (aref types (second arg-type)))))
+                      (add-constraint (aref types (second arg-type)) c)
+                      (add-constraint (ctype c) c)))
+                   ;; (=# ## base-type) same element count as arg ## but
+                   ;; specified base type (ex :bool => vec3 -> bvec3)
+                   ((cons (eql =#))
+                    (let ((c (make-instance
+                              'same-size-different-base-type-constraint
+                              :other-type (aref types (second arg-type))
+                              :base-type (get-type-binding (third arg-type))
+                              :ctype (update-type
+                                      i (make-instance 'any-type)))))
+                      (add-constraint (aref types (second arg-type)) c)
+                      (add-constraint (ctype c) c)))))
+               ;(setf (value-type binding) (aref types i))
+          )
     (etypecase return-type
       ;; (OR) types not allowed for return type, has to either match
       ;; an arg type or be a specific type
@@ -135,6 +147,9 @@
          (add-constraint (aref types (second return-type)) c)
          (add-constraint (value-type fn) c)))
       ((cons (eql =))
+       (format t "~&setting return type of ~s to ~s~%"
+               (name fn)
+               (aref types (second return-type)))
        (setf (value-type fn) (aref types (second return-type))))
       (symbol
        (setf (value-type fn) (get-type-binding return-type))))
@@ -620,17 +635,27 @@
     ;; glsl ++ and -- are post-[in/de]crement for now (incf/decf are pre)
     ;; (incf/decf work on vec/mat also, so might want to shadow cl:
     ;;  versions at some point)
-    (add-internal-function/s 'glsl::incf '(a) `(,(cons 'or unary-gentypes+mats))
-                             (= 0)
+    (add-internal-function/s 'glsl::incf '(a &optional b)
+                             `((or ,@gen-type
+                                   ,@gen-itype ,@gen-utype
+                                   ,@gen-dtype ,@mat ,@dmat)
+                               (= 0))
+                             '(= 0))
+    (add-internal-function/s 'glsl::decf '(a &optional b)
+                             `((or ,@gen-type
+                                   ,@gen-itype ,@gen-utype
+                                   ,@gen-dtype ,@mat ,@dmat)
+                               (= 0))
+                             '(= 0))
+    (add-internal-function/s 'glsl::++ '(a) `((or ,@gen-type
+                                                    ,@gen-itype ,@gen-utype
+                                                    ,@gen-dtype ,@mat ,@dmat))
+                             '(= 0)
                              :cast nil)
-    (add-internal-function/s 'glsl::decf '(a) `(,(cons 'or unary-gentypes+mats))
-                             (= 0)
-                             :cast nil)
-    (add-internal-function/s 'glsl::++ '(a) `(,(cons 'or unary-gentypes+mats))
-                             (= 0)
-                             :cast nil)
-    (add-internal-function/s 'glsl::-- '(a) `(,(cons 'or unary-gentypes+mats))
-                             (= 0)
+    (add-internal-function/s 'glsl::-- '(a) `((or ,@gen-type
+                                                    ,@gen-itype ,@gen-utype
+                                                    ,@gen-dtype ,@mat ,@dmat))
+                             '(= 0)
                              :cast nil)
     ;; should these work on vectors etc too?
     ;; (would need to be able to see types in printer to expand to
