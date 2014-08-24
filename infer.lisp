@@ -764,8 +764,8 @@
          (value (walk (value form) walker))
          ;; todo: avoid creating cast constraint if we know both types?
          (cast (make-instance 'cast-constraint
-                              :out value
-                              :in binding)))
+                              :in value
+                              :out binding)))
     (add-constraint binding cast)
     (add-constraint value cast)
     (flag-modified-constraint cast)
