@@ -483,15 +483,27 @@
 
     ;; fixme: verify the non-square matric types for *
     (add-internal-function/full '* '(a b)
-                                ;;A right vector operand is treated as a
-                                ;;column vector and a left vector operand as
-                                ;;a row vector.
-                                `( ;; fixme: generate these?
+                                `(;; vec*vec is component-wise
+                                  ((:ivec2 :ivec2) :ivec2)
+                                  ((:uvec2 :uvec2) :uvec2)
+                                  ((:vec2 :vec2) :vec2)
+                                  ((:dvec2 :dvec2) :dvec2)
+                                  ((:ivec3 :ivec3) :ivec3)
+                                  ((:uvec3 :uvec3) :uvec3)
+                                  ((:vec3 :vec3) :vec3)
+                                  ((:dvec3 :dvec3) :dvec3)
+                                  ((:ivec4 :ivec4) :ivec4)
+                                  ((:uvec4 :uvec4) :uvec4)
+                                  ((:vec4 :vec4) :vec4)
+                                  ((:dvec4 :dvec4) :dvec4)
+                                  ;; mat*mat, mat*vec
+                                  ;;A right vector operand is treated as a
+                                  ;;column vector and a left vector operand as
+                                  ;;a row vector.
+                                  ;; fixme: generate these?
                                   ;; 1xN Mx1 -> NxM
                                   ;; -x-
                                   ;; 2xN Mx2 -> MxN
-                                  ((:vec2 :vec2) :float)
-                                  ((:ivec2 :ivec2) :int)
                                   ((:vec2 :mat2) :vec2)
                                   ((:vec2 :mat3x2) :vec3)
                                   ((:vec2 :mat4x2) :vec4)
@@ -508,8 +520,6 @@
                                   ((:mat2x4 :mat3x2) :mat4x3)
                                   ((:mat2x4 :mat4x2) :mat4)
                                   ;; 3xN Mx3 -> MxN
-                                  ((:vec3 :vec3) :float)
-                                  ((:ivec3 :ivec3) :int)
                                   ((:vec3 :mat2x3) :vec2)
                                   ((:vec3 :mat3) :vec3)
                                   ((:vec3 :mat4x3) :vec4)
@@ -526,8 +536,6 @@
                                   ((:mat3x4 :mat3) :mat4x3)
                                   ((:mat3x4 :mat4x3) :mat4)
                                   ;; 4xN Mx4 -> MxN
-                                  ((:vec4 :vec4) :float)
-                                  ((:ivec4 :ivec4) :int)
                                   ((:vec4 :mat2x4) :vec2)
                                   ((:vec4 :mat3x4) :vec3)
                                   ((:vec4 :mat4) :vec4)
@@ -545,7 +553,6 @@
                                   ((:mat4 :mat4) :mat4)
                                   ;; double
                                   ;; 2xN Mx2 -> MxN
-                                  ((:dvec2 :dvec2) :double)
                                   ((:dvec2 :dmat2) :dvec2)
                                   ((:dvec2 :dmat3x2) :dvec3)
                                   ((:dvec2 :dmat4x2) :dvec4)
@@ -562,7 +569,6 @@
                                   ((:dmat2x4 :dmat3x2) :dmat4x3)
                                   ((:dmat2x4 :dmat4x2) :dmat4)
                                   ;; 3xN Mx3 -> MxN
-                                  ((:dvec3 :dvec3) :double)
                                   ((:dvec3 :dmat2x3) :dvec2)
                                   ((:dvec3 :dmat3) :dvec3)
                                   ((:dvec3 :dmat4x3) :dvec4)
@@ -579,7 +585,6 @@
                                   ((:dmat3x4 :dmat3) :dmat4x3)
                                   ((:dmat3x4 :dmat4x3) :dmat4)
                                   ;; 4xN Mx4 -> MxN
-                                  ((:dvec4 :dvec4) :double)
                                   ((:dvec4 :dmat2x4) :dvec2)
                                   ((:dvec4 :dmat3x4) :dvec3)
                                   ((:dvec4 :dmat4) :dvec4)
