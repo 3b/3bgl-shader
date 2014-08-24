@@ -77,14 +77,42 @@
   (let ((types
           (loop for (nil sb) on (stage-bindings interface-binding) by #'cddr
                 collect (binding sb))))
-    (unless (every (lambda (a) (eq a (car types)))
-                   (cdr types))
+    (unless (or (every (lambda (a) (typep a 'interface-type))
+                       types)
+                (every (lambda (a) (eq a (car types)))
+                       (cdr types)))
       (error "conflicting types for interface binding ~s : ~{~s~^ ~}"
              (name interface-binding)
              (remove-duplicates(mapcar 'name types))))))
 
+(defmethod check-slot-stages (slot-access)
+  (labels ((get-interface-bindings (x)
+             (etypecase x
+               ((or slot-access variable-read variable-write array-access)
+                (get-interface-bindings (binding x)))
+               (interface-binding
+                x))))
+    (let* ((interface-bindings (get-interface-bindings slot-access))
+           (types
+             (loop for (nil sb) on (stage-bindings interface-bindings) by #'cddr
+                   for b = (binding sb)
+                   for st = (if (typep b 'interface-type)
+                                (find (field slot-access)
+                                      (bindings b)
+                                      :key #'name)
+                                b)
+                      when st
+                        collect (value-type st))))
+      (unless (every (lambda (a) (eq a (car types)))
+                     (cdr types))
+        (error "conflicting types for slot ~s.~s : ~{~s~^ ~}"
+               (name interface-bindings) (field slot-access)
+               (remove-duplicates(mapcar 'name types)))))))
+
 (defmethod walk :around (form (walker extract-functions))
   (let ((r (call-next-method)))
+    (when (typep r 'slot-access)0
+      (check-slot-stages r))
     (when (or (typep r 'variable-read)
               (typep r 'variable-write))
       (when (typep (binding r) 'interface-binding)
@@ -410,4 +438,8 @@
 
 #++
 (glsl::generate-stage :fragment 'skybox-shaders::fragment)
+#++
+(print (glsl::generate-stage :fragment '3bgl-mesh-shaders::fragment))
+#++
+(print (glsl::generate-stage :geometry '3bgl-mesh-shaders::tsd-geometry))
 

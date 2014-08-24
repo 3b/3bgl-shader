@@ -173,6 +173,11 @@
   ;; ex :float -> :float, :ivec2 -> :int, :vec3 -> :float
   ())
 
+(defclass array-access-constraint (ctype/other-constraint)
+  ;; CTYPE is array type of length at least MIN-SIZE containing
+  ;; elements of type OTHER-TYPE
+  ((min-size :initarg :min-size :accessor min-size)))
+
 
 (defmethod replace-constraint-type (new old constraint)
   ;; shouldn't modify CONSTRAINTS field of callers, since they may
@@ -633,43 +638,53 @@
          (out-type (set-type (aref vector-types n)))
          (valid-vector-types (loop for i from (max 2 n) below 5
                                    append (aref vector-types i))))
-    (cond
-      ;; check for known output type
-      ((typep binding-type 'concrete-type)
-       (aref (scalar/vector-set binding-type) n))
-      ((and (typep binding-type 'constrained-type)
-            (= 1 (hash-table-count (types binding-type))))
-       (maphash (lambda (k v)
-                  (when v
-                    (return-from walk (aref (scalar/vector-set k) n))))
-                (types binding-type)))
-      (t
-       (let ((c (make-instance 'same-base-type-different-size-constraint
-                               :out-size n
-                               :min-size (1+ (min-size form))
-                               :ctype out-type
-                               :other-type binding-type))
-             (gfc (make-instance 'global-function-constraint
-                                 :name 'swizzle
-                                 :function form)))
-         (cond
-           ((typep binding-type 'any-type)
-            (change-class binding-type 'constrained-type
-                          :types (alexandria:alist-hash-table
-                                  (mapcar (lambda (a)
-                                            (cons (get-type-binding a) t))
-                                          valid-vector-types))))
-           ((typep binding-type 'constrained-type)
-            (setf binding-type
-                  (unify binding-type (set-type valid-vector-types)))))
-         (add-constraint binding-type c)
-         (add-constraint out-type c)
-         (add-constraint binding-type gfc)
-         (add-constraint out-type gfc)
-         (setf (argument-types gfc) (list binding-type)
-               (return-type gfc) out-type)
-         (flag-modified-constraint c)
-         out-type)))))
+    (setf (value-type form)
+          (cond
+            ;; check for known output type
+            ((typep binding-type 'concrete-type)
+             (aref (scalar/vector-set binding-type) n))
+            ((and (typep binding-type 'constrained-type)
+                  (= 1 (hash-table-count (types binding-type))))
+             (maphash (lambda (k v)
+                        (when v
+                          (return-from walk
+                            (setf (value-type form)
+                                  (aref (scalar/vector-set k) n)))))
+                      (types binding-type)))
+            (t
+             (let ((c (make-instance 'same-base-type-different-size-constraint
+                                     :out-size n
+                                     :min-size (1+ (min-size form))
+                                     :ctype out-type
+                                     :other-type binding-type))
+                   (gfc (make-instance 'global-function-constraint
+                                       :name 'swizzle
+                                       :function form)))
+               (cond
+                 ((typep binding-type 'any-type)
+                  (change-class binding-type 'constrained-type
+                                :types (alexandria:alist-hash-table
+                                        (mapcar (lambda (a)
+                                                  (cons (get-type-binding a) t))
+                                                valid-vector-types))))
+                 ((typep binding-type 'constrained-type)
+                  (setf binding-type
+                        (unify binding-type (set-type valid-vector-types)))))
+               (add-constraint binding-type c)
+               (add-constraint out-type c)
+               (add-constraint binding-type gfc)
+               (add-constraint out-type gfc)
+               (setf (argument-types gfc) (list binding-type)
+                     (return-type gfc) out-type)
+               (flag-modified-constraint c)
+               out-type))))))
+
+(defmethod walk ((form array-access) (walker infer-build-constraints))
+  (let ((binding-type (walk (binding form) walker)))
+    ;; just returning array type for now...
+    ;; fixme: add constraints on size
+    (value-type binding-type)))
+
 
 (defmethod walk ((form slot-access) (walker infer-build-constraints))
   ;; todo: for now requiring structs to have declared type, but eventually
@@ -1664,5 +1679,13 @@
 (multiple-value-list
  (compile-block '((defun h (a b)
                     (if a (+ b 2) (- b 3))))
+                'h
+                :vertex))
+
+#++
+(multiple-value-list
+ (compile-block '((defun h ()
+                    (let ((a))
+                      (setf a (1+ (glsl::vec4 1 2 3 4))))))
                 'h
                 :vertex))

@@ -495,6 +495,7 @@
         ((or 3bgl-shaders::variable-read 3bgl-shaders::variable-write
              3bgl-shaders::binding-scope
              3bgl-shaders::slot-access 3bgl-shaders::swizzle-access
+             3bgl-shaders::array-access
              3bgl-shaders::function-call 3bgl-shaders::global-function
              3bgl-shaders::explicit-progn 3bgl-shaders::for-loop
              3bgl-shaders::interface-type 3bgl-shaders::concrete-type)
@@ -627,7 +628,7 @@
 
 (cl:defun generate-stage (stage main)
  (let ((*package* (print (or (symbol-package main) *package*))))
-   (nth-value 4
+   (nth-value 6
               (glsl::with-package-environment()
                 (3bgl-shaders::compile-block nil main stage
                                              :env 3bgl-shaders::*environment*

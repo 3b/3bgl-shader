@@ -102,6 +102,10 @@
            (cache-binding binding type))
   (call-next-method))
 
+(defmethod walk ((form array-access) (walker finalize))
+  (format t "array-access ~s~%" form)
+  (walk (binding form) walker))
+
 (defmethod walk ((form slot-access) (walker finalize))
   (format t "slot-access ~s~%" form)
   (let ((struct-type (walk (binding form) walker)))
@@ -153,7 +157,11 @@
 
 (defmethod walk ((form swizzle-access) (walker finalize))
   (let ((binding-type (walk (binding form) walker)))
-    (flatten-constraints (value-type form) nil (list (binding (binding form))) (list binding-type) )
+    (flatten-constraints (value-type form)
+                         nil
+                         (unless (typep (binding form) 'function-call)
+                           (list (binding (binding form))))
+                         (list binding-type))
     #++(loop for binding in (bindings struct-type)
           do (format t "field = ~s, binding = ~s?~%" (field form)
                      (name binding))
