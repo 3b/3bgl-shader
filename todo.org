@@ -1,0 +1,79 @@
+* minimally usable/alpha
+** DONE handle 'interface' declarations with mismatched types?
+   CLOSED: [2014-08-24 Sun 03:30]
+   for now just warning/error if a shader is ambiguous (uses a field
+     with different types in different stages, and isn't declared for
+     a specific stage)
+   eventually may want to try type inference on all stages that have
+     matching interface bindings?
+** DONE handle ARRAY-ACCESS
+   CLOSED: [2014-08-24 Sun 04:18]
+** fix type inference for (setf a (1+ (vec4 1 2 3 4)))
+   infers a as ivec4, should be vec4
+   (probably bad cast on write-variable)
+** figure out/add rules for SETF stuff, make sure type inference works for places
+   (setf (.rgb foo) ...) is ok, (setf (.rrr foo) ...) is bad, etc
+** decide if RETURN should be required for return values from functions?
+   not sure if that is better or requiring (values) or declaration for
+   void return?
+** handle (values) as 'void'
+** add/update built-in variables/constants
+   https://www.opengl.org/registry/doc/GLSLangSpec.4.50.diff.pdf#page=123
+** pass to recompile dependents as needed
+** make sure type declarations are used correctly
+   particularly function return
+* 'beta'
+** api for getting info about uniforms/attributes/outputs of a shader
+** better errors/warnings
+*** should be able to resolve a static type for 0-arity functions?
+*** error/warning for any constraints that can't be met
+*** track variable names etc in constraints for useful errors?
+** add compiler macros for more complicated binops like =, <, etc
+   = : (and (= a b) (= b c) ...)
+   < : (and (< a b) (< b c) ...)
+   /= : (and (/= a b) (/= a c) (/= b c) ...)
+** add += etc operators?
+** track types/changes/dependencies etc for global variables
+** store cached static type assignments/overloads with function
+   so we don't need to recalculate it every time
+   (and clear when redefined/modified)
+** fix package/namespace/environment stuff
+*** split out cl:foo and glsl:foo definitions (or combine them?
+*** split out definitions of glsl macros from host utils for defining them
+*** reorganize code
+** add somewhere to mark functions as vertex/fragment/etc only
+   (declare (glsl:stage :vertex ...))?
+* 'done'
+** decide how to represent struct accessors (just using @/slot-value for now)
+*** possibly .foo like swizzles?
+    if so, possibly add some ability to merge struct accessors with swizzles
+    so structs could have a RGB member, and type of .rgb would get extended
+    to (or :vec34 :ivec34 ... that-struct-type)
+*** probably better to skip the .
+** track glsl versions, add 4.1, maybe 3.x?
+** in/out parameters?
+** allow initialization of uniforms
+** make sure we don't print different symbols with same glsl name?
+   (at least for uniforms,functions and such with 'global' scope)
+   can't really rename them during printing though, since we need to
+     know the name of uniforms to set them from caller (and might have
+     already generated programs with default name)
+   probably error if detected, and add an option to prefix glsl names with
+     package name and _ ?
+   alternately, track name mapping along with shader compilation?
+     might be OK, since we probably want to query locations for any
+     that weren't statically allocated, and can just use static location
+     instead of name for ones that were
+* would be nice
+** remove unused variables
+** detect/remove dead code (after RETURN, etc)
+** figure out if vec/mat constructors need a specific constraint type?
+   mat4 with 10 args has to search through 5k or so types, though probabl
+   pretty uncommon to pass 10 args to mat4 (usually 1,4,15,maybe 2 or 3)
+** handle subroutine uniforms/subroutines in general?
+   not sure how much change is needed
+   need to figure out if subroutine uniforms have different namespace
+     from normal ones?
+** check for more places where :cast nil can be set for built-in functions
+   also make sure the existing ones are right
+   (either no cast allowed, or all types fully specified already)
