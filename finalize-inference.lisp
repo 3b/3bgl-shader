@@ -74,14 +74,21 @@
                            when (gethash i (types type))
                              do (return-from flatten-cast-type i))))))
            (constraints type))
-  ;; otherwise, just pick lowest type available
+  ;; otherwise, just pick smallest/lowest type available
   (let ((out (mapcar 'car
                      (remove nil (alexandria:hash-table-alist
                                   (types type))
                              :key 'cdr))))
-    (setf out (sort out #'<
-                    :key (lambda (a)
-                           (length (implicit-casts-from a)))))
+    (setf out (sort out (lambda (a b)
+                          (if (eql (scalar/vector-size a)
+                                   (scalar/vector-size b))
+                              (< (length (implicit-casts-from a))
+                                 (length (implicit-casts-from b)))
+                              (if (scalar/vector-size a)
+                                  (and (scalar/vector-size b)
+                                       (< (scalar/vector-size a)
+                                          (scalar/vector-size b)))
+                                  t)))))
     (first out)))
 
 (defmethod walk ((form progn-body) (walker finalize))
