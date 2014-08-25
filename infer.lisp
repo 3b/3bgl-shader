@@ -637,7 +637,7 @@
                          (:bvec3 :ivec3 :uvec3 :vec3 :dvec3)
                          (:bvec4 :ivec4 :uvec4 :vec4 :dvec4)))
          (out-type (set-type (aref vector-types n)))
-         (valid-vector-types (loop for i from (max 2 n) below 5
+         (valid-vector-types (loop for i from (max 2 (1+ (min-size form))) below 5
                                    append (aref vector-types i))))
     (setf (value-type form)
           (cond
@@ -1688,5 +1688,13 @@
  (compile-block '((defun h ()
                     (let ((a))
                       (setf a (1+ (glsl::vec4 1 2 3 4))))))
+                'h
+                :vertex))
+
+#++
+(multiple-value-list
+ (compile-block '((defun h ()
+                    (let ((a))
+                      (setf (.rb a) (1+ (glsl::vec2 1 2))))))
                 'h
                 :vertex))
