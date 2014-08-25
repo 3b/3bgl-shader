@@ -216,10 +216,10 @@
 
 (defprinti (1- x) ()
   (let ((*in-expression* t))
-    (format t "~a" `(- ,x 1))))
+    (format t "~a" `(,x - 1))))
 (defprinti (1+ x) ()
   (let ((*in-expression* t))
-    (format t "~a" `(+ ,x 1))))
+    (format t "~a" `(,x + 1))))
 (defprinti (not x) ()
   (let ((*in-expression* t))
     (format t "~a" `(! ,x))))
