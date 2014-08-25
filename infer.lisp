@@ -84,10 +84,12 @@
 
 (defun flag-modified-constraint (constraint)
   (unless (modified constraint)
+    (format t "~&flag constraint ~s~%" constraint)
     (setf (modified constraint) t)
     (push constraint *inference-worklist*)))
 
 (defun flag-modified-type (type)
+  (format t "~&flag type ~s (~s)~%" type (debug-type-names type))
   (maphash (lambda (constraint v)
              (when v (flag-modified-constraint constraint)))
            (constraints type)))
@@ -183,6 +185,7 @@
   ;; shouldn't modify CONSTRAINTS field of callers, since they may
   ;; be iterating it... wait for update pass before removing any
   ;; no-longer-useful constraints
+  (format t "replace ~s with ~s in constraint ~s~%" old new constraint)
   (when (and (slot-boundp constraint 'return-type)
              (eq (return-type constraint) old))
     (flag-modified-constraint constraint)
@@ -210,6 +213,14 @@
     (setf (out-type constraint) new)))
 
 
+(defparameter *copy-constraints-hash* nil
+  "used to track already copied constraints when copying type inference data")
+
+(defun update-constraint-cache (new old)
+  (when (and *copy-constraints-hash*
+             (gethash old *copy-constraints-hash*))
+    (setf (gethash old *copy-constraints-hash*) new)))
+
 (defmacro defmethod2 (name (a b) &body body)
   ;; define methods on NAME with arguments A B and B A
   `(progn
@@ -232,7 +243,11 @@
     (loop for c being the hash-keys of (constraints b) using (hash-value v)
           do (format t "  ~s? in ~s~%" v c)
           when v
-            do (replace-constraint-type a b c)))
+            do (replace-constraint-type a b c)
+             (unless (gethash c (constraints a))
+               (setf (gethash c (constraints a)) t))
+               (setf (gethash c (constraints a)) t)))
+  (update-constraint-cache a b)
   a)
 
 (defmethod unify ((a constrained-type) (b constrained-type))
@@ -272,15 +287,9 @@
              when v
                do (unless (gethash c (constraints a))
                     (setf (gethash c (constraints a)) t)
-                    (break "?")
-                    (remhash b (types c))
-                    (replace-constraint-type a b c)))
-       ))
-)
-  a
-
-
-)
+                    (replace-constraint-type a b c))))))
+  (update-constraint-cache a b)
+  a)
 
 (defmethod2 unify ((a constrained-type) (b generic-type))
   ;; make sure B is in A's set of valid types
@@ -297,6 +306,7 @@
         do (format t "  ~s? in ~s~%" v c)
         when v
           do (replace-constraint-type b a c))
+  (update-constraint-cache b a)
   b)
 (defmethod2 unify ((a any-type) (b concrete-type))
   (assert (gethash b (types a)))
@@ -304,7 +314,10 @@
   (loop for c being the hash-keys of (constraints a) using (hash-value v)
         do (format t "  ~s? in ~s~%" v c)
         when v
-          do (replace-constraint-type b a c))
+          do (replace-constraint-type b a c)
+             (unless (gethash c (constraints b))
+               (setf (gethash c (constraints b)) t)))
+  (update-constraint-cache b a)
   b)
 
 
@@ -317,6 +330,7 @@
         when v
           do (replace-constraint-type a b c)
              (setf (gethash c (constraints a)) t))
+  (update-constraint-cache a b)
   a)
 
 
@@ -328,6 +342,7 @@
         do (format t "  ~s? in ~s~%" v c)
         when v
           do (replace-constraint-type b a c))
+  (update-constraint-cache b a)
   b)
 
 
@@ -358,9 +373,6 @@
        (make-instance 'constrained-type :types set
                       :constraints (alexandria:plist-hash-table
                                     (when constraint (list constraint t))))))))
-
-(defparameter *copy-constraints-hash* nil
-  "used to track already copied constraints when copying type inference data")
 
 (defmethod copy-constraints :around (x)
   ;; we might have NIL as cached value, so check 2nd value of gethash
@@ -457,6 +469,9 @@
     ;; link back to constraint
     (setf (gethash constraint *copy-constraints-hash*)
           copy)
+    (format t "copy cast constraint ~s -> ~s~%"
+            (debug-type-names (in-type constraint))
+            (debug-type-names (out-type constraint)))
     (setf (slot-value copy 'in-type)
           (copy-constraints (in-type constraint)))
     (setf (slot-value copy 'out-type)
@@ -553,7 +568,7 @@
     (setf (gethash type *copy-constraints-hash*) copy)
     (setf (slot-value copy 'arg-type)
           (copy-constraints (arg-type type)))
-    (setf (gethash type *copy-constraints-hash*) 
+    (setf (gethash type *copy-constraints-hash*)
           (expand-optional-arg-type copy))))
 
 (defmethod copy-constraints ((type any-type))
@@ -578,6 +593,7 @@
                                               :in unify-type
                                               :out copy
                                               :cast-type cast)))
+          (assert unify-type)
           (add-constraint copy cast-constraint)
           (add-constraint unify-type cast-constraint)
           (flag-modified-constraint cast-constraint)
@@ -594,7 +610,7 @@
   (let ((bool (get-type-binding :bool)))
     (etypecase type
       (any-type
-       (change-class type 'any-type)
+       (change-class type 'constrained-type)
        (setf (gethash bool (types type)) t)
        (flag-modified-type type))
       (constrained-type
@@ -741,18 +757,24 @@
     ;; copy return type and any linked constraints
     ;; (may have already been copied if it depends on arguments)
     (format t "~&~s =>~s~%" (name called) (value-type called ))
-    (let ((ret (copy-constraints (value-type called))))
-      ;; if we are calling RETURN, unify return type with function
-      ;; return as well
-      ;; fixme: decide what to do with type returned to caller, since
-      ;; it doesn't actually get returned?
-      (if (eq (called-function form)
-              (get-function-binding 'return
-                                    :env glsl::*glsl-base-environment*))
+    (if (eq (called-function form)
+            (get-function-binding 'return
+                                  :env glsl::*glsl-base-environment*))
+        ;; if we are calling RETURN, unify return type with function
+        ;; return as well
+        (let* ((r (copy-constraints (value-type called))))
           (if (slot-boundp *current-function-constraint* 'return-type)
-              (unify ret (return-type *current-function-constraint*))
-              (setf (return-type *current-function-constraint*) ret))
-          ret))))
+              (setf (return-type *current-function-constraint*)
+                    (unify r (return-type
+                              *current-function-constraint*)))
+              (setf (return-type *current-function-constraint*) r))
+          (add-constraint (return-type *current-function-constraint*)
+                          *current-function-constraint*)
+          ;; fixme: decide what to do with type returned to caller, since
+          ;; it doesn't actually get returned?
+          (return-type *current-function-constraint*))
+        ;; normal function, just copy the return values as usual
+        (copy-constraints (value-type called)))))
 
 (defmethod walk ((form variable-read) (walker infer-build-constraints))
   (format t "infer ~s =~%" form)
@@ -766,6 +788,7 @@
          (cast (make-instance 'cast-constraint
                               :in value
                               :out binding)))
+    (assert value)
     (add-constraint binding cast)
     (add-constraint value cast)
     (flag-modified-constraint cast)
@@ -828,8 +851,9 @@
                                         (make-instance 'any-type)
                                         (set-type (list (declared-type binding))))
                 for initial-value-type = (walk (initial-value-form binding) walker)
-                do (format t "binding ~s -> ~s @ ~s~%"
+                do (format t "binding ~s -> ~s(~s) @ ~s~%"
                            (name binding) (debug-type-names initial-value-type)
+                           initial-value-type
                            (initial-value-form binding))
                 when initial-value-type
                   do (let ((cast (make-instance 'cast-constraint
@@ -869,12 +893,16 @@
     (assert (or (eq t (value-type form))
                 (typep (value-type form) 'any-type)))
     (loop for a in (body form)
-          for ret = (walk a walker)
-          do (format t "@ global-function / ~s~%" ret)
-          finally (return (setf (value-type form) ret)))
-    (if (slot-boundp c 'return-type)
-        (setf (value-type form) (unify (value-type form) (return-type c)))
-        (setf (return-type c) (value-type form)))
+          do (walk a walker))
+    (let ((v (if (and (value-type form)
+                      (not (eq (value-type form) t)))
+                 (value-type form)
+                 (make-instance 'any-type))))
+      (format t "set return type to ~s~%" v)
+      (print
+       (if (slot-boundp c 'return-type)
+           (setf (value-type form) (unify (return-type c) v))
+           (setf (return-type c) v))))
     c))
 
 
@@ -1056,7 +1084,7 @@
                     (/= (aref arg-type-counts i)
                         (hash-table-count (types a))))
             do (flag-modified-type a))
-    
+
     ;; (possibly loop through arg types again and remove NIL values?
     (format t "updated constraint, removed ~s ftypes, ~s arg types~%" removed removed2)
     (print-bindings/ret (name constraint) (argument-types constraint) (return-type constraint))
@@ -1425,9 +1453,24 @@
                      (debug-type-names (ctype constraint)))))
     (cond
       ((typep (other-type constraint) 'concrete-type)
-       ;; expand any-type when other-type is concrete
-       (error "not done yet...")
-       )
+       (let ((removed 0))
+         (maphash (lambda (k v)
+                    (unless (and v
+                                 (eq k
+                                     (aref (scalar/vector-set
+                                            (other-type constraint))
+                                           (out-size constraint))))
+                      (format t "check type ~s / ~s (~s)~%"
+                              (name k)
+                              (name (aref (scalar/vector-set
+                                           (other-type constraint))
+                                     (out-size constraint)))
+                              v)
+                      (incf removed)
+                      (remhash k (types (ctype constraint)))))
+                  (types (ctype constraint)))
+         (when (plusp removed)
+           (flag-modified-type (ctype constraint)))))
       ;; expand any-type when other-type is constrained
       ((typep (ctype constraint) 'any-type)
        (change-class (ctype constraint) 'constrained-type)
@@ -1507,7 +1550,14 @@
           do (setf (value-type b) type))
     ;; store return type of function
     (setf (value-type function) (return-type gfc))
-    (print-bindings/ret (name function) (bindings function) (return-type gfc))
+    (when (or (not (value-type function))
+              (eq (value-type function) t))
+      (setf (value-type function)
+            (get-type-binding :void)))
+    (print-bindings/ret (name function) (bindings function)
+                        (value-type function))
+    (print-bindings/ret (name function) (argument-types gfc)
+                        (return-type gfc))
     (return-type gfc)))
 
 
@@ -1698,3 +1748,27 @@
                       (setf (.rb a) (1+ (glsl::vec2 1 2))))))
                 'h
                 :vertex))
+
+#++
+(print
+ (multiple-value-list
+  (compile-block '((defun h ()
+                     (declare (values))
+                     (let ((a))
+                       (setf (.b a) 1
+                             (.r a) 2)
+                       (if (>= (.b a) 1)
+                           (return (glsl:vec4 1 2 3 4))
+                           (return a)))))
+                 'h
+                 :vertex)))
+
+
+#++
+(print
+ (multiple-value-list
+  (compile-block '((defun h ()
+                     (return (glsl:vec2 1))
+                     (return (glsl:ivec2 1))))
+                 'h
+                 :vertex)))

@@ -20,7 +20,9 @@
 ** DONE add/update built-in variables/constants
    CLOSED: [2014-08-25 Mon 06:26]
    https://www.opengl.org/registry/doc/GLSLangSpec.4.50.diff.pdf#page=123
-** decide if RETURN should be required for return values from functions?
+** DONE decide if RETURN should be required for return values from functions?
+   CLOSED: [2014-08-25 Mon 12:52]
+   -- requiring it for now...
    not sure if that is better or requiring (values) or declaration for
    void return?
 ** handle (values) as 'void'

@@ -16,8 +16,6 @@
 (defun cache-binding (binding type)
   (format t "~&setting type for binding ~s to ~s~%"
           (name binding) (name type))
-  (when (eq :mat4x2 (name type))
-    (break "mat4x2?"))
   (setf (gethash binding *binding-types*) type))
 
 (defmethod flatten-cast-type ((type concrete-type) in-type)
@@ -320,13 +318,16 @@
             for binding in (bindings function)
             for arg-type = (pop %at)
             do (cache-binding binding arg-type))
-      (let ((ret))
-        (loop for f in (body function)
-              do (setf ret (walk f walker)))
-        (setf (gethash arg-types cache) (list ret *binding-types*))
+      (loop for f in (body function)
+            do (walk f walker))
+      (let ((r (value-type function)))
+        (if (typep r '(or any-type null (eql t)))
+            (setf r (get-type-binding :void))
+            (setf r (flatten-cast-type r nil)))
+        (setf (gethash arg-types cache) (list r *binding-types*))
         (format t "call to function (~s ~{~s~^ ~}), new ret ~s~%"
-                (name function) (mapcar 'name arg-types) (name ret))
-        ret))))
+                (name function) (mapcar 'name arg-types) (name r))
+        r))))
 
 (defmethod walk ((form function-call) (walker finalize))
   (format t "function call ~s -> ~s (~s~%" form (name (called-function form))
