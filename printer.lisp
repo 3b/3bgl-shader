@@ -226,6 +226,26 @@
   (let ((*in-expression* t))
     (format t "~a" `(! ,x))))
 
+(defprinti (glsl::incf x &optional y) ()
+  (let ((*in-expression* t))
+    (if y
+        (format t "(~a+=~a)" x y)
+        (format t "(~a++)" x))))
+(defprinti (glsl::decf x &optional y) ()
+  (let ((*in-expression* t))
+    (if y
+        (format t "(~a-=~a)" x y)
+        (format t "(~a--)" x))))
+
+(defprinti (glsl::++ x) ()
+  (let ((*in-expression* t))
+    (format t "(++~a)" x)))
+(defprinti (glsl::-- x) ()
+  (let ((*in-expression* t))
+    (format t "(--~a)" x)))
+
+
+
 ;; only handling binary versions of compare ops for now,
 ;; can expand multi arg versions in earlier pass if needed
 (macrolet ((compares (&rest ops)
