@@ -27,7 +27,8 @@
    void return?
 ** DONE rewrite finalization stuff to do full inference pass
    CLOSED: [2014-08-28 Thu 14:57]
-** clean up debug noise/commented junk, reformat code
+** DONE clean up debug noise/commented junk, reformat code
+   CLOSED: [2014-08-28 Thu 16:56]
 ** make sure var initialization uses correct bindings whem vars are shadowed
    internally they refer to correct bindings, but if they have same name they
    might be wrong when printed
