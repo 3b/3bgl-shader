@@ -347,7 +347,7 @@
          (setf inferred-types
                (finalize-inference (get-function-binding tree-shaker-root)))
          (with-output-to-string (*standard-output*)
-           (format t "#version 450~%")
+           (format t "#version 440~%")
            (pprint-glsl forms)
            (loop with dumped = (make-hash-table)
                  for type in shaken-types
