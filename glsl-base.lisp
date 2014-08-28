@@ -358,7 +358,6 @@
                         :raw-arguments cdr
                         :argument-environment 3bgl-shaders::*environment*
                         :arguments (mapcar (lambda (x)
-                                             (format t "walk ~s~%" x)
                                              (3bgl-shaders::walk x walker))
                                            (funcall (3bgl-shaders::expander binding)
                                                     cdr))))
@@ -533,7 +532,7 @@
                          (make-instance '3bgl-shaders::extract-functions))))
 
 (cl:defun generate-stage (stage main)
-  (let ((*package* (print (or (symbol-package main) *package*))))
+  (let ((*package* (or (symbol-package main) *package*)))
     (nth-value 6
                (glsl::with-package-environment()
                  (3bgl-shaders::compile-block nil main stage

@@ -14,8 +14,9 @@
 (defvar *binding-types*)
 
 (defun cache-binding (binding type)
-  (format t "~&setting type for binding ~s to ~s~%"
-          (name binding) (name type))
+  (when *verbose*
+    (format t "~&setting type for binding ~s to ~s~%"
+           (name binding) (name type)))
   (setf (gethash binding *binding-types*) type))
 
 (defmethod flatten-type ((type concrete-type) &optional force-type)
@@ -91,9 +92,10 @@
 
 (defun flatten-function (function argument-types)
   (setf argument-types (mapcar 'get-concrete-type argument-types))
-  (format t "~%~%~%flattening function ~s: ~s~%  ~s~%~%~%~%" (name function)
-          (debug-type-names argument-types)
-          argument-types)
+  (when *verbose*
+    (format t "~%~%~%flattening function ~s: ~s~%  ~s~%~%~%~%" (name function)
+            (debug-type-names argument-types)
+            argument-types))
   (unless (gethash argument-types (final-binding-type-cache function))
     ;; assume if we have a cached type, all called functions have been
     ;; cached as well.  otherwise, figure out final types for this
@@ -117,10 +119,6 @@
             while i
             do (setf (modified i) nil))
 
-      (when (eq (name function) 'p1)
-        (break "finalize1" function local-types))
-
-
       ;; assign types to function arguments, rtun type inference if
       ;; any changed
       (assert (= (length argument-types) (length (bindings function))))
@@ -129,10 +127,7 @@
                          count (flatten-type (gethash binding local-types)
                                              arg)))
         ;; updated arguments
-        (print (run-type-inference)))
-
-      (when (eq (name function) 'p1)
-        (break "finalize2" function local-types))
+        (run-type-inference))
 
       ;; loop through variable bindings
       ;;  if multiple types, collapse to simplest type then run
@@ -144,11 +139,11 @@
             for v = (gethash k local-types)
             do (if (typep k '(or local-variable))
                    (progn
-                     (format t "update local variable ~s (~s)~%" (name k)
-                             (debug-type-names v))
+                     (when *verbose*
+                       (format t "update local variable ~s (~s)~%" (name k)
+                               (debug-type-names v)))
                      (when (flatten-type v)
-                       (print (run-type-inference))))
-                   (format t "skipping ~s~%" k)))
+                       (run-type-inference)))))
 
       ;; flatten return type of function
       (flatten-type (gethash :return local-types))
@@ -161,26 +156,29 @@
         (maphash (lambda (k v)
                    (if (typep k 'inference-call-site)
                        (progn
-                         (format t "use function ~s: ~s~%"
-                                 (name (called-function k))
-                                 (debug-type-names v))
+                         (when *verbose*
+                           (format t "use function ~s: ~s~%"
+                                   (name (called-function k))
+                                   (debug-type-names v)))
                          (pushnew (mapcar (lambda (a)
                                             (flatten-type a)
                                             (get-concrete-type a))
                                           (cdr v))
                                   (gethash k cache nil) :test 'equal)
-                         (format t "-> ~s~%"
-                                 (debug-type-names (gethash k cache :?))))
+                         (when *verbose*
+                           (format t "-> ~s~%"
+                                   (debug-type-names (gethash k cache :?)))))
                        (setf (gethash k cache) v)))
                  local-types)
         (setf (gethash argument-types (final-binding-type-cache function))
               cache))))
-  (format t "~%~% flattened ~s: ~s -> ~s~%~s~%"
-          (name function) (debug-type-names argument-types)
-          (debug-type-names
-           (gethash :return (gethash argument-types
-                                     (final-binding-type-cache function))))
-          argument-types)
+  (when *verbose*
+    (format t "~%~% flattened ~s: ~s -> ~s~%~s~%"
+            (name function) (debug-type-names argument-types)
+           (debug-type-names
+            (gethash :return (gethash argument-types
+                                      (final-binding-type-cache function))))
+           argument-types))
 
   ;; add any used function signatures to the hash table for printing
   (maphash (lambda (k v)
@@ -203,7 +201,6 @@
 (defun finalize-inference (root)
   (let ((*instantiated-overloads* (make-hash-table))
         (*binding-types* (make-hash-table)))
-    (format t "~%~%~%~%~%~%~%")
 
     (flatten-function root nil)
 

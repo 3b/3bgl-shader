@@ -45,10 +45,8 @@
 (defvar *function-stages*)
 
 (defwalker extract-functions (defun name lambda-list &body body+d)
-  (format t "defun ~s~%" name)
   (multiple-value-bind (body declare doc)
       (alexandria:parse-body body+d :documentation t)
-    (format t "declarations = ~s~%" declare)
     (let ((glsl::*current-function*
             (process-type-declarations-for-scope
              (add-function name lambda-list
@@ -60,7 +58,6 @@
         (pushnew glsl::*current-function* *new-function-definitions*))
       (setf (body glsl::*current-function*)
             (with-lambda-list-vars (glsl::*current-function*) (@@ body)))
-      (format t "defun ~s stages = ~s~%" name *function-stages*)
       ;; if *function-stages* is NIL, we got bindings that only exist
       ;; in disjoint sets of stages...
       (assert *function-stages*)
@@ -143,7 +140,6 @@
   ())
 
 (defmethod walk ((form function-call) (walker tree-shaker))
-  (format t "ts: ~s -> ~s~%" form (name (called-function form)))
   (when (or (typep (called-function form) 'global-function)
             (typep (called-function form) 'unknown-function-binding))
     (funcall *tree-shaker-hook* (called-function form)))
@@ -247,7 +243,6 @@
 (defun update-dependencies (function)
   ;; reuse tree-shaker walker, find all functions called and add to list
   ;;
-  (format t "update deps ~s~%" (name function))
   (let* ((current-function (if (symbolp function)
                                (get-function-binding function)
                                function))
@@ -257,8 +252,6 @@
                          (typep f 'unknown-function-binding)))
              ;; fixme: add a proper "unknown function" warning,
              ;;  and somehow mark to skip type inference step
-             (format t "add dep ~s calls ~s~%" (name current-function)
-                     (name f))
              (setf (gethash f (function-dependencies current-function))
                    f)
              (setf (gethash current-function (function-dependents f))
@@ -272,7 +265,6 @@
   (let ((*environment* (argument-environment form)))
     (setf (arguments form)
           (mapcar (lambda (x)
-                    (format t "update ~s~%" x)
                     (walk x walker))
                   (funcall (expander (called-function form))
                            (raw-arguments form)))))
@@ -309,7 +301,7 @@
                  (walk k update-calls))
                deps))
 
-    (print forms)
+    (when *verbose* (print forms))
     (let ((*print-as-main* (when print-as-main
                              (get-function-binding print-as-main)))
           (inferred-types))

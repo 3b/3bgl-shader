@@ -1596,16 +1596,14 @@
 ;; number of args in CL
 ;; todo: add compiler macros for more complicated cases like =, <, etc
 (macrolet ((define-binop (x)
-             (print
-              `(%glsl-compiler-macro ,x (&whole w &rest r)
-                 (format t "expanding ~s / ~s: ~%" w r)
-                 (labels ((rec (rr)
-                            (if (> (length rr) 2)
-                                `(,(car w) ,(rec (cdr rr)) ,(car rr))
-                                `(,(car w) ,(cadr rr) ,(car rr)))))
-                   (if (> (length r) 2)
-                       (print (rec (reverse r)))
-                       (print w))))))
+             `(%glsl-compiler-macro ,x (&whole w &rest r)
+                (labels ((rec (rr)
+                           (if (> (length rr) 2)
+                               `(,(car w) ,(rec (cdr rr)) ,(car rr))
+                               `(,(car w) ,(cadr rr) ,(car rr)))))
+                  (if (> (length r) 2)
+                      (rec (reverse r))
+                      w))))
            (define-binops (&rest r)
              `(progn
                 ,@(loop for i in r collect `(define-binop ,i)))))

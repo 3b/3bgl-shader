@@ -61,7 +61,7 @@
 
 (defmethod add-constraint (ctype constraint)
   ;; not an error, so we don't have to check before assigning constraints...
-  (format t "added constraint to type ~s?~%" ctype))
+  (when *verbose* (format t "added constraint to type ~s?~%" ctype)))
 (defmethod add-constraint ((ctype constrained-type) constraint)
   (setf (gethash constraint (constraints ctype)) t))
 (defmethod add-constraint ((ctype any-type) constraint)
@@ -74,12 +74,13 @@
 
 (defun flag-modified-constraint (constraint)
   (unless (modified constraint)
-    (format t "~&flag constraint ~s~%" constraint)
+    (when *verbose* (format t "~&flag constraint ~s~%" constraint))
     (setf (modified constraint) t)
     (push constraint *inference-worklist*)))
 
 (defun flag-modified-type (type)
-  (format t "~&flag type ~s (~s)~%" type (debug-type-names type))
+  (when *verbose*
+    (format t "~&flag type ~s (~s)~%" type (debug-type-names type)))
   (maphash (lambda (constraint v)
              (when v (flag-modified-constraint constraint)))
            (constraints type)))
@@ -208,14 +209,6 @@
   (call-next-method))
 
 
-
-(defmethod replace-constraint-type :before (new old constraint)
-  (format t "replace ~s with ~s in constraint ~s(~s)~%" old new
-          (if (typep constraint 'global-function-constraint)
-              (list constraint (name constraint))
-              constraint)
-          (name constraint)))
-
 (defmethod replace-constraint-type (new old constraint)
   ;; shouldn't modify CONSTRAINTS field of callers, since they may
   ;; be iterating it... wait for update pass before removing any
@@ -251,9 +244,6 @@
     ;; (temporary hash of types -> list of bindings?)
     (maphash (lambda (k v)
                (when (eq v old)
-                 (format t "~&replace type for ~s: ~s -> ~s~%"
-                         (if (symbolp k) k (name k))
-                         old new)
                  (setf (gethash k hash) new))
                (when (consp v)
                  (setf (gethash k hash) (substitute new old v))))
@@ -287,9 +277,7 @@
 (defmethod unify ((a any-type) (b any-type))
   (unless (eq a b)
     ;; replace B with A
-    (format t "replacing/aa ~s with ~s~%" b a)
     (loop for c being the hash-keys of (constraints b) using (hash-value v)
-          do (format t "  ~s? in ~s~%" v c)
           when v
             do (replace-constraint-type a b c)
                (unless (gethash c (constraints a))
@@ -347,9 +335,7 @@
 
 (defmethod2 unify ((a constrained-type) (b concrete-type))
   (assert (gethash b (types a)))
-  (format t "replacing1 ~s with ~s~%" a b)
   (loop for c being the hash-keys of (constraints a) using (hash-value v)
-        do (format t "  ~s? in ~s~%" v c)
         when v
           do (replace-constraint-type b a c))
   (update-constraint-cache b a)
@@ -357,9 +343,7 @@
 
 (defmethod2 unify ((a any-type) (b concrete-type))
   (assert (gethash b (types a)))
-  (format t "replacing2 ~s with ~s~%" a b)
   (loop for c being the hash-keys of (constraints a) using (hash-value v)
-        do (format t "  ~s? in ~s~%" v c)
         when v
           do (replace-constraint-type b a c)
              (unless (gethash c (constraints b))
@@ -370,9 +354,7 @@
 (defmethod2 unify ((a constrained-type) (b any-type))
   ;; replace B with A in all of its constraints (if not already there)
   ;; and add Bs constraints to A
-  (format t "replacing3 ~s with ~s~%" b a)
   (loop for c being the hash-keys of (constraints b) using (hash-value v)
-        do (format t "  ~s? in ~s~%" v c)
         when v
           do (replace-constraint-type a b c)
              (setf (gethash c (constraints a)) t))
@@ -381,9 +363,7 @@
 
 (defmethod2 unify ((a constrained-type) (b null))
   (assert (gethash b (types a)))
-  (format t "replacing4 ~s with ~s~%" a b)
   (loop for c being the hash-keys of (constraints a) using (hash-value v)
-        do (format t "  ~s? in ~s~%" v c)
         when v
           do (replace-constraint-type b a c))
   (update-constraint-cache b a)
@@ -513,9 +493,6 @@
     ;; link back to constraint
     (setf (gethash constraint *copy-constraints-hash*)
           copy)
-    (format t "copy cast constraint ~s -> ~s~%"
-            (debug-type-names (in-type constraint))
-            (debug-type-names (out-type constraint)))
     (setf (slot-value copy 'in-type)
           (copy-constraints (in-type constraint)))
     (setf (slot-value copy 'out-type)
@@ -587,7 +564,6 @@
 (defun expand-optional-arg-type (o-a-t)
   (if (typep o-a-t 'optional-arg-type)
       (let ((new (arg-type o-a-t)))
-        (format t "expand optional type ~s to ~s~%" o-a-t new)
         (when (or (typep new 'any-type)
                   (typep new 'constrained-type))
           (maphash (lambda (c v) (when v
@@ -617,12 +593,10 @@
 
 
 (defun copy-unify-constraints (type unify-type &key cast name)
-  (format t "~&c-u-c ~s ~s~%" type unify-type)
   (unless unify-type
     (assert (typep type 'optional-arg-type))
     (return-from copy-unify-constraints nil))
   (let ((copy (copy-constraints type)))
-    (format t "~&c-unify ~s ~s~%" copy unify-type)
     (if cast
         (let ((cast-constraint (make-instance 'cast-constraint
                                               :name name
@@ -756,7 +730,6 @@
     (break "slot-access" (list form struct-type))))
 
 (defmethod walk ((form function-call) (walker infer-build-constraints))
-  (format t "~&infer ~s (~s) =~%" (name (called-function form)) form)
   (let* ((called (called-function form))
          (*copy-constraints-hash* (make-hash-table))
          (call-site (when (typep called 'global-function)
@@ -771,10 +744,6 @@
     ;; make local copies of any types/constraints affected by function
     ;; args, and unify with actual arg types
     ;; (unify will add modified constraints to work list)
-    (format t "ibc / walk function ~s,~% args=~s,~% bindings=~s~%"
-            (name called)
-            (arguments form)
-            (bindings called))
     (assert (<= (length (arguments form))
                 (length (bindings called))))
     ;; store NIL in the cache for any unused args, so we don't try to copy them
@@ -797,7 +766,6 @@
         (setf (gethash call-site *current-function-local-types*) a)))
     ;; copy return type and any linked constraints
     ;; (may have already been copied if it depends on arguments)
-    (format t "~&~s =>~s~%" (name called) (value-type called))
     (if (eq (called-function form)
             (get-function-binding 'return
                                   :env glsl::*glsl-base-environment*))
@@ -821,11 +789,9 @@
           vt))))
 
 (defmethod walk ((form variable-read) (walker infer-build-constraints))
-  (format t "infer ~s =~%" form)
   (walk (binding form) walker))
 
 (defmethod walk ((form variable-write) (walker infer-build-constraints))
-  (format t "infer ~s =~%" form)
   (let* ((binding (walk (binding form) walker))
          (value (walk (value form) walker))
          ;; todo: avoid creating cast constraint if we know both types?
@@ -840,50 +806,39 @@
     value))
 
 (defmethod walk ((form local-variable) (walker infer-build-constraints))
-  (format t "infer ~s =~%" form)
-  (print (value-type form)))
+  (value-type form))
 
 (defmethod walk ((form binding) (walker infer-build-constraints))
-  (format t "infer ~s =~%" form)
-  (print (value-type form)))
+  (value-type form))
 
 (defmethod walk ((form interface-binding) (walker infer-build-constraints))
-  (format t "infer ~s =~%" form)
-  (print
-   (let ((stage-binding (stage-binding form)))
-     (assert stage-binding)
-     (walk stage-binding walker))))
+  (let ((stage-binding (stage-binding form)))
+    (assert stage-binding)
+    (walk stage-binding walker)))
 
 (defmethod walk ((form interface-stage-binding) (walker infer-build-constraints))
-  (format t "infer ~s =~%" form)
-  (print (walk (binding form) walker)))
+  (walk (binding form) walker))
 
 (defmethod walk ((form constant-binding) (walker infer-build-constraints))
-  (format t "infer ~s =~%" form)
   (if (member (value-type form) '(t nil))
       (walk (initial-value-form form) walker)
       (value-type form)))
 
 (defmethod walk ((form function-argument) (walker infer-build-constraints))
-  (format t "infer ~s =~%" form)
-  (print (value-type form)))
+  (value-type form))
 
 (defmethod walk ((form integer) (walker infer-build-constraints))
-  (format t "infer ~s =~%" form)
-  (print (set-type (list :int))))
+  (set-type (list :int)))
 
 (defmethod walk ((form float) (walker infer-build-constraints))
-  (format t "infer ~s =~%" form)
-  (print (set-type :float)))
+  (set-type :float))
 
 (defmethod walk ((form explicit-progn) (walker infer-build-constraints))
-  (format t "@infer ~s~%" form)
   (loop for a in (body form)
         for ret = (walk a walker)
         finally (return ret)))
 
 (defmethod walk ((form binding-scope) (walker infer-build-constraints))
-  (format t "infer ~s  (~s)=~%" form (body form))
   (let ((c (make-instance 'global-function-constraint
                           :name 'let
                           :function form)))
@@ -893,10 +848,6 @@
                                         (make-instance 'any-type)
                                         (set-type (list (declared-type binding))))
                 for initial-value-type = (walk (initial-value-form binding) walker)
-                do (format t "binding ~s -> ~s(~s) @ ~s~%"
-                           (name binding) (debug-type-names initial-value-type)
-                           initial-value-type
-                           (initial-value-form binding))
                 when initial-value-type
                   do (let ((cast (make-instance 'cast-constraint
                                                 :name (name
@@ -919,7 +870,6 @@
                 finally (return ret)))))
 
 (defmethod walk ((form global-function) (walker infer-build-constraints))
-  (format t "infer ~s  (~s)=~%" form (body form))
   (let* ((c (make-instance 'global-function-constraint
                            :name (name form)
                            :function form))
@@ -947,19 +897,17 @@
                       (not (eq (value-type form) t)))
                  (value-type form)
                  (make-instance 'any-type))))
-      (format t "set return type to ~s~%" v)
-      (print
-       (if (slot-boundp c 'return-type)
-           (setf (value-type form) (unify (return-type c) v))
-           (setf (return-type c) v
-                 (value-type form) v)))
+      (if (slot-boundp c 'return-type)
+          (setf (value-type form) (unify (return-type c) v))
+          (setf (return-type c) v
+                (value-type form) v))
       (setf (gethash :return *current-function-local-types*)
             (value-type form)))
     c))
 
 
 (defmethod walk (form (walker infer-build-constraints))
-  (format t "unhandled form ~s~%" form)
+  (when *verbose* (format t "unhandled form ~s~%" form))
   (when (next-method-p)
     (call-next-method)))
 
@@ -1034,10 +982,6 @@
           for i from 0
           when (typep a 'constrained-type)
             do (setf (aref arg-type-counts i) (hash-table-count (types a))))
-    (format t "~&update constraint ~s (~s ftypes)~%" constraint (length (function-types constraint)))
-    (format t "  constrained = ~{~s~%                 ~}-> ~s~%"
-            (argument-types constraint)
-            (return-type constraint))
     (typecase (return-type constraint)
       (constrained-type
        (setf return-type-count
@@ -1045,25 +989,21 @@
       (concrete-type
        (setf return-type-count 1)))
 
-    (print-bindings/ret (name constraint) (argument-types constraint) (return-type constraint))
     ;; loop through function types, keep ones that match the argument/ret types
     (setf (function-types constraint)
           (loop for ftype in (function-types constraint)
                 for (args ret) = ftype
-                do (format t "  check constraint ~s: " ftype)
-                when (prin1
-                      (and
-                       ;; fixme: store concrete types in ftypes instead of symbols
-                       (unifiable-types-p ret (return-type constraint))
-                       (loop for .ftype-arg = (pop args)
-                             for ftype-arg = (or (get-type-binding .ftype-arg)
-                                                 .ftype-arg)
-                             for arg in (argument-types constraint)
-                             always (unifiable-types-p arg ftype-arg))))
+                when (and
+                      ;; fixme: store concrete types in ftypes instead of symbols
+                      (unifiable-types-p ret (return-type constraint))
+                      (loop for .ftype-arg = (pop args)
+                            for ftype-arg = (or (get-type-binding .ftype-arg)
+                                                .ftype-arg)
+                            for arg in (argument-types constraint)
+                            always (unifiable-types-p arg ftype-arg)))
                   collect ftype
-                else do (incf removed)
-                do (terpri)))
-    (format t " -> (~s ftypes)~%" (length (function-types constraint)))
+                else do (incf removed)))
+
     ;; loop through argument types, set all to NIL
     (flet ((process (arg)
              (unless (or (not arg)
@@ -1088,7 +1028,6 @@
                                                 (function-types constraint)))))
       (loop for arg in (argument-types constraint)
             for i from 0
-            do (format t "maybe expand any type ~s?~%" arg)
             when (typep arg 'any-type)
               do (change-class arg 'blahblah
                                :types (hash-list
@@ -1129,24 +1068,15 @@
                       (/= (aref arg-type-counts i)
                           (hash-table-count (clean-hash (types a)))))
               do (flag-modified-type a))
-      (format t "check return type ~s/~s (was ~s)~%"
-              (return-type constraint)
-              (debug-type-names (return-type constraint))
-              return-type-count)
       (etypecase (return-type constraint)
         (constrained-type
          (unless (= return-type-count
                     (hash-table-count
                      (clean-hash (types (return-type constraint)))))
-           (format t "flag ~s modified:~% ~s~%"
-                   (return-type constraint)
-                   (constraints (return-type constraint)))
            (flag-modified-type (return-type constraint))))
         (concrete-type)))
 
     ;; (possibly loop through arg types again and remove NIL values?
-    (format t "updated constraint, removed ~s ftypes, ~s arg types~%" removed removed2)
-    (print-bindings/ret (name constraint) (argument-types constraint) (return-type constraint))
     (unless (or (plusp removed) (plusp removed2))
       (warn "couldn't narrow constraint?"))))
 
@@ -1155,10 +1085,6 @@
         (out-casts (make-hash-table))
         (any-in (typep (in-type constraint) 'any-type))
         (any-out (typep (out-type constraint) 'any-type)))
-    (format t "update cast constraint ~s (~s):~%  ~s -> ~s~%"
-            constraint (name constraint)
-            (debug-type-names(in-type constraint))
-            (debug-type-names(out-type constraint)))
     (labels ((add-casts (type casts hash)
                (setf (gethash type hash) t)
                (loop for cast in casts
@@ -1174,9 +1100,9 @@
                  (optional-arg-type
                   (map-concrete-types (arg-type type) fun))))
              (handle-fixed-constraint ()
-               (when (or (and (print (not any-in))
+               (when (or (and (not any-in)
                               (zerop (hash-table-count in-casts)))
-                         (and (print (not any-out))
+                         (and (not any-out)
                               (zerop (hash-table-count out-casts))))
                  (error "can't resolve constraint?"))
                (when (and (or any-in (= 1 (hash-table-count in-casts)))
@@ -1187,8 +1113,6 @@
                  (unless (typep (out-type constraint) 'concrete-type)
                    (remhash constraint (constraints (out-type constraint))))
                  (unify (in-type constraint) (out-type constraint))
-                 (format t "constraint resolved to ~s~%"
-                         (debug-type-names (in-type constraint)))
                  t)))
       (unless any-in
         (map-concrete-types (in-type constraint)
@@ -1218,7 +1142,6 @@
                                    :types out-casts))))
         (any-out
          (or (handle-fixed-constraint)
-             (not (print "  update any-type/out in cast"))
              (unify (out-type constraint)
                     (make-instance 'constrained-type
                                    :types in-casts))))
@@ -1230,10 +1153,6 @@
          (flet ((c (type cast-types)
                   (when (typep type 'constrained-type)
                     (let ((old (hash-table-count (types type))))
-                      (format t "try cast cast ~s -> ~s~%"
-                              (debug-type-names type)
-                              (mapcar 'name
-                                      (alexandria:hash-table-keys cast-types)))
                       (maphash (lambda (k v)
                                  (unless (and v (gethash k cast-types))
                                    (remhash k (types type))))
@@ -1243,11 +1162,7 @@
                         (flag-modified-type type))))))
            (c (in-type constraint) out-casts)
            (c (out-type constraint) in-casts)
-           (handle-fixed-constraint))))
-
-      (format t "  updated cast constraint:~%  ~s -> ~s~%"
-              (debug-type-names(in-type constraint))
-              (debug-type-names(out-type constraint))))))
+           (handle-fixed-constraint)))))))
 
 (defmethod update-constraint ((constraint same-type-or-scalar-constraint))
   ;; not allowing any-type for other-type for now, since constraint
@@ -1255,9 +1170,6 @@
   ;; restricted to those types in definition
   (when (typep (other-type constraint) 'any-type)
     (error "don't know how to handle same-type-or-scalar-constraint from any-type?"))
-  (format t "=s constraint: ~s -> ~s~%"
-          (debug-type-names (other-type constraint))
-          (debug-type-names (ctype constraint)))
   (labels ((scalar (type)
              (aref (scalar/vector-set type) 1))
            (handle-fixed-constraint ()
@@ -1275,10 +1187,7 @@
                   (remhash constraint (constraints (ctype constraint)))))
                ((or (zerop (hash-table-count (types (ctype constraint))))
                     (zerop (hash-table-count (types (other-type constraint)))))
-                (error "can't resolve =s constraint?")))
-             (format t "  updated =s constraint: ~s -> ~s~%"
-                     (debug-type-names (other-type constraint))
-                     (debug-type-names (ctype constraint)))))
+                (error "can't resolve =s constraint?")))))
     (cond
       ((typep (other-type constraint) 'concrete-type)
        ;; expand any-type when other-type is concrete
@@ -1332,9 +1241,6 @@
   ;; restricted to those types in definition
   (when (typep (other-type constraint) 'any-type)
     (error "don't know how to handle scalar-type-of-constraint from any-type?"))
-  (format t "s constraint: ~s -> ~s~%"
-          (debug-type-names (other-type constraint))
-          (debug-type-names (ctype constraint)))
   (labels ((scalar (type)
              (aref (scalar/vector-set type) 1))
            (handle-fixed-constraint ()
@@ -1352,10 +1258,7 @@
                   (remhash constraint (constraints (ctype constraint)))))
                ((or (zerop (hash-table-count (types (ctype constraint))))
                     (zerop (hash-table-count (types (other-type constraint)))))
-                (error "can't resolve s constraint?")))
-             (format t "  updated s constraint: ~s -> ~s~%"
-                     (debug-type-names (other-type constraint))
-                     (debug-type-names (ctype constraint)))))
+                (error "can't resolve s constraint?")))))
     (cond
       ((typep (other-type constraint) 'concrete-type)
        ;; expand any-type when other-type is concrete
@@ -1402,10 +1305,6 @@
   ;; restricted to those types in definition
   (when (typep (other-type constraint) 'any-type)
     (error "don't know how to handle same-size-different-base-type-constraint from any-type?"))
-  (format t "=# constraint: ~s/~s -> ~s~%"
-          (debug-type-names (other-type constraint))
-          (debug-type-names (base-type constraint))
-          (debug-type-names (ctype constraint)))
   (labels ((handle-fixed-constraint ()
              ;; can't unify types since they don't generally have same
              ;; base type. once ctype is down to a single type we can
@@ -1421,11 +1320,7 @@
                   (remhash constraint (constraints (ctype constraint)))))
                ((or (zerop (hash-table-count (types (ctype constraint))))
                     (zerop (hash-table-count (types (other-type constraint)))))
-                (error "can't resolve =# constraint?")))
-             (format t "  updated =# constraint: ~s/~s -> ~s~%"
-                     (debug-type-names (other-type constraint))
-                     (debug-type-names (base-type constraint))
-                     (debug-type-names (ctype constraint)))))
+                (error "can't resolve =# constraint?")))))
     (cond
       ((typep (other-type constraint) 'concrete-type)
        ;; expand any-type when other-type is concrete
@@ -1480,11 +1375,6 @@
   ;; restricted to those types in definition
   (when (typep (other-type constraint) 'any-type)
     (error "don't know how to handle same-base-type-different-size-constraint from any-type?"))
-  (format t ".xyz constraint: ~s/~s -> ~s/~s~%"
-          (debug-type-names (other-type constraint))
-          (min-size constraint)
-          (out-size constraint)
-          (debug-type-names (ctype constraint)))
   (labels ((handle-fixed-constraint ()
              ;; can't unify types since they don't generally have same
              ;; type. once ctype is down to a single base type we can
@@ -1499,12 +1389,7 @@
                   (remhash constraint (constraints (ctype constraint)))))
                ((or (zerop (hash-table-count (types (ctype constraint))))
                     (zerop (hash-table-count (types (other-type constraint)))))
-                (error "can't resolve .xyz constraint?")))
-             (format t "  updated .xyz constraint: ~s/~s -> ~s/~s~%"
-                     (debug-type-names (other-type constraint))
-                     (min-size constraint)
-                     (out-size constraint)
-                     (debug-type-names (ctype constraint)))))
+                (error "can't resolve .xyz constraint?")))))
     (cond
       ((typep (other-type constraint) 'concrete-type)
        (let ((removed 0))
@@ -1514,12 +1399,6 @@
                                      (aref (scalar/vector-set
                                             (other-type constraint))
                                            (out-size constraint))))
-                      (format t "check type ~s / ~s (~s)~%"
-                              (name k)
-                              (name (aref (scalar/vector-set
-                                           (other-type constraint))
-                                          (out-size constraint)))
-                              v)
                       (incf removed)
                       (remhash k (types (ctype constraint)))))
                   (types (ctype constraint)))
@@ -1578,14 +1457,13 @@
   (when (or (typep (global-function constraint) 'global-function)
             (typep (global-function constraint) 'place))
     (setf (value-type (global-function constraint))
-          (return-type constraint)))
-  (format t "updated global-function-constraint ~s:~%" (name constraint))
-  (print-bindings/ret (name constraint) (argument-types constraint) (return-type constraint)))
+          (return-type constraint))))
 
 
 (defun run-type-inference ()
-  (format t "~&running type inference, ~s elements in worklist~%"
-          (length *inference-worklist*))
+  (when *verbose*
+    (format t "~&running type inference, ~s elements in worklist~%"
+           (length *inference-worklist*)))
   (loop with start-count = (length *inference-worklist*)
         for constraint = (pop *inference-worklist*)
         while constraint
@@ -1593,17 +1471,20 @@
         when (zerop (mod i 2000))
           do (break "~a loops in inference?" i)
         do (assert (modified constraint))
-        do (format t "~&~%~s: updating constraint ~s (~s left)~%"
-                   i constraint (length *inference-worklist*))
+        when *verbose*
+          do (format t "~&~%~s: updating constraint ~s (~s left)~%"
+                     i constraint (length *inference-worklist*))
            (dump-constraint constraint)
         do (update-constraint constraint)
            ;; clear flag after updating so it doesn't get put back
            ;; when constrained types change
            (setf (modified constraint) nil)
-        do (format t "~&==updated constraint:~%")
-           (dump-constraint constraint)
+        when *verbose*
+          do (format t "~&==updated constraint:~%")
+             (dump-constraint constraint)
         finally (progn
-                  (format t "~&finished type inference, ~s updates~%" i)
+                  (when *verbose*
+                    (format t "~&finished type inference, ~s updates~%" i))
                   (return (list start-count i)))))
 
 (defun infer (function)
@@ -1623,25 +1504,20 @@
               (eq (value-type function) t))
       (setf (value-type function)
             (get-type-binding :void)))
-    (print-bindings/ret (name function) (bindings function)
-                        (value-type function))
-    (print-bindings/ret (name function) (argument-types gfc)
-                        (return-type gfc))
     (return-type gfc)))
 
 
 (defun infer-modified-functions (functions)
   ;; find dependents of modified functions, and add to a list in
   ;; dependency order
-  (format t "infer-modified-functions ~s~%" functions)
+  (when *verbose*
+    (format t "infer-modified-functions ~s~%" functions))
   (let ((in (make-hash-table))
         (out (make-hash-table))
         (leaves nil))
     ;; build local copy of dependency graph including modified
     ;; functions and all dependents
     (labels ((walk (f &optional up)
-
-               (format t "walk ~s~@[ @ ~s~] ~%" (name f) (and up (name up)))
                (unless (gethash f in)
                  (setf (gethash f in) (make-hash-table)
                        (gethash f out) (make-hash-table))
@@ -1651,16 +1527,8 @@
                             (walk k f))
                           (function-dependents f)))
                (when up
-                 (format t "add ~s <- ~s~%" (name f) (name up))
                  (setf (gethash up (gethash f in)) t))))
       (mapcar #'walk functions))
-    (loop for (k . v) in (alexandria:hash-table-alist in)
-          do (format t "imf ~s <-~{ ~s~}~%" (name k)
-                     (mapcar 'name (alexandria:hash-table-keys v))))
-
-    (loop for (k . v) in (alexandria:hash-table-alist out)
-          do (format t "imf ~s ->~{ ~s~}~%" (name k)
-                     (mapcar 'name (alexandria:hash-table-keys v))))
     ;; topo sort function list
     (loop for c = 0
           while (plusp (hash-table-count out))
@@ -1668,20 +1536,16 @@
                         ;; find leaves
                         (when (zerop (hash-table-count v))
                           (incf c)
-                          (format t "~&leaf ~s~%" (name k))
                           (push k leaves)
                           ;; remove them from table
                           (remhash k out)
                           ;; and from dependents of their dependencies
                           (maphash (lambda (k2 v2)
                                      (declare (ignore v2))
-                                     (format t "  remove ~s from ~s~%"
-                                             (name k) (name k2))
                                      (remhash k (gethash k2 out)))
                                    (gethash k in))))
                       out)
           when (zerop c) do (error "?~s ~s ~s" in out leaves))
-    (print (mapcar 'name leaves))
     ;; run type inference on list
     (loop for function in leaves
           ;; when (function-type-changed function)

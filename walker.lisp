@@ -1,5 +1,7 @@
 (in-package #:3bgl-shaders)
 
+(defparameter *verbose* nil "enable debugging printouts")
+
 (defclass walker ()
   ())
 
@@ -187,7 +189,7 @@
                      &key declarations docs (env *global-environment*)
                        (function-type 'global-function)
                        binding)
-  (format t "add function ~s~%" name)
+  (when *verbose* (format t "add function ~s~%" name))
   (if binding
       (setf (gethash name (function-bindings env)) binding)
       (multiple-value-bind (bindings expander)
@@ -195,11 +197,12 @@
         (let ((old (gethash name (function-bindings env))))
           ;; reuse instances so we can link to them directly
           ;; from other functions
-          (format t "old = ~s (in ~s)~%" old env)
+          (when *verbose* (format t "old = ~s (in ~s)~%" old env))
           (flet ((add-or-update (&rest args)
                    (etypecase old
                      (unknown-function-binding
-                      (format t "update unknown function ~s~%" (name old))
+                      (when *verbose*
+                        (format t "update unknown function ~s~%" (name old)))
                       (apply #'change-class old function-type
                              args))
                      (function-binding-function
@@ -228,7 +231,7 @@
            (setf (gethash n v) b)))
 
 (defun add-unknown-function (name &key (env *global-environment*))
-  (format t "add unknown function to ~s (in ~s)~%" name env)
+  (when *verbose* (format t "add unknown function to ~s (in ~s)~%" name env))
   (if (get-function-binding name :env env)
       (get-function-binding name :env env)
       (setf (gethash name (function-bindings env))
