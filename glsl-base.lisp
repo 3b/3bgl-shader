@@ -179,14 +179,14 @@
 
 (%glsl-macro rotatef (&body args)
   (when (cdr args) ;; ignore it if 1 or fewer places
-      (alexandria:with-gensyms (temp)
-        `(let ((,temp ,(car args)))
-           ,@(loop for (a . b) on args
-                   while b
-                   collect `(setf ,a ,(car b)))
-           (setf ,(car (last args)) ,temp)
-           ;; rotatef returns NIL
-           nil))))
+    (alexandria:with-gensyms (temp)
+      `(let ((,temp ,(car args)))
+         ,@(loop for (a . b) on args
+                 while b
+                 collect `(setf ,a ,(car b)))
+         (setf ,(car (last args)) ,temp)
+         ;; rotatef returns NIL
+         nil))))
 
 (%glsl-macro setf (&body pairs)
   ;; for now, just expand to a bunch of SETQ forms and hope the
@@ -218,46 +218,6 @@
 
 (%glsl-macro when (a &rest b)
   `(if ,a (progn ,@b)))
-
-
-
-;;; extra 'special forms' for GLSL stuff
-;;;   probably expanded directly by compiler
-
-#++
-(3bgl-shaders::defwalker glsl-walker (defparameter name value &optional docs)
-  (declare (ignore docs))
-  `(:var ,name :init ,(3bgl-shaders::@ value)))
-
-#++
-(3bgl-shaders::defwalker glsl-walker (defconstant name value  &optional docs)
-  (declare (ignore docs))
-  `(:var ,name :init ,(3bgl-shaders::@ value) :qualifiers ,(list :const)))
-
-#++
-(3bgl-shaders::defwalker glsl-walker (cl:defun name lambda-list &body body+d)
-  (multiple-value-bind (body declare doc) (alexandria:parse-body body+d)
-    `(:function ,name :lambda-list ,lambda-list
-      :declare ,@(when declare (list declare))
-      :doc ,@(when doc (list doc))
-      :body ,@(3bgl-shaders::@@ body))))
-
-#++
-(3bgl-shaders::defwalker glsl-walker (:function name &rest args &key body &allow-other-keys)
-  (let ((walked (3bgl-shaders::@ body)))
-    (when (not (equal walked body))
-      (setf args (copy-list args))
-      (setf (getf args :body) walked)))
-  `(:var ,name ,@args))
-
-#++
-(3bgl-shaders::defwalker glsl-walker (:var name &rest args &key init &allow-other-keys)
-  (let ((walked (3bgl-shaders::@ init)))
-    (when (not (equal walked init))
-      (setf args (copy-list args))
-      (setf (getf args :init) walked)))
-  `(:var ,name ,@args))
-
 
 ;;; translate into IR
 
@@ -294,20 +254,6 @@
      (3bgl-shaders::add-function name lambda-list
                                  (filter-progn (3bgl-shaders::@@ body))
                                  :declarations declare :docs doc))))
-
-#++
-(3bgl-shaders::defwalker glsl-walker (let (&rest bindings) &rest body+d)
-  (multiple-value-bind (body declare)
-      (alexandria:parse-body body+d)
-    (make-instance
-     '3bgl-shaders::binding-scope
-     :bindings (loop for (n i) in bindings
-                     collect (make-instance '3bgl-shaders::local-variable
-                                            :name n
-                                            :init (3bgl-shaders::@ i)
-                                            :value-type t))
-     :declarations declare
-     :body (3bgl-shaders::@@ body))))
 
 (3bgl-shaders::defwalker glsl-walker (let (&rest bindings) &rest body+d)
   (3bgl-shaders::process-type-declarations-for-scope
@@ -355,7 +301,7 @@
     ;; if we have multiple assignments, expand to a sequence of 2 arg setq
     ((> (length assignments) 2)
      (3bgl-shaders::walk `(progn ,@(loop for (a b) on assignments by #'cddr
-                           collect `(setq a b)))
+                                         collect `(setq a b)))
                          3bgl-shaders::walker))
     ;; single assignment
     ((= (length assignments) 2)
@@ -391,16 +337,7 @@
   (let ((binding (3bgl-shaders::get-function-binding car))
         (macro (3bgl-shaders::get-macro-function car))
         (cmacro (3bgl-shaders::get-compiler-macro-function car)))
-    #++(format t "~&looking up binding ~s got ~s / ~s~%" car binding cmacro)
     (flet ((add-dependencies (called)
-             #++
-             (when *current-function*
-              (format t "add dep ~s calls ~s~%" (3bgl-shaders::name *current-function*)
-                      (3bgl-shaders::name called))
-              (setf (gethash called (3bgl-shaders::function-dependencies *current-function*))
-                    called)
-              (setf (gethash *current-function* (3bgl-shaders::function-dependents called))
-                    *current-function*))
              called))
       (cond
         ((and cmacro
@@ -449,7 +386,7 @@
               (= 1 (count #\. (symbol-name car) :test #'char=))
               (<= 2 (length (symbol-name car)) 5)
               (or (every (lambda (a) (position a ".XYZW" :test #'char=))
-                          (symbol-name car))
+                         (symbol-name car))
                   (every (lambda (a) (position a ".RGBA" :test #'char=))
                          (symbol-name car))
                   (every (lambda (a) (position a ".STPQ" :test #'char=))
@@ -525,37 +462,6 @@
 (%glsl-macro expt (a b)
   `(pow ,a ,b))
 
-#++
-(macrolet
-    (#++(add-builtins (&rest definitions)
-       `(progn
-          ,@(loop for (%name lambda-list return types) in definitions
-                  for name = (if (consp %name) (car %name) %name)
-                  for glsl-name = (if (consp %name) (cadr %name) nil)
-                  collect
-                  `(setf (gethash ',name (3bgl-shaders::function-bindings
-                                          3bgl-shaders::*environment*))
-                         (make-instance  '3bgl-shaders::builtin-function
-                                         :name ',name
-                                         :glsl-name ',glsl-name
-                                         :lambda-list ',lambda-list
-                                         ;; todo: add type info
-                                         :function-type ,return)))))
-     (builtin-vars (&rest definitions)
-       `(progn
-          ,@(loop for (stage dir %name type) in definitions
-                  for name = (if (consp %name) (car %name) %name)
-                  for glsl-name = (if (consp %name) (cadr %name) nil)
-                  collect
-                  `(setf (gethash ',name (3bgl-shaders::variable-bindings
-                                          3bgl-shaders::*environment*))
-                         (make-instance '3bgl-shaders::binding
-                                        :name ',name
-                                        :glsl-name ',glsl-name
-                                        :value-type ,type))))))
- (let ((3bgl-shaders::*environment* *glsl-base-environment*))
-
-   ))
 
 ;; fixme: this should probably use a weak hash table
 (cl:defparameter *package-environments* (make-hash-table))
@@ -627,12 +533,12 @@
                          (make-instance '3bgl-shaders::extract-functions))))
 
 (cl:defun generate-stage (stage main)
- (let ((*package* (print (or (symbol-package main) *package*))))
-   (nth-value 6
-              (glsl::with-package-environment()
-                (3bgl-shaders::compile-block nil main stage
-                                             :env 3bgl-shaders::*environment*
-                                             :print-as-main main)))))
+  (let ((*package* (print (or (symbol-package main) *package*))))
+    (nth-value 6
+               (glsl::with-package-environment()
+                 (3bgl-shaders::compile-block nil main stage
+                                              :env 3bgl-shaders::*environment*
+                                              :print-as-main main)))))
 
 
 ;;; CL macros for the glsl API (for use with slime when working on files
@@ -642,7 +548,8 @@
   (let ((f (gensym)))
     `(with-package-environment ()
        (let ((,f (3bgl-shaders::walk '(cl:defun ,name ,args ,@body)
-                                         (make-instance '3bgl-shaders::extract-functions))))
+                                     (make-instance
+                                      '3bgl-shaders::extract-functions))))
          (format t "defined function ~s = ~s~%" ',name ,f)
          (3bgl-shaders::infer-modified-functions
           (list (3bgl-shaders::get-function-binding ',name))))

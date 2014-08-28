@@ -326,35 +326,6 @@
 (defprint array-access (o)
   (format t "~a" (translate-name o)))
 
-
-#++
-(defprint (:var name &key init qualifiers type) ()
-  (assert-statement)
-  (let ((*in-expression* t))
-    (with-standard-io-syntax
-      (format *debug-io* ":var ~s ~s ~s ~s~%" name init qualifiers type))
-    (format t "~{~a ~}~@[~a ~]~a~@[ = ~a~]" qualifiers type name init)))
-
-#++(defprint (:var name &key init qualifiers type) ()
-  (assert-statement)
-  (let ((*in-expression* t))
-    (with-standard-io-syntax
-      (format *debug-io* ":var ~s ~s ~s ~s~%" name init qualifiers type))
-    (format t "~{~a ~}~@[a ~]~a~@[ = ~a~]" qualifiers type name init)))
-
-
-#++
-(defprint (defun name (&rest lambda-list) &body body) ()
-  (assert-statement)
-  (let ((ret (if (consp name) (second name) "void"))
-        (name (if (consp name) (first name) name)))
-    (format t "--~a ~a ~<(~;~@{~:_~a~#[~:;, ~]~}~;)~:> {~%" ret name
-            lambda-list)
-    (format t "~a" (cons 'progn body))
-    (format t "}~%"))
-  )
-
-
 (defprint global-function (o)
   (assert-statement)
   ;; fixme: clean this layout stuff up...
@@ -366,10 +337,8 @@
                        (loop for (a b) on (cdr v) by #'cddr
                              collect (%translate-name a :lc-underscore t)
                              collect b)
-                       (translate-name k))
-               )
-             (layout-qualifiers o))
-    )
+                       (translate-name k)))
+             (layout-qualifiers o)))
 
   ;; print function def
   (format t "~a ~a ~<(~;~@{~:_~a~#[~:;, ~]~}~;)~:> {~%"
@@ -390,12 +359,9 @@
                            (let ((*in-expression* t))
                              (format s "~a~<(~;~@{~:_~a~#[~:;, ~]~}~;)~:>"
                                      (or (translate-name f) (name f))
-                                     args))
-                           ))
+                                     args))))
                 *standard-output* args))
       (t
-       #++(with-standard-io-syntax
-         (format *debug-io* "call args ~a~%" args))
        (let ((*in-expression* t))
          (format t "~a~<(~;~@{~:_~a~#[~:;, ~]~}~;)~:>"
                  (translate-name f) args))))))
@@ -436,8 +402,6 @@
   (let ((cond (test-form o))
         (then (then-form o))
         (else (else-form o)))
-    #++(with-standard-io-syntax
-      (format *debug-io* "if ~a ~a ~a~%" cond then else))
     (if *in-expression*
         (format t "(~a?~a:~a)" cond then else)
         (progn
@@ -448,7 +412,6 @@
             (format t "~&} else {~%")
             (format t "~<  ~@;~a;~:>" (list else)))
           (format t "~&}")))))
-
 
 (defprint for-loop (o)
   (let ((initialize (init-forms o))
@@ -466,7 +429,6 @@
 
 (defmethod array-suffix (x)
   nil)
-
 
 (defmethod array-suffix ((x array-type))
   (typecase (array-size x)
@@ -487,7 +449,6 @@
     (t "[]")))
 
 (defprint interface-binding (o)
-  #++(format *debug-io* "~a ~s~%" (translate-name o) (internal o))
   (let ((b (stage-binding o)))
     (cond
       ((or (interface-block b) (typep (binding b) 'bindings))
@@ -510,7 +471,6 @@
   (format t ";"))
 
 (defun pprint-glsl (form)
-  #+=(%print form *standard-output*)
   (let* ((*print-pprint-dispatch* *pprint-glsl*)
          (*print-pretty* t)
          (old-debug *debugger-hook*)

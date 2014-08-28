@@ -48,9 +48,6 @@
   (format t "defun ~s~%" name)
   (multiple-value-bind (body declare doc)
       (alexandria:parse-body body+d :documentation t)
-    #++(add-function :toplevel-function name lambda-list
-                     (with-lambda-list-vars (walker lambda-list) (@@ body))
-                     declare doc)
     (format t "declarations = ~s~%" declare)
     (let ((glsl::*current-function*
             (process-type-declarations-for-scope
@@ -72,7 +69,6 @@
       ;; fixme: move all these 'reset' things into add-function or something
       (clrhash (local-binding-type-data glsl::*current-function*))
       (clrhash (final-binding-type-cache glsl::*current-function*)))
-    #++(call-next-method)
     nil))
 
 
@@ -104,8 +100,8 @@
                                       (bindings b)
                                       :key #'name)
                                 b)
-                      when st
-                        collect (value-type st))))
+                   when st
+                     collect (value-type st))))
       (unless (every (lambda (a) (eq a (car types)))
                      (cdr types))
         (error "conflicting types for slot ~s.~s : ~{~s~^ ~}"
@@ -114,7 +110,7 @@
 
 (defmethod walk :around (form (walker extract-functions))
   (let ((r (call-next-method)))
-    (when (typep r 'slot-access)0
+    (when (typep r 'slot-access)
       (check-slot-stages r))
     (when (or (typep r 'variable-read)
               (typep r 'variable-write))
@@ -182,19 +178,8 @@
   (let ((b (stage-binding form)))
     (when b
       (if (interface-block b)
-          #++(funcall *tree-shaker-type-hook* (interface-block b))
           (funcall *tree-shaker-type-hook* form)
           (funcall *tree-shaker-type-hook* form))))
-  (call-next-method))
-
-#++(defmethod walk-cons (car cdr (walker tree-shaker))
-  (let ((ff (gethash car (function-bindings *environment*))))
-    (when (eq (car ff) :toplevel-function)
-      (funcall *tree-shaker-hook* car cdr)))
-  (call-next-method))
-
-#++
-(defmethod walk :around (form (w tree-shaker))
   (call-next-method))
 
 ;; todo: rewrite this to use pregenerated dependencies?
@@ -208,7 +193,7 @@
          (live ())
          (live-types ())
          (current-function root))
-    ;;; first pass: walk the tree starting from root, and collect all edges
+;;; first pass: walk the tree starting from root, and collect all edges
     (loop with *tree-shaker-hook*
             =
             (lambda (name)
@@ -222,13 +207,10 @@
                 (setf (gethash name in-edges) (make-hash-table)))
               ;; finally, add an incoming edge from current function to
               ;; function being called
-              #++(format t "edge from ~s to ~s~%" (name current-function)
-                      (name name))
               (setf (gethash current-function (gethash name in-edges))
                     current-function))
-          with *tree-shaker-type-hook*
-            = (lambda (name)
-                (pushnew name live-types))
+          with *tree-shaker-type-hook* = (lambda (name)
+                                           (pushnew name live-types))
           for root = (pop roots)
           while root
           do (setf (gethash root out-edges) (make-hash-table)
@@ -236,9 +218,8 @@
              (when (typep root 'global-function)
                (walk root (make-instance 'tree-shaker))))
 
-    ;;; second pass: topo sort entries
+;;; second pass: topo sort entries
     (setf roots (list root))
-    ;(format t "add ~s~%" (name root))
     (push (name root) live)
     (loop for root = (pop roots)
           ;; remove edges from roots to children, then add
@@ -248,20 +229,17 @@
              (alexandria:maphash-keys
               (lambda (k)
                 (unless (eq root k)
-                  (let ((in (gethash k in-edges) ))
+                  (let ((in (gethash k in-edges)))
                     ;; remove link from current root
                     (remhash root in)
                     ;; and add child to list of roots if there are no
                     ;; other callers
                     (when (zerop (hash-table-count in))
-                    ;  (format t "add ~s~%" (name k))
                       (push (name k) live)
                       (push k roots)))))
               (gethash root out-edges))
              (remhash root out-edges))
-    (values ;;(reverse (cons (name root) live))
-     live
-            (reverse live-types))))
+    (values live (reverse live-types))))
 
 
 ;; add dependencies to specified function-binding-function
@@ -299,9 +277,8 @@
                   (funcall (expander (called-function form))
                            (raw-arguments form)))))
   (call-next-method))
+
 ;;;; main entry point for compiler
-
-
 (defun compile-block (forms tree-shaker-root *current-shader-stage*
                       &key env print-as-main)
   (let* ((*environment* (or env
@@ -354,8 +331,6 @@
                  for stage-binding = (stage-binding type)
                  for interface-block = (when stage-binding
                                          (interface-block stage-binding))
-                 #+do   (format *debug-io* "add type? ~s (~s) ib ~s~%"
-                                type (name type) interface-block)
                  unless (or (internal type) (gethash interface-block dumped))
                    do (pprint-glsl type)
                       (when interface-block
@@ -370,16 +345,13 @@
                               = (gethash overload
                                          (final-binding-type-cache def))
                             do (assert *binding-types*)
-                               (pprint-glsl def))
-                 ))
-         )))))
+                               (pprint-glsl def)))))))))
 
 
 #++
 (multiple-value-list
   (compile-block '((defun foo (a1 b1)
-                       (+ a (* 3 (/ b)) 2))
-                     )
+                       (+ a (* 3 (/ b)) 2)))
                    'foo
                    :vertex))
 
@@ -387,8 +359,7 @@
 (multiple-value-list
   (compile-block '((input position :vec4 :location 0)
                    (defun foo (a1 b1)
-                        (+ a (* 3 (/ b)) 2))
-                     )
+                        (+ a (* 3 (/ b)) 2)))
                    'foo
                    :vertex))
 
@@ -417,8 +388,7 @@
                           (f 1))
                       (when e
                         (foo 1 2)
-                        (bar 2 3)
-                        )
+                        (bar 2 3))
                       (if e
                           (calls-foo (foo e 1) (bar f 9))
                           (complicated (if f (glsl::<< f 1) (glsl::>> e 1)) (glsl::<< 4 +hoge-piyo+)

@@ -9,7 +9,7 @@
   (macrolet ((input (name type stage &rest qualifiers)
                (declare (ignorable qualifiers))
                `(3bgl-shaders::walk '(input ,name ,type :stage ,stage
-                                                       :internal t)
+                                      :internal t)
                                     walker))
              ;; alias for INPUT for now
              (const (name type stage &rest qualifiers)
@@ -20,7 +20,7 @@
              (output (name type stage  &rest qualifiers)
                (declare (ignorable qualifiers))
                `(3bgl-shaders::walk '(output ,name ,type :stage ,stage
-                                                        :internal t)
+                                      :internal t)
                                     walker))
              (interface (name (&rest bind) &body slots)
                  `(3bgl-shaders::walk '(interface ,name (,@bind :internal t)
@@ -45,17 +45,15 @@
                ;; fixme: should be gl_out[]
                :tess-control gl-out
                :tess-eval t)
-              ;; fixme: should be gl_in[]
+         ;; fixme: should be gl_in[]
          :in (:geometry (gl-in "gl_in")
               :tess-control (gl-in "gl_in")
-              :tess-eval (gl-in "gl_in")
-              ))
+              :tess-eval (gl-in "gl_in")))
 
       ((gl-position "gl_Position") :vec4)
       ((gl-point-size "gl_PointSize") :float)
       ((gl-clip-distance "gl_ClipDistance") (:float *)) ;; fixme: array syntax?
-      ((gl-cull-distance "gl_CullDistance") (:float *)) ;; glsl 450
-      )
+      ((gl-cull-distance "gl_CullDistance") (:float *))) ;; glsl 450
 
     ;; geometry
     (input (gl-primitive-id-in "gl_PrimitiveIDIn") :int :geometry)
@@ -92,6 +90,4 @@
     (input (gl-viewport-index "gl_ViewportIndex") :int :fragment) ;; 430?
     (input (gl-helper-invocation "gl_HelperInvocation") :bool :fragment) ;; 450
     (output (gl-frag-depth "gl_FragDepth") :float :fragment)
-    (output (gl-sample-mask "gl_SampleMask") (:int *) :fragment)
-
-))
+    (output (gl-sample-mask "gl_SampleMask") (:int *) :fragment)))

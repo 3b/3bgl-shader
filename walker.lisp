@@ -69,8 +69,6 @@
 
 
 (defun add-macro (name lambda &key (env *environment*))
-  #++
-  (assert (not (gethash name (function-bindings env))))
   (setf (gethash name (function-bindings env))
         (make-instance 'macro-definition
                        :name name
@@ -111,7 +109,6 @@
 
 (defun add-variable (name init &key (env *environment*) binding
                                  (type 'variable-binding) value-type)
-  ;(assert (not (gethash name (variable-bindings env))))
   (setf (gethash name (variable-bindings env))
         (or binding
             (make-instance type
@@ -191,7 +188,6 @@
                        (function-type 'global-function)
                        binding)
   (format t "add function ~s~%" name)
-  ;;(assert (not (gethash name (function-bindings env))))
   (if binding
       (setf (gethash name (function-bindings env)) binding)
       (multiple-value-bind (bindings expander)
@@ -510,7 +506,6 @@
          (cmacro (unless macro
                    (get-compiler-macro-function car)))
          (form (list* car cdr)))
-    #++(format t "check for macro ~s -> ~s / ~s~%" car macro cmacro)
     (cond
       (cmacro
        (let ((expanded (funcall cmacro form *environment*)))
@@ -549,8 +544,7 @@
 
 (defmacro defclmacro (name lambda-list &body body)
   `(let ((*environment* *cl-environment*)
-         (*global-environment* *cl-environment*)
-)
+         (*global-environment* *cl-environment*))
      (add-macro ,name
                 (lambda (form env)
                   (declare (ignorable env))

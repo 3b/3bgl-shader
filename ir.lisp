@@ -259,11 +259,12 @@
   ;; store onvironment that was current when the reference was made,
   ;;   so we can check there, will also check for an environment in
   ;;   symbol-package of function's name
-  ;; (probably should be in package's 
+  ;; (probably should be in package's
   ((environment :accessor environment :initarg :environment)
-   (function-dependencies :initform (make-hash-table) :reader function-dependencies)
-   (function-dependents :initform (make-hash-table) :reader function-dependents)
-))
+   (function-dependencies :initform (make-hash-table)
+                          :reader function-dependencies)
+   (function-dependents :initform (make-hash-table)
+                        :reader function-dependents)))
 
 (defclass builtin-function (function-binding-function bindings)
   ;; declarations for functions provided by glsl
@@ -281,7 +282,7 @@
 (defclass macro-definition (function-binding)
   ;; we store expression to compile for macro, and only compile the
   ;; actual macro function the first time it is used
-  ((expression :accessor expression :initarg :expression )
+  ((expression :accessor expression :initarg :expression)
    (expander :accessor expander :initform nil)))
 
 ;; not sure we need to distinguish global from local macros, since local
@@ -352,15 +353,14 @@
    ;; &key and such at the call site
    (raw-arguments :accessor raw-arguments :initarg :raw-arguments)
    (argument-environment :accessor argument-environment
-                         :initarg :argument-environment )))
+                         :initarg :argument-environment)))
 (defmethod name ((o function-call))
   (name (called-function o)))
 
 (defclass if-form ()
   ((test-form :accessor test-form :initarg :test)
    (then-form :accessor then-form :initarg :then)
-   (else-form :accessor else-form :initarg :else))
-)
+   (else-form :accessor else-form :initarg :else)))
 
 
 
@@ -417,6 +417,3 @@
   (walk (test-form form) walker)
   (walk (then-form form) walker)
   (walk (else-form form) walker))
-
-
-

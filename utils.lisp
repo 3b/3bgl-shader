@@ -33,7 +33,7 @@
         ;; convenient but slower cases
         ((vector * 4)
          (%gl:uniform-3f u (float (elt v 0) 1.0) (float (elt v 1) 1.0)
-                        (float (elt v 2) 1.0) (float (elt v 3) 1.0)))
+                         (float (elt v 2) 1.0) (float (elt v 3) 1.0)))
         ((vector * 3)
          (%gl:uniform-3f u (float (elt v 0) 1.0) (float (elt v 1) 1.0)
                          (float (elt v 2) 1.0)))
@@ -55,8 +55,8 @@
 (defun reload-program (old v f &key errorp (verbose t) geometry)
   "compile program from shaders named by V and F, on success, delete
 program OLD and return new program, otherwise return OLD"
-;; intended to be used like
-;;  (setf (program foo) (reload-program (program foo) 'vertex 'frag))
+  ;; intended to be used like
+  ;;  (setf (program foo) (reload-program (program foo) 'vertex 'frag))
   (let ((vs (gl:create-shader :vertex-shader))
         (fs (gl:create-shader :fragment-shader))
         (gs (when geometry (gl:create-shader :geometry-shader)))

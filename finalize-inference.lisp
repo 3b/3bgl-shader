@@ -82,6 +82,7 @@
 
 (defmethod get-concrete-type ((type concrete-type))
   type)
+
 (defmethod get-concrete-type ((type constrained-type))
   (let ((ct))
     (maphash (lambda (k v) (when v (assert (not ct)) (setf ct k)))
@@ -149,21 +150,6 @@
                        (print (run-type-inference))))
                    (format t "skipping ~s~%" k)))
 
-      ;; loop through function calls
-      ;;   pick a type for args, if not cached, recurse
-      ;;   update return type, run type inference if changed
-      #++
-      (loop for k in (alexandria:hash-table-keys local-types)
-            for v = (gethash k local-types)
-            do (if (typep k 'inference-call-site)
-                   (progn
-                     (format t "updating ~s~%" (name (called-function k)))
-                     (map 'nil #'flatten-type (cdr v))
-                     (let ((r (flatten-function (called-function k) (cdr v))))
-                       (when (flatten-type (car v) r)
-                         (print (run-type-inference)))))
-                   (format t "skipping ~s~%" k)))
-
       ;; flatten return type of function
       (flatten-type (gethash :return local-types))
       (when (typep (gethash :return local-types) 'any-type)
@@ -184,8 +170,7 @@
                                           (cdr v))
                                   (gethash k cache nil) :test 'equal)
                          (format t "-> ~s~%"
-                                 (debug-type-names (gethash k cache :?)))
-                         #++(break "flat?" function k v local-types))
+                                 (debug-type-names (gethash k cache :?))))
                        (setf (gethash k cache) v)))
                  local-types)
         (setf (gethash argument-types (final-binding-type-cache function))
@@ -196,29 +181,17 @@
            (gethash :return (gethash argument-types
                                      (final-binding-type-cache function))))
           argument-types)
-  #++(break "flat?" function)
+
   ;; add any used function signatures to the hash table for printing
   (maphash (lambda (k v)
              (when (typep k 'inference-call-site)
-               (flatten-function (called-function k) (car v))
-               #++(unless (gethash (called-function k) *instantiated-overloads*)
-                 (setf (gethash (called-function k) *instantiated-overloads*)
-                       (make-hash-table :test #'equal)))
-               ;; for each called function, we keep track of which
-               ;; sets of types were used (possibly there are usually
-               ;; few enough combinations that pushnew would be better
-               ;; than making a hash table here and converting to a
-               ;; list later?
-               #++(setf (gethash v (gethash (called-function k)
-                                         *instantiated-overloads*))
-                     t)))
+               (flatten-function (called-function k) (car v))))
            (gethash argument-types (final-binding-type-cache function)))
-;  (break "flat?" function)
   (unless (gethash function *instantiated-overloads*)
     (setf (gethash function *instantiated-overloads*)
           (make-hash-table :test #'equal)))
-    (setf (gethash argument-types (gethash function *instantiated-overloads*))
-          t)
+  (setf (gethash argument-types (gethash function *instantiated-overloads*))
+        t)
   (gethash :return
            (gethash argument-types (final-binding-type-cache function))))
 
@@ -235,13 +208,6 @@
     (flatten-function root nil)
 
     ;; reformat the data for printer to use
-    #++
-    (maphash (lambda (k v)
-               (setf (gethash k *instantiated-overloads*)
-                     (loop for (r b) in (alexandria:hash-table-values v)
-                           do (setf (gethash k b) r)
-                           collect b)))
-             *instantiated-overloads*)
     (maphash (lambda (k v)
                (setf (gethash k *instantiated-overloads*)
                      (alexandria:hash-table-keys v)))

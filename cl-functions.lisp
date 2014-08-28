@@ -121,9 +121,7 @@
                               :ctype (update-type
                                       i (make-instance 'any-type)))))
                       (add-constraint (aref types (second arg-type)) c)
-                      (add-constraint (ctype c) c)))))
-               ;(setf (value-type binding) (aref types i))
-          )
+                      (add-constraint (ctype c) c))))))
     (etypecase return-type
       ;; (OR) types not allowed for return type, has to either match
       ;; an arg type or be a specific type
@@ -135,8 +133,7 @@
                               (make-instance 'any-type))
                  :other-type (aref types (second return-type)))))
          (add-constraint (aref types (second return-type)) c)
-         (add-constraint (value-type fn) c))
-       )
+         (add-constraint (value-type fn) c)))
       ((cons (eql =#))
        (let ((c (make-instance 'same-size-different-base-type-constraint
                                :ctype (setf (value-type fn)
@@ -220,33 +217,33 @@
           (loop for i below count
                 for arg-type across arg-types
                 for ct = (make-instance
-                         'constrained-type
-                         :types (alexandria:alist-hash-table
-                                 (mapcar (lambda (a)
-                                           (cons (or (get-type-binding a)
-                                                     a)
-                                                 t))
-                                         arg-type))
-                         :constraints (alexandria:plist-hash-table
-                                       (list constraint t)))
+                          'constrained-type
+                          :types (alexandria:alist-hash-table
+                                  (mapcar (lambda (a)
+                                            (cons (or (get-type-binding a)
+                                                      a)
+                                                  t))
+                                          arg-type))
+                          :constraints (alexandria:plist-hash-table
+                                        (list constraint t)))
                 collect (if (plusp i)
                             (make-instance 'optional-arg-type
                                            :arg-type ct)
                             ct)))
     ;; and bindings in fn
     (setf (bindings fn)
-            (loop with types = (argument-types constraint)
-                  with i = 0
-                  for binding in lambda-list
-                  unless (eq binding '&optional)
-                    collect (make-instance 'binding
-                                           :name binding
-                                           :value-type (pop types)
-                                           :allow-casts :explicit)
-                    and do (incf i)))
+          (loop with types = (argument-types constraint)
+                with i = 0
+                for binding in lambda-list
+                unless (eq binding '&optional)
+                  collect (make-instance 'binding
+                                         :name binding
+                                         :value-type (pop types)
+                                         :allow-casts :explicit)
+                  and do (incf i)))
     ;; and add function binding
-   (setf (gethash name (function-bindings *environment*))
-         fn)))
+    (setf (gethash name (function-bindings *environment*))
+          fn)))
 
 (defun add-internal-function/full (name lambda-list type &key glsl-name (cast t))
   (let* ((fn (make-instance 'internal-function
@@ -324,8 +321,8 @@
                     and do (incf i))))
     (setf (argument-types constraint) (reverse (argument-types constraint)))
 
-   (setf (gethash name (function-bindings *environment*))
-         fn)))
+    (setf (gethash name (function-bindings *environment*))
+          fn)))
 
 ;; fixme: use expand-signatures instead of make-ftype more places
 (labels ((make-ftype (ret &rest args)
@@ -348,8 +345,7 @@
               (apply #'= (loop for x in (cons ret args)
                                when (listp x)
                                  collect (setf l (length x)) into ll
-                               finally (return (or ll (list l)))
-                               )))
+                               finally (return (or ll (list l))))))
              (apply #'mapcar
                     (lambda (r &rest a)
                       (list a r))
@@ -452,30 +448,7 @@
 
          (gsampler2dms '(:sampler-2d-ms :isampler-2d-ms :usampler-2d-ms))
          (gsampler2dmsarray '(:sampler-2d-ms-array :isampler-2d-ms-array :usampler-2d-ms-array))
-         (sampler-parameters (make-hash-table))
-         )
-    ;; fixme: store in type objects or something less error prone than this...
-    #++
-    (loop for ss in (list sampler isampler usampler)
-          do (loop for i in ss
-                   for p in '((:float :int t) (:vec2 :ivec2 t) (:vec3 :ivec3 t) (:vec3 :ivec2 t)
-                              (:float :int t) (:vec2 :ivec2 t)
-                              (:vec2 :ivec2 t)
-                              (:vec4 :ivec3 t) (:vec4 :ivec3 t)
-                              (:vec2 :ivec2 nil) (:vec2 :ivec2 nil)
-                              (:vec2 :ivec2 t) (:vec3 :ivec3 t)
-                              (:vec2 :ivec2 t) (:vec3 :ivec3 t)
-                              (:float :int nil) (:vec2 :ivec2 nil) (:vec3 :ivec3 nil))
-                   for ret = (if (search "SHADOW" (string i))
-                                 :float
-                                 (if (search "ISAMPLER" (string i))
-                                     :ivec4
-                                     (if (search "USAMPLER" (string i))
-                                         :uvec4
-                                         :vec4)))
-                   do (when i (setf (gethash i sampler-parameters)
-                                    (append p (list ret)))))
-          )
+         (sampler-parameters (make-hash-table)))
     ;;
     ;; these are all assumed to be binary at this point, any n>2 -ary
     ;; uses should have been expanded to binary calls in earlier passes
@@ -498,7 +471,7 @@
 
     ;; fixme: verify the non-square matric types for *
     (add-internal-function/full '* '(a b)
-                                `(;; vec*vec is component-wise
+                                `( ;; vec*vec is component-wise
                                   ((:ivec2 :ivec2) :ivec2)
                                   ((:uvec2 :uvec2) :uvec2)
                                   ((:vec2 :vec2) :vec2)
@@ -620,9 +593,12 @@
                                   ((:uint :uint) :uint)
                                   ((:float :float) :float)
                                   ((:double :double) :double)
-                                  ,@(make-ftype (append vec mat ivec vec mat ivec)
-                                                (append fxv fxm ixv vec mat ivec)
-                                                (append vec mat ivec fxv fxm ixv))))
+                                  ,@(make-ftype (append vec mat ivec
+                                                        vec mat ivec)
+                                                (append fxv fxm ixv vec
+                                                        mat ivec)
+                                                (append vec mat ivec
+                                                        fxv fxm ixv))))
     ;; glsl % operator (no 2nd value from CL operator for now)
     (add-internal-function/full 'mod '(a b) (make-ftype
                                              (append gen-itype gen-utype
@@ -648,13 +624,13 @@
                                (= 0))
                              '(= 0))
     (add-internal-function/s 'glsl::++ '(a) `((or ,@gen-type
-                                                    ,@gen-itype ,@gen-utype
-                                                    ,@gen-dtype ,@mat ,@dmat))
+                                                  ,@gen-itype ,@gen-utype
+                                                  ,@gen-dtype ,@mat ,@dmat))
                              '(= 0)
                              :cast nil)
     (add-internal-function/s 'glsl::-- '(a) `((or ,@gen-type
-                                                    ,@gen-itype ,@gen-utype
-                                                    ,@gen-dtype ,@mat ,@dmat))
+                                                  ,@gen-itype ,@gen-utype
+                                                  ,@gen-dtype ,@mat ,@dmat))
                              '(= 0)
                              :cast nil)
     ;; should these work on vectors etc too?
@@ -938,8 +914,7 @@
 
 
        ;; 8.6 matrix functions
-       (glsl::matrix-comp-mult (x y) `((or ,@mat ,@dmat) (= 0)) '(= 0))
-       )
+       (glsl::matrix-comp-mult (x y) `((or ,@mat ,@dmat) (= 0)) '(= 0)))
 
       (add-internal-function/full 'glsl::outer-product '(x y)
                                   (make-ftype
@@ -1035,9 +1010,8 @@
        (glsl::bitfield-reverse (value) `((or ,@gen-itype ,@gen-utype)) '(= 0))
        (glsl::bit-count (value) `((or ,@gen-itype ,@gen-utype)) '(=# 0 :int))
        (glsl::find-lsb (value) `((or ,@gen-itype ,@gen-utype)) '(=# 0 :int))
-       (glsl::find-msb (value) `((or ,@gen-itype ,@gen-utype)) '(=# 0 :int))
+       (glsl::find-msb (value) `((or ,@gen-itype ,@gen-utype)) '(=# 0 :int)))
 
-       )
       ;; 8.9 Texture Functions
       (add/f
        (glsl::texture-size (sampler &optional lod)
@@ -1091,8 +1065,7 @@
                                     :int (:sampler-Cube-Shadow)
                                     :int (:sampler-1D-Array-Shadow)
                                     :int (:sampler-2D-Array-Shadow)
-                                    :int (:sampler-CubeArray-Shadow)
-                                    )))
+                                    :int (:sampler-CubeArray-Shadow))))
 
       (add-internal-function/s 'glsl::texture-samples '(s)
                                `((or ,@gsampler2dms
@@ -1112,9 +1085,9 @@
                        gvec4 (gsampler2DArray :vec3 :float)
                        gvec4 (gsamplerCubeArray :vec4 :float)
                        :float (:sampler-1D-Array-Shadow :vec3 :float)
-                       :float (:sampler-2D-Array-Shadow :vec4 )
-                       gvec4 (gsampler2DRect :vec2 )
-                       :float (:sampler-2D-Rect-Shadow :vec3 )
+                       :float (:sampler-2D-Array-Shadow :vec4)
+                       gvec4 (gsampler2DRect :vec2)
+                       :float (:sampler-2D-Rect-Shadow :vec3)
                        :float (gsamplerCubeArrayShadow :vec4 :float)))
 
        (glsl::texture-proj (sampler p &optional bias)
@@ -1584,8 +1557,7 @@
                              when (<= count n)
                                append (mapcar (lambda (a) (cons type a))
                                               (vec/mat-constructor (- n count)
-                                                                   base)
-                                              )))))))
+                                                                   base))))))))
 
       (add/m
        (glsl::bvec2 (a &optional b) 2 :bvec2)
@@ -1618,8 +1590,7 @@
        (glsl::mat4x3 (a &optional b c d e f g h i j k l) 12 :mat4x3)
        (glsl::mat4 (a &optional b c d e f g h i j k l m n o p) 16 :mat4))
       ;; todo :dmat*
-
-)))
+      )))
 
 ;; define compiler macros for binary ops like + which accept any
 ;; number of args in CL
@@ -1627,7 +1598,7 @@
 (macrolet ((define-binop (x)
              (print
               `(%glsl-compiler-macro ,x (&whole w &rest r)
-                   (format t "expanding ~s / ~s: ~%" w r)
+                 (format t "expanding ~s / ~s: ~%" w r)
                  (labels ((rec (rr)
                             (if (> (length rr) 2)
                                 `(,(car w) ,(rec (cdr rr)) ,(car rr))
@@ -1640,143 +1611,3 @@
                 ,@(loop for i in r collect `(define-binop ,i)))))
   (define-binops + - / * and or logior logxor logand))
 
-
-;; (defmacro add-binop (name  name.2 &optional default)
-;;   `(defclmacro ,name (&rest args)
-;;      (if (and ,default (< (length args) 2))
-;;          `(,',name.2 ,',default ,(first args))
-;;          (loop with (a b) = args
-;;                with form = (list ',name.2 a b)
-;;                for c in (cddr args)
-;;                while c
-;;                do (setf form (list ',name.2 form c))
-;;                finally (return form)))))
-;;
-;;
-;; (add-binop + |+.2| 0)
-;; (add-binop - |-.2| 0)
-;; (add-binop * *.2 1)
-;; (add-binop / /.2 1)
-;; (add-binop = =.2)
-;; (add-binop > >.2)
-;; (add-binop >= >=.2)
-;; (add-binop cons cons.2)
-;;
-;; (let ((vec (list :vec2 :vec3 :vec4))
-;;       (ivec (list :ivec2 :ivec3 :ivec4))
-;;       (bvec (list :bvec2 :bvec3 :bvec4))
-;;       (mat (list :mat2 :mat3 :mat4))
-;;       (gen-type (list :float :vec2 :vec3 :vec4))
-;;       (fff (list :float)))
-;;   (mapcar (lambda (a b c) (list (list a b) c))
-;;           (append gen-type mat vec mat mat fff vec fff)
-;;           (append gen-type mat mat vec fff mat fff vec)
-;;           (append gen-type mat vec vec mat mat vec vec)))
-
-
-#++
-(flet ((make-ftype (ret &rest args)
-         (apply #'mapcar (lambda (r &rest a)
-                  (format t "~s -> ~s~%" a r)
-                  (list a r))
-                ret args)))
- (let* ((*environment* *cl-environment*)
-        (*global-environment* *cl-environment*)
-         ;; meta-types for defining the overloads
-         (vec (list :vec2 :vec3 :vec4))
-         (ivec (list :ivec2 :ivec3 :ivec4))
-         (uvec (list :uvec2 :uvec3 :uvec4))
-         (bvec (list :bvec2 :bvec3 :bvec4))
-         (mat (list :mat2 :mat3 :mat4 :mat2x3 :mat2x4 :mat3x2 :mat3x4 :mat4x3 :mat4x2))
-         (sqmat (list :mat2 :mat3 :mat4))
-         (gen-type (cons :float vec))
-         (gen-itype (cons :int ivec))
-         (gen-utype (cons :uint uvec))
-        ;; 3 scalars to simplify floatxvec and floatxmat signatures
-        (fxv (make-list (length vec) :initial-element :float))
-        (fxm (make-list (length mat) :initial-element :float))
-        (ixv (make-list (length ivec) :initial-element :int))
-        (uxv (make-list (length uvec) :initial-element :uint))
-        ;; todo: decide if these should have signatures matching
-        ;; implicit cats, or if those should be separate or not
-        ;; available at all?
-        (binop-args (make-ftype
-                     (append gen-type gen-itype gen-utype
-                             vec mat ivec vec mat ivec uvec uvec)
-                     (append gen-type gen-itype gen-utype
-                             vec mat ivec fxv fxm ixv uxv uvec)
-                     (append gen-type gen-itype gen-utype
-                             fxv fxm ixv vec mat ivec uvec uxv))))
-   (format t "~:{~(~s -> ~s~)~%~}"
-                          ;;A right vector operand is treated as a
-                          ;;column vector and a left vector operand as
-                          ;;a row vector.
-                          `(;; 1xN Mx1 -> NxM
-                            ;; -x-
-                            ;; 2xN Mx2 -> MxN
-                            ((:vec2 :vec2) :float)
-                            ((:ivec2 :ivec2) :int)
-                            ((:vec2 :mat2) :vec2)
-                            ((:vec2 :mat3x2) :vec3)
-                            ((:vec2 :mat4x2) :vec4)
-                            ((:mat2 :vec2) :vec2)
-                            ((:mat3x2 :vec2) :vec3)
-                            ((:mat4x2 :vec2) :vec4)
-                            ((:mat2 :mat2) :mat2)
-                            ((:mat2 :mat3x2) :mat3x2)
-                            ((:mat2 :mat4x2) :mat4x2)
-                            ((:mat2x3 :mat2) :mat3x2)
-                            ((:mat2x3 :mat3x2) :mat3)
-                            ((:mat2x3 :mat4x2) :mat3x4)
-                            ((:mat2x4 :mat2) :mat4x2)
-                            ((:mat2x4 :mat3x2) :mat4x3)
-                            ((:mat2x4 :mat4x2) :mat4)
-                            ;; 3xN Mx3 -> MxN
-                            ((:vec3 :vec3) :float)
-                            ((:ivec3 :ivec3) :int)
-                            ((:vec3 :mat2x3) :vec2)
-                            ((:vec3 :mat3) :vec3)
-                            ((:vec3 :mat4x3) :vec4)
-                            ((:mat2x3 :vec3) :vec2)
-                            ((:mat3 :vec3) :vec3)
-                            ((:mat4x3 :vec3) :vec4)
-                            ((:mat3x2 :mat2x3) :mat2)
-                            ((:mat3x2 :mat3) :mat3x2)
-                            ((:mat3x2 :mat4x3) :mat4x2)
-                            ((:mat3 :mat2x3) :mat3x2)
-                            ((:mat3 :mat3) :mat3)
-                            ((:mat3 :mat4x3) :mat3x4)
-                            ((:mat3x4 :mat2x3) :mat4x2)
-                            ((:mat3x4 :mat3) :mat4x3)
-                            ((:mat3x4 :mat4x3) :mat4)
-                            ;; 4xN Mx4 -> MxN
-                            ((:vec4 :vec4) :float)
-                            ((:ivec4 :ivec4) :int)
-                            ((:vec4 :mat2x4) :vec2)
-                            ((:vec4 :mat3x4) :vec3)
-                            ((:vec4 :mat4) :vec4)
-                            ((:mat2x4 :vec4) :vec2)
-                            ((:mat3x4 :vec4) :vec3)
-                            ((:mat4 :vec4) :vec4)
-                            ((:mat4x2 :mat2x4) :mat2)
-                            ((:mat4x2 :mat3x4) :mat3x2)
-                            ((:mat4x2 :mat4) :mat4x2)
-                            ((:mat4x3 :mat2x4) :mat3x2)
-                            ((:mat4x3 :mat3x4) :mat3)
-                            ((:mat4x3 :mat4) :mat3x4)
-                            ((:mat4 :mat2x4) :mat4x2)
-                            ((:mat4 :mat3x4) :mat4x3)
-                            ((:mat4 :mat4) :mat4)
-                            ;; scalars
-                            ((:int :int) :int)
-                            ((:uint :uint) :uint)
-                            ((:float :float) :float)
-                            ,@(make-ftype (append vec mat ivec vec mat ivec)
-                                           (append fxv fxm ixv vec mat ivec)
-                                           (append vec mat ivec fxv fxm ixv)
-                                          )
-
-                            )
-
-)
-))

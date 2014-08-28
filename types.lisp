@@ -3,8 +3,8 @@
 ;; fixme: rearrange stuff so this doesn't need eval-when
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defparameter glsl::*glsl-base-environment*
-                (make-instance 'environment
-                               :parent *cl-environment*)))
+    (make-instance 'environment
+                   :parent *cl-environment*)))
 
 (defclass generic-type ()
   ((name :accessor name :initarg :name)
@@ -16,10 +16,10 @@
 
 (defun get-equiv-type (stype)
   (loop for i = stype then j
-     for j = (equiv i)
-     for x from 0 below 20
-     while j
-     finally (return i)))
+        for j = (equiv i)
+        for x from 0 below 20
+        while j
+        finally (return i)))
 
 (defclass concrete-type (generic-type)
   ;; list of types we can implicitly cast this type to
@@ -41,8 +41,7 @@
    ;; vector of concrete types, ex #(:bool :bvec2 :bvec3 :bvec4)
    ;; (aref scalar/vector-set scalar/vector-size) == this type, if set
    (scalar/vector-set :initarg :scalar/vector-set :initform nil
-                      :accessor scalar/vector-set)
-))
+                      :accessor scalar/vector-set)))
 
 ;; should these be concrete-type? or some common superclass?
 ;; for now assuming everything not a constrained-type is a concrete type
@@ -198,7 +197,7 @@
                               :array-size array)))))))
 
 (%glsl-macro glsl::interface (%name (&key in out uniform internal)
-                                         &body slots)
+                                    &body slots)
   ;; in/out/uniform are either T,NAME,or (&key :vertex :fragment ...)
   ;; where T means make slots directly visible in all stages,
   ;; NAME means make aggregate visible as NAME in all stages
@@ -214,10 +213,10 @@
                          :bindings
                          (loop for (%sname type . args) in slots
                                for sname = (if (consp %sname)
-                                              (first %sname)
-                                              %sname)
+                                               (first %sname)
+                                               %sname)
                                for glsl-sname = (when (consp %sname)
-                                                   (second %sname))
+                                                  (second %sname))
                                ;; should these be some 'slot-binding' type?
                                collect (make-instance 'binding
                                                       :name sname
@@ -235,8 +234,8 @@
                    for array = (if (consp %bind) (caddr %bind) nil)
                    do (format t "bind ~s -> ~s (~s) int ~s~%" %bind bind name internal)
                    do (bind-interface stage name k bind :internal internal
-                                      :glsl-name glsl-bind
-                                      :array array)))
+                                                        :glsl-name glsl-bind
+                                                        :array array)))
     nil))
 
 (defun in/out/uniform/attrib (qualifier %name type
@@ -265,8 +264,7 @@
                          :stage stage
                          :interface-qualifier qualifier
                          :layout-qualifier layout-qualifier
-                         :binding (or (get-type-binding type) type))))
-)
+                         :binding (or (get-type-binding type) type)))))
 
 (%glsl-macro glsl::attribute (%name type &key location internal)
   (in/out/uniform/attrib :attribute %name type :location location :internal internal :stage :vertex)
@@ -295,9 +293,6 @@
   (bind-interface stage block-name interface-qualifier instance-name)
   nil)
 
-#++(defclass set-type (generic-type)
-  ((types :accessor types :initarg :types)))
-
 (defparameter *known-declarations*
   '(declaration dynamic-extent ftype function ignore inline notinline
     optimize special type))
@@ -322,21 +317,16 @@
                   (process-declaration (car args) (cdr args)))
                  ;; handle 'values' for return type
                  ((eql decl 'values)
-                  #++(format t "scope = ~s, ret = ~s~%"
-                          scope
-                          args)
                   (setf (declared-type scope)
                         (if args
                             (get-type-binding (car args))
-                            (get-type-binding :void)))
-                  )
+                            (get-type-binding :void))))
                  ;; 'layout' declarations (for geometry shaders, etc)
                  ;; (layout (:in primitive &rest) (:out prim &rest args) ...)
                  ((eql decl 'layout)
                   (loop for (car . cdr) in args
                         do (setf (gethash car (layout-qualifiers scope))
-                                 cdr))
-)
+                                 cdr)))
                  ;; ignore any other known declarations for now
                  ((member decl *known-declarations*)
                   )
@@ -507,8 +497,7 @@
        (:mat3x2 :dmat3x2)
        (:mat3x4 :dmat3x4)
        (:mat4x2 :dmat4x2)
-       (:mat4x3 :dmat4x3)
-       ))))
+       (:mat4x3 :dmat4x3)))))
 
 ;;; add explicit casts to types
 (let ((*environment* glsl::*glsl-base-environment*))
@@ -532,8 +521,7 @@
        (:mat2x4 :dmat2x4 :mat4x2 :dmat4x2) ;; 8
        (:mat3 :dmat3) ;; 9
        (:mat3x4 :dmat3x4 :mat4x3 :dmat4x3);; 12
-       (:mat4 :dmat4) ;; 16
-       ))))
+       (:mat4 :dmat4))))) ;; 16
 
 ;;; add scalar/vector set/size to types
 (let ((*environment* glsl::*glsl-base-environment*))
@@ -564,37 +552,4 @@
         for c in '(4 6 8 6 9 12 8 12 16)
         do (setf (scalar/vector-size (get-type-binding f)) c)
            (setf (scalar/vector-size (get-type-binding d)) c)))
-
-
-
-
-
-;; not sure if these are directly useful or not? mainly used in defining
-;; function types, which want a bunch of (concrete-type1 ..) -> concrete-typeN
-;; rather than independent set-type for each arg
-#++
-(defun add-set-type (name types &key (env *environment*) type)
-  (setf (gethash name (types env))
-        (or type
-            (make-instance 'set-type
-                           :name name
-                           :types types))))
-#++
-(let ((*environment* glsl::*glsl-base-environment*))
-  (add-set-type :bvec '(:bvec2 :bvec3 :bvec4))
-  (add-set-type :ivec '(:ivec2 :ivec3 :ivec4))
-  (add-set-type :uvec '(:uvec2 :uvec3 :uvec4))
-  (add-set-type :vec '(:vec2 :vec3 :vec4))
-  (add-set-type :dvec '(:dvec2 :dvec3 :dvec4))
-  ;;
-  (add-set-type :gen-type '(:float :vec2 :vec3 :vec4))
-  (add-set-type :gen-b-type '(:bool :bvec2 :bvec3 :bvec4))
-  (add-set-type :gen-i-type '(:int :ivec2 :ivec3 :ivec4))
-  (add-set-type :gen-u-type '(:uint :uvec2 :uvec3 :uvec4))
-  (add-set-type :gen-d-type '(:double :dvec2 :dvec3 :dvec4))
-
-  (add-set-type :mat '(:mat2   :mat2x3 :mat2x4
-                       :mat3x2 :mat3   :mat3x4
-                       :mat4x2 :mat4x3 :mat4)))
-
 
