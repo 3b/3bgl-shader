@@ -126,7 +126,9 @@
 (defmethod translate-type ((type constrained-type))
   (let ((types))
     (maphash (lambda (k v) (when v (push k types))) (types type))
-    (mapcar #'glsl-name types)))
+    (if (= 1 (length types))
+        (glsl-name (car types))
+     (mapcar #'glsl-name types))))
 
 (defmethod translate-type ((type generic-type))
   (let ((e (get-equiv-type type)))
@@ -351,7 +353,7 @@
 
   ;; print function def
   (format t "~a ~a ~<(~;~@{~:_~a~#[~:;, ~]~}~;)~:> {~%"
-          (or (translate-type (or (gethash o *binding-types*)
+          (or (translate-type (or (gethash :return *binding-types*)
                                   (value-type o))) "void")
           (translate-name o)
           (bindings o))

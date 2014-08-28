@@ -18,332 +18,210 @@
           (name binding) (name type))
   (setf (gethash binding *binding-types*) type))
 
-(defmethod flatten-cast-type ((type concrete-type) in-type)
-  type)
-(defmethod flatten-cast-type ((type null) (in-type concrete-type))
-  in-type)
-(defmethod flatten-cast-type ((type constrained-type) in-type)
-  ;; shouldn't happen?
-  (break "todo"))
-
-(defmethod flatten-cast-type ((out-type constrained-type)
-                              (in-type concrete-type))
-  ;; find a cast-constraint from in-type to type, pick lowest cast
-  ;; from in-type that is in type
-  (maphash (lambda (k v)
-             (when (and v
-                        (typep k 'cast-constraint)
-                       ; (eql in-type (in-type k))
-                        (eql out-type (out-type k)))
-               (case (cast-type k)
-                 (:explicit
-                  (break "todo"))
-                 ((:implicit t)
-                  (loop for cast in (cons in-type (implicit-casts-to in-type))
-                        when (gethash cast (types out-type))
-                          do (return-from flatten-cast-type cast))
-                  (error "broken cast?")))))
-           (constraints out-type))
-
-  )
-(defmethod flatten-cast-type ((type constrained-type) (in-type null))
-  ;; if we have a cast constraint with this type as out-type, pick an
-  ;; input type
-  ;; fixme: optimize the mapcar/remove/alist junk
-  (maphash (lambda (k v)
-             (when (and v
-                        (typep k 'cast-constraint)
-                        (eql type (out-type k)))
-               (if (and (typep (in-type k) 'concrete-type)
-                        (gethash (in-type k) (types type)))
-                   (return-from flatten-cast-type
-                     (in-type k))
-                   (let* ((in-types (if (typep (in-type k) 'concrete-type)
-                                        (list (cons (in-type k) t))
-                                        (remove nil
-                                                (alexandria:hash-table-alist
-                                                 (types (in-type k)))
-                                                :key 'cdr)))
-                          (in (mapcar 'car in-types)))
-                     (setf in (sort in #'<
-                                    :key (lambda (a)
-                                           (length (implicit-casts-from a)))))
-                     (loop for i in in
-                           when (gethash i (types type))
-                             do (return-from flatten-cast-type i))))))
-           (constraints type))
-  ;; otherwise, just pick smallest/lowest type available
-  (let ((out (mapcar 'car
-                     (remove nil (alexandria:hash-table-alist
-                                  (types type))
-                             :key 'cdr))))
-    (setf out (sort out (lambda (a b)
-                          (if (eql (scalar/vector-size a)
-                                   (scalar/vector-size b))
-                              (< (length (implicit-casts-from a))
-                                 (length (implicit-casts-from b)))
-                              (if (scalar/vector-size a)
-                                  (and (scalar/vector-size b)
-                                       (< (scalar/vector-size a)
-                                          (scalar/vector-size b)))
-                                  t)))))
-    (first out)))
-
-(defmethod walk ((form progn-body) (walker finalize))
-  (let ((ret))
-    (loop for f in (body form)
-          do (setf ret (walk f walker)))
-    ret))
-
-(defmethod walk ((form binding-scope) (walker finalize))
-  (format t "binding-scope ~s~%" form)
-  (loop for binding in (bindings form)
-        for in-type = (when (initial-value-form binding)
-                        (walk (initial-value-form binding) walker))
-        for type = (flatten-cast-type (value-type binding) in-type)
-        do (format t "  ~s(~s) -> ~s @ ~s~%" (name binding) binding
-                   (debug-type-names type)
-                   *binding-types*)
-           (cache-binding binding type))
-  (call-next-method))
-
-(defmethod walk ((form array-access) (walker finalize))
-  (format t "array-access ~s~%" form)
-  (walk (binding form) walker))
-
-(defmethod walk ((form slot-access) (walker finalize))
-  (format t "slot-access ~s~%" form)
-  (let ((struct-type (walk (binding form) walker)))
-    ;; fixme: should structs have a hash for O(1) access?
-    ;; or should something earlier have already looked up the specific slot?
-    (loop for binding in (bindings struct-type)
-          do (format t "field = ~s, binding = ~s?~%" (field form)
-                     (name binding))
-          when (or (eql (name binding) (field form))
-                   ;; todo: decide if (.foo struct) accessor should be
-                   ;; kept?  if so, should it intern symbols instead
-                   ;; of doing string compare?
-                   (equal (string (name binding)) (field form)))
-            do (return-from walk (value-type binding)))
-   (break "finalize/slot-access" (list form struct-type) )
-))
-
-(defun flatten-constraints (return-type nil-bindings bindings arg-types)
-  (let* ((*copy-constraints-hash* (make-hash-table))
-         (*inference-worklist* ())
-         (ret (copy-constraints return-type)))
-    ;; fixme: this is duplicated from function-call/infer-build-constraints
-    ;; walk method, refactor it...
-
-    ;; store NIL in the cache for any unused args, so we don't try
-    ;; to copy them while walking other args
-    (loop for binding in nil-bindings
-          do (setf (gethash (value-type binding) *copy-constraints-hash*)
-                   nil)
-             (when (typep (value-type binding) 'optional-arg-type)
-               (setf (gethash (arg-type (value-type binding))
-                              *copy-constraints-hash*)
-                     nil)))
-    ;; walk remaining args and copy as usual
-    (loop with args = arg-types
-          for arg = (pop args)
-          for binding in bindings
-          collect (copy-unify-constraints
-                   (value-type binding)
-                   arg
-                   :cast (and arg (allow-casts binding))))
-    ;; update the constraints
-    (loop for constraint = (pop *inference-worklist*)
-          while constraint
-          do (update-constraint constraint)
-             (setf (modified constraint) nil))
-    (or (flatten-cast-type ret nil)
-        (break "couldn't flatten constraint?"))))
-
-(defmethod walk ((form swizzle-access) (walker finalize))
-  (let ((binding-type (walk (binding form) walker)))
-    (flatten-constraints (value-type form)
-                         nil
-                         (unless (typep (binding form) 'function-call)
-                           (list (binding (binding form))))
-                         (list binding-type))
-    #++(loop for binding in (bindings struct-type)
-          do (format t "field = ~s, binding = ~s?~%" (field form)
-                     (name binding))
-          when (or (eql (name binding) (field form))
-                   ;; todo: decide if (.foo struct) accessor should be
-                   ;; kept?  if so, should it intern symbols instead
-                   ;; of doing string compare?
-                   (equal (string (name binding)) (field form)))
-            do (return-from walk (value-type binding)))
-
-))
-
-(defmethod walk ((form integer) (walker finalize))
-  (if (> form (expt 2 31))
-      (get-type-binding :uint)
-      (get-type-binding :int)))
-
-(defmethod walk ((form float) (walker finalize))
-  (get-type-binding :float))
-
-(defmethod walk ((form double-float) (walker finalize))
-  (get-type-binding :double))
-
-
-(defmethod walk ((form interface-binding) (walker finalize))
-  (let ((stage-binding (stage-binding form)))
-    (assert stage-binding)
-    (walk stage-binding walker)))
-
-(defmethod walk ((form interface-stage-binding) (walker finalize))
-  (walk (binding form) walker))
-
-
-(defmethod walk ((form variable-read) (walker finalize))
-  (etypecase (binding form)
-    ((or local-variable function-argument)
-     (format t "variable-read ~s -> ~s~%" form (debug-type-names
-                                                (gethash (binding form)
-                                                         *binding-types* :???)))
-     (gethash (binding form) *binding-types* :???))
-    (interface-binding (walk (binding form) walker))
-    (constant-binding (walk (binding form) walker))))
-
-(defmethod walk ((form variable-write) (walker finalize))
-  (format t "variable-write ~s~%" form)
-  (walk (value form) walker)
-  #++(let* ((binding (walk (binding form) walker))
-         (value (walk (value form) walker))
-         ;; todo: avoid creating cast constraint if we know both types?
-         (cast (make-instance 'cast-constraint
-                              :out value
-                              :in binding)))
-    (add-constraint binding cast)
-    (add-constraint value cast)
-    (flag-modified-constraint cast)
-    value))
-
-(defmethod walk ((form binding) (walker finalize))
-  (format t "binding ~s~%" form)
-  (call-next-method))
-
-(defmethod walk ((form constant-binding) (walker finalize))
-  (format t "constant-binding ~s~%" form)
-  (if (member (value-type form) '(t nil))
-      (walk (initial-value-form form) walker)
-      (value-type form)))
-
-
-(defmethod flatten-internal-function ((c function-application) arg-types)
-  (format t "fif ~s / ~s -> " (name c) (mapcar 'name arg-types))
-  (prin1
-   ;; check for a direct match for function signature
-   (loop with args = (mapcar 'name arg-types)
-         with ftypes = (if (typep c 'variable-arity-function-application)
-                           (aref (function-types-by-arity c) (length args))
-                           (function-types c))
-         for ftype in ftypes
-         when (equalp (car ftype) args)
-           return (get-type-binding (second ftype)))))
-
-
-(defmethod flatten-internal-function ((c same-size-different-base-type-constraint) arg-types)
-    (break "same-size-different-base-type-constraint" c))
-
-(defmethod flatten-internal-function ((c same-type-or-scalar-constraint) arg-types)
-  (break "same-type-or-scalar-constraint" c))
-
-(defmethod flatten-internal-function ((c scalar-type-of-constraint) arg-types)
-  (cond
-    ((typep (other-type c) 'concrete-type)
-     (other-type c))
-    ((typep (other-type c) 'constrained-type)
-     (let ((types))
-        (maphash (lambda (k v) (when v (push k types))) (types (other-type c)))
-       (when (= 1 (length types))
-         (car types))))))
-(defmethod flatten-internal-function ((c cast-constraint) arg-types)
-    (break "cast-constraint" c))
-
-
-(defmethod flatten-function-call ((function internal-function) arg-types walker)
-  (etypecase (value-type function)
+(defmethod flatten-type ((type concrete-type) &optional force-type)
+  (etypecase force-type
+    (null)
     (concrete-type
-     (value-type function))
-    ((or constrained-type any-type)
-     ;; handle RETURN specially for now...
-     (when (eq (name function) 'return)
-       (return-from flatten-function-call
-         (car arg-types)))
-     ;; find a function application constraint or matrix constructor constraint
-     ;; and try to get a type from that
-     (maphash (lambda (k v)
-                (when (and v)
-                  (typecase k
-                    ((or function-application
-                         cast-constraint)
-                     (let ((type (flatten-internal-function k arg-types)))
-                       (when (typep type 'concrete-type)
-                         (return-from flatten-function-call type))))
-                    ((or same-size-different-base-type-constraint
-                         same-type-or-scalar-constraint
-                         scalar-type-of-constraint)
-                     (when (eq (value-type function) (ctype k))
-                       (let ((type (flatten-internal-function k arg-types)))
-                         (when (typep type 'concrete-type)
-                           (return-from flatten-function-call type))))))))
-              (constraints (value-type function)))
-     ;; if we couldn't get a match from simple expansions,
-     ;; copy the constraints and unify and see if it gets a result
-     (flatten-constraints (value-type function)
-                          (nthcdr (length arg-types) (bindings function))
-                          (bindings function)
-                          arg-types))))
+     force-type)
+    (constrained-type
+     (assert (= 1 (hash-table-count (types force-type))))
+     force-type)))
 
-(defmethod flatten-function-call ((function global-function) arg-types walker)
-  ;; make sure we have an entry in function hash for this function
-  (let ((cache (or (gethash function *instantiated-overloads*)
-                   (setf (gethash function *instantiated-overloads*)
-                         (make-hash-table :test #'equal)))))
-    ;; see if we already processed this type signature for this function
-    (when (gethash arg-types cache)
-      (format t "call to function (~s ~{~s~^ ~}), reusing ret ~s~%"
-              (name function) (mapcar 'name arg-types)
-              (gethash arg-types cache))
-      (return-from flatten-function-call (car (gethash arg-types cache))))
-    ;; otherwise bind arg types and process it normally
-    (let ((*binding-types* (make-hash-table)))
-      (loop with %at = arg-types
-            for binding in (bindings function)
-            for arg-type = (pop %at)
-            do (cache-binding binding arg-type))
-      (loop for f in (body function)
-            do (walk f walker))
-      (let ((r (value-type function)))
-        (if (typep r '(or any-type null (eql t)))
-            (setf r (get-type-binding :void))
-            (setf r (flatten-cast-type r nil)))
-        (setf (gethash arg-types cache) (list r *binding-types*))
-        (format t "call to function (~s ~{~s~^ ~}), new ret ~s~%"
-                (name function) (mapcar 'name arg-types) (name r))
-        r))))
+(defmethod flatten-type ((type any-type) &optional force-type)
+  (etypecase force-type
+    (null
+     ;; for now assuming an otherwise unconstrained type is 'void'
+     ;; since otherwise something should have affected it
+     ;; fixme: (not quite correct, since a few functions like = accept
+     ;; any-type, so some rare functions could have unconstrained
+     ;; types. also need to handle unused arguments)
+     (get-type-binding :void))
+    (concrete-type
+     (assert (eq type force-type)))
+    (constrained-type
+     (flatten-type force-type))))
 
-(defmethod walk ((form function-call) (walker finalize))
-  (format t "function call ~s -> ~s (~s~%" form (name (called-function form))
-          (called-function form))
-  (assert (eq t (type-inference-state (called-function form))))
-  (let* ((arg-types (loop for arg in (arguments form)
-                          for type = (walk arg walker)
-                          do (format t "  ~s -> ~s~%" arg (debug-type-names type))
-                          collect type))
-         (ret (flatten-function-call (called-function form) arg-types walker))
-         )
-    (format t " arg types = ~s -> ~s~%" arg-types (debug-type-names ret))
-    ;;(break "function call" form)
-    ret)
-  ;(call-next-method)
-  )
+(defmethod flatten-type ((type constrained-type) &optional force-type)
+  ;; pick simplest type (fewest components, then least casts to it
+  ;; todo: figure out if any other types need rules?
+  ;; usually should get single type for samplers or structs
+  (let* ((out (mapcar 'car (remove nil (alexandria:hash-table-alist
+                                        (types type))
+                                   :key 'cdr)))
+         (old (length out)))
+    (etypecase force-type
+      ((or null constrained-type)
+       (unless (= 1 old)
+         (setf out (sort out (lambda (a b)
+                               (if (eql (scalar/vector-size a)
+                                        (scalar/vector-size b))
+                                   (< (length (implicit-casts-from a))
+                                      (length (implicit-casts-from b)))
+                                   (if (scalar/vector-size a)
+                                       (and (scalar/vector-size b)
+                                            (< (scalar/vector-size a)
+                                               (scalar/vector-size b)))
+                                       t)))))
+         (clrhash (types type))
+         (when (typep force-type 'constrained-type)
+           (setf out (remove-if-not (lambda (a) (gethash a (types force-type)))
+                                    out))
+           (assert (plusp (length out))))
+         (setf (gethash (first out) (types type)) t)
+         (flag-modified-type type)
+         ;; return t since we modified it
+         t))
+      (concrete-type
+       (assert (gethash force-type (types type)))
+       (when (> (hash-table-count (types type)) 1)
+         (clrhash (types type))
+         (setf (gethash force-type (types type)) t)
+         (flag-modified-type type)
+         ;; return t since we modified it
+         t)))))
+
+(defmethod get-concrete-type ((type concrete-type))
+  type)
+(defmethod get-concrete-type ((type constrained-type))
+  (let ((ct))
+    (maphash (lambda (k v) (when v (assert (not ct)) (setf ct k)))
+             (types type))
+    ct))
+
+(defun flatten-function (function argument-types)
+  (setf argument-types (mapcar 'get-concrete-type argument-types))
+  (format t "~%~%~%flattening function ~s: ~s~%  ~s~%~%~%~%" (name function)
+          (debug-type-names argument-types)
+          argument-types)
+  (unless (gethash argument-types (final-binding-type-cache function))
+    ;; assume if we have a cached type, all called functions have been
+    ;; cached as well.  otherwise, figure out final types for this
+    ;; combination of arguments, and process any called functions
+    (let* ((local-types (make-hash-table))
+           (*current-function-local-types* local-types)
+           (*copy-constraints-hash* (make-hash-table))
+           (*inference-worklist* nil))
+      ;; copy all the types used by the function
+      (maphash (lambda (k v)
+                 (if (consp v)
+                     (setf (gethash k local-types)
+                           (mapcar #'copy-constraints v))
+                     (setf (gethash k local-types)
+                           (copy-constraints v))))
+               (local-binding-type-data function))
+      ;; fixme: copy-constraints adds things to worklist too agressively
+      ;; so go through and undo it...
+      ;;(run-type-inference)
+      (loop for i = (pop *inference-worklist*)
+            while i
+            do (setf (modified i) nil))
+
+      (when (eq (name function) 'p1)
+        (break "finalize1" function local-types))
+
+
+      ;; assign types to function arguments, rtun type inference if
+      ;; any changed
+      (assert (= (length argument-types) (length (bindings function))))
+      (when (plusp (loop for arg in argument-types
+                         for binding in (bindings function)
+                         count (flatten-type (gethash binding local-types)
+                                             arg)))
+        ;; updated arguments
+        (print (run-type-inference)))
+
+      (when (eq (name function) 'p1)
+        (break "finalize2" function local-types))
+
+      ;; loop through variable bindings
+      ;;  if multiple types, collapse to simplest type then run
+      ;;  type inference
+
+      ;; loop over keys instead of maphash because inference update
+      ;; might modify other parts of hash table
+      (loop for k in (alexandria:hash-table-keys local-types)
+            for v = (gethash k local-types)
+            do (if (typep k '(or local-variable))
+                   (progn
+                     (format t "update local variable ~s (~s)~%" (name k)
+                             (debug-type-names v))
+                     (when (flatten-type v)
+                       (print (run-type-inference))))
+                   (format t "skipping ~s~%" k)))
+
+      ;; loop through function calls
+      ;;   pick a type for args, if not cached, recurse
+      ;;   update return type, run type inference if changed
+      #++
+      (loop for k in (alexandria:hash-table-keys local-types)
+            for v = (gethash k local-types)
+            do (if (typep k 'inference-call-site)
+                   (progn
+                     (format t "updating ~s~%" (name (called-function k)))
+                     (map 'nil #'flatten-type (cdr v))
+                     (let ((r (flatten-function (called-function k) (cdr v))))
+                       (when (flatten-type (car v) r)
+                         (print (run-type-inference)))))
+                   (format t "skipping ~s~%" k)))
+
+      ;; flatten return type of function
+      (flatten-type (gethash :return local-types))
+      (when (typep (gethash :return local-types) 'any-type)
+        (setf (gethash :return local-types)
+              (get-type-binding :void)))
+      ;; build mapping of variables/functions to types for this
+      ;; combination of arguments
+      (let ((cache (make-hash-table)))
+        (maphash (lambda (k v)
+                   (if (typep k 'inference-call-site)
+                       (progn
+                         (format t "use function ~s: ~s~%"
+                                 (name (called-function k))
+                                 (debug-type-names v))
+                         (pushnew (mapcar (lambda (a)
+                                            (flatten-type a)
+                                            (get-concrete-type a))
+                                          (cdr v))
+                                  (gethash k cache nil) :test 'equal)
+                         (format t "-> ~s~%"
+                                 (debug-type-names (gethash k cache :?)))
+                         #++(break "flat?" function k v local-types))
+                       (setf (gethash k cache) v)))
+                 local-types)
+        (setf (gethash argument-types (final-binding-type-cache function))
+              cache))))
+  (format t "~%~% flattened ~s: ~s -> ~s~%~s~%"
+          (name function) (debug-type-names argument-types)
+          (debug-type-names
+           (gethash :return (gethash argument-types
+                                     (final-binding-type-cache function))))
+          argument-types)
+  #++(break "flat?" function)
+  ;; add any used function signatures to the hash table for printing
+  (maphash (lambda (k v)
+             (when (typep k 'inference-call-site)
+               (flatten-function (called-function k) (car v))
+               #++(unless (gethash (called-function k) *instantiated-overloads*)
+                 (setf (gethash (called-function k) *instantiated-overloads*)
+                       (make-hash-table :test #'equal)))
+               ;; for each called function, we keep track of which
+               ;; sets of types were used (possibly there are usually
+               ;; few enough combinations that pushnew would be better
+               ;; than making a hash table here and converting to a
+               ;; list later?
+               #++(setf (gethash v (gethash (called-function k)
+                                         *instantiated-overloads*))
+                     t)))
+           (gethash argument-types (final-binding-type-cache function)))
+;  (break "flat?" function)
+  (unless (gethash function *instantiated-overloads*)
+    (setf (gethash function *instantiated-overloads*)
+          (make-hash-table :test #'equal)))
+    (setf (gethash argument-types (gethash function *instantiated-overloads*))
+          t)
+  (gethash :return
+           (gethash argument-types (final-binding-type-cache function))))
+
 
 ;;; given a 0-arg function, return a hash table of
 ;;; function names -> list of overloads to instantiate for that function
@@ -354,15 +232,18 @@
         (*binding-types* (make-hash-table)))
     (format t "~%~%~%~%~%~%~%")
 
-    #++(walk root (make-instance 'finalize))
-    (flatten-function-call root nil (make-instance 'finalize))
+    (flatten-function root nil)
 
-    ;;(break "finalized " *instantiated-overloads*)
     ;; reformat the data for printer to use
+    #++
     (maphash (lambda (k v)
                (setf (gethash k *instantiated-overloads*)
                      (loop for (r b) in (alexandria:hash-table-values v)
                            do (setf (gethash k b) r)
                            collect b)))
+             *instantiated-overloads*)
+    (maphash (lambda (k v)
+               (setf (gethash k *instantiated-overloads*)
+                     (alexandria:hash-table-keys v)))
              *instantiated-overloads*)
     *instantiated-overloads*))

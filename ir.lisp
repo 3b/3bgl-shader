@@ -88,6 +88,9 @@
 (defclass place ()
   ())
 
+(defmethod name (o)
+  o)
+
 (defclass binding (place)
   ((name :accessor name :initarg :name)
    (glsl-name :accessor glsl-name :initarg :glsl-name :initform nil)
@@ -188,6 +191,26 @@
    ;; used by type inference to decide which stages to run inference for
    ;; fixme: is this actually used/useful?
    (valid-stages :initform t :accessor valid-stages)
+   ;; 'type' object for each local binding inside the function
+   ;; including arguments (keyed by binding object)
+   ;; and return value (keyed by :return)
+   ;; as well as an entry for every call to a global-function
+   ;; (keyed by an inference-call-site object or something like that
+   ;;  with list of types (ret then supplied arg types) as value)
+   ;; only valid after type inference is run, should be empty otherwise
+   ;; probably not concrete types for most functions, since types
+   ;; depend on argument types. (specific types are chosen during final
+   ;; compile for any sets of argument types actually used)
+   (local-binding-type-data :initform (make-hash-table)
+                            :accessor local-binding-type-data)
+   ;; concrete type data for any overloaded versions of this function
+   ;; which have been computer so far, keyed by a list of concrete types
+   ;; value is hash table like local-binding-type-data, except with
+   ;; a list of lists of arg types for inference-call-site entries
+   ;; (only calculated as needed, so only contains data for combinations
+   ;;  actually compiled since function was last modified)
+   (final-binding-type-cache :initform (make-hash-table :test 'equal)
+                             :accessor final-binding-type-cache)
    ;; sexp lambda list (with &key, etc)
    ;; (no &rest though, since we don't have lists)
    (lambda-list :initarg :lambda-list :accessor lambda-list)
@@ -300,17 +323,26 @@
   ((binding :accessor binding :initarg :binding)
    (index :accessor index :initarg :index)
    (value-type :accessor value-type :initarg :value-type)))
-
+(defmethod name ((o slot-access))
+  (name (binding o)))
+(defmethod name ((o swizzle-access))
+  (list (name (binding o)) (field o)))
+(defmethod name ((o array-access))
+  (list (name (binding o)) '[ (index o) ']))
 
 
 (defclass variable-read (place)
   ;; possibly should store some type info as well?
   ((binding :accessor binding :initarg :binding)))
+(defmethod name ((o variable-read))
+  (name (binding o)))
 
 (defclass variable-write ()
   ;; possibly should store some type info as well?
   ((binding :accessor binding :initarg :binding)
    (value :accessor value :initarg :value)))
+(defmethod name ((o variable-write))
+  (name (binding o)))
 
 (defclass function-call ()
   ((called-function :accessor called-function :initarg :function)
@@ -320,8 +352,9 @@
    ;; &key and such at the call site
    (raw-arguments :accessor raw-arguments :initarg :raw-arguments)
    (argument-environment :accessor argument-environment
-                         :initarg :argument-environment )
-))
+                         :initarg :argument-environment )))
+(defmethod name ((o function-call))
+  (name (called-function o)))
 
 (defclass if-form ()
   ((test-form :accessor test-form :initarg :test)

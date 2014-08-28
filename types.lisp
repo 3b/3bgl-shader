@@ -555,6 +555,16 @@
        (:float :vec2 :vec3 :vec4)
        (:double :dvec2 :dvec3 :dvec4)))))
 
+;; add sizes for matrix types
+(let ((*environment* glsl::*glsl-base-environment*))
+  (loop for f in '(:mat2 :mat2x3 :mat2x4 :mat3x2 :mat3 :mat3x4
+                   :mat4x2 :mat4x3 :mat4)
+        for d in '(:dmat2 :dmat2x3 :dmat2x4 :dmat3x2 :dmat3 :dmat3x4
+                   :dmat4x2 :dmat4x3 :dmat4)
+        for c in '(4 6 8 6 9 12 8 12 16)
+        do (setf (scalar/vector-size (get-type-binding f)) c)
+           (setf (scalar/vector-size (get-type-binding d)) c)))
+
 
 
 

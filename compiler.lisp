@@ -68,7 +68,10 @@
       ;; in disjoint sets of stages...
       (assert *function-stages*)
       (setf (valid-stages glsl::*current-function*)
-            (alexandria:ensure-list *function-stages*)))
+            (alexandria:ensure-list *function-stages*))
+      ;; fixme: move all these 'reset' things into add-function or something
+      (clrhash (local-binding-type-data glsl::*current-function*))
+      (clrhash (final-binding-type-cache glsl::*current-function*)))
     #++(call-next-method)
     nil))
 
@@ -144,7 +147,7 @@
   ())
 
 (defmethod walk ((form function-call) (walker tree-shaker))
-  (format t "~s -> ~s~%" form (called-function form))
+  (format t "ts: ~s -> ~s~%" form (name (called-function form)))
   (when (or (typep (called-function form) 'global-function)
             (typep (called-function form) 'unknown-function-binding))
     (funcall *tree-shaker-hook* (called-function form)))
@@ -362,8 +365,12 @@
                  for overloads = (gethash def inferred-types)
                  when (typep def 'global-function)
                    do (assert overloads)
-                      (loop for *binding-types* in overloads
-                            do (pprint-glsl def))
+                      (loop for overload in overloads
+                            for *binding-types*
+                              = (gethash overload
+                                         (final-binding-type-cache def))
+                            do (assert *binding-types*)
+                               (pprint-glsl def))
                  ))
          )))))
 

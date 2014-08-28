@@ -3,9 +3,14 @@
 (defvar *inference-worklist*)
 (defvar *current-function-constraint*)
 (defvar *current-function-stages*)
+(defvar *current-function-local-types*)
 (defclass any-type ()
   ((constraints :initform (make-hash-table) :accessor constraints :initarg :constraints)))
 
+(defclass inference-call-site ()
+  ;; can't use called function directly, since we might have multiple
+  ;; calls with incompatible types
+  ((called-function :accessor called-function :initarg :called-function)))
 
 (define-condition inference-failure () ())
 (define-condition incomplete-dependent (inference-failure) ())
@@ -144,7 +149,8 @@
   ;; slots in the types
   ((cast-type :initform :implicit :accessor cast-type :initarg :cast-type)
    (in-type :initarg :in :accessor in-type)
-   (out-type :initarg :out :accessor out-type)))
+   (out-type :initarg :out :accessor out-type)
+   (name :initarg :name :accessor name :initform nil)))
 
 (defclass ctype/other-constraint (constraint)
   ((ctype :initarg :ctype :accessor ctype)
@@ -180,12 +186,56 @@
   ;; elements of type OTHER-TYPE
   ((min-size :initarg :min-size :accessor min-size)))
 
+(defmethod dump-constraint ((c cast-constraint))
+  (format t "~& cast ~s @ ~s:~%   ~s~%-> ~s~%" c (name c)
+          (debug-type-names (in-type c))
+          (debug-type-names (out-type c))))
+
+(defmethod dump-constraint ((c variable-arity-function-application))
+  (format t "~& variable arity ~s ~s/~s~%" c
+          (min-arity c) (max-arity c)))
+
+(defmethod dump-constraint ((c function-application))
+  (format t "~& function application ~s ~s:~%   ~s~%-> ~s~%" c (name c)
+          (debug-type-names (argument-types c))
+          (debug-type-names (return-type c))))
+
+(defmethod dump-constraint ((c global-function-constraint))
+  (format t "~& g-f-c ~s ~s/~s:~%  ~s~%" c (name c)
+          (name (global-function c))
+          (argument-types c)))
+
+(defmethod dump-constraint ((c ctype/other-constraint))
+  (format t "  ~s~%  ~s~%"
+          (debug-type-names (ctype c))
+          (debug-type-names (other-type c))))
+(defmethod dump-constraint ((c same-base-type-different-size-constraint))
+  (format t "~& same-base/diff-size ~s~%  ~s -> ~s" c
+          (min-size c) (out-size c))
+  (call-next-method))
+(defmethod dump-constraint ((c same-type-or-scalar-constraint))
+  (format t "~& same or scalar ~s~%" c)
+  (call-next-method))
+(defmethod dump-constraint ((c scalar-type-of-constraint))
+  (format t "~& ->scalar ~s~%" c)
+  (call-next-method))
+(defmethod dump-constraint ((c array-access-constraint))
+  (format t "~& array-access ~s [~s]~%" c (min-size c))
+  (call-next-method))
+
+
+
+(defmethod replace-constraint-type :before (new old constraint)
+  (format t "replace ~s with ~s in constraint ~s(~s)~%" old new
+          (if (typep constraint 'global-function-constraint)
+              (list constraint (name constraint))
+              constraint)
+          (name constraint)))
 
 (defmethod replace-constraint-type (new old constraint)
   ;; shouldn't modify CONSTRAINTS field of callers, since they may
   ;; be iterating it... wait for update pass before removing any
   ;; no-longer-useful constraints
-  (format t "replace ~s with ~s in constraint ~s~%" old new constraint)
   (when (and (slot-boundp constraint 'return-type)
              (eq (return-type constraint) old))
     (flag-modified-constraint constraint)
@@ -201,8 +251,7 @@
     (setf (ctype constraint) new))
   (when (eq (other-type constraint) old)
     (flag-modified-constraint constraint)
-    (setf (other-type constraint) new))
-)
+    (setf (other-type constraint) new)))
 
 (defmethod replace-constraint-type (new old (constraint cast-constraint))
   (when (eq (in-type constraint) old)
@@ -212,11 +261,26 @@
     (flag-modified-constraint constraint)
     (setf (out-type constraint) new)))
 
+(defmethod replace-type-in-bindings (new old)
+  (let ((hash *current-function-local-types*))
+    ;; fixme: avoid the linear search here
+    ;; (temporary hash of types -> list of bindings?)
+    (maphash (lambda (k v)
+               (when (eq v old)
+                 (format t "~&replace type for ~s: ~s -> ~s~%"
+                         (if (symbolp k) k (name k))
+                         old new)
+                 (setf (gethash k hash) new))
+               (when (consp v)
+                 (setf (gethash k hash) (substitute new old v))))
+             hash)))
+
 
 (defparameter *copy-constraints-hash* nil
   "used to track already copied constraints when copying type inference data")
 
 (defun update-constraint-cache (new old)
+  (replace-type-in-bindings new old)
   (when (and *copy-constraints-hash*
              (gethash old *copy-constraints-hash*))
     (setf (gethash old *copy-constraints-hash*) new)))
@@ -464,6 +528,7 @@
 
 (defmethod copy-constraints ((constraint cast-constraint))
   (let ((copy (make-instance 'cast-constraint
+                             :name (name constraint)
                              :cast-type (cast-type constraint))))
     ;; we need to update cache before copying constrained types because they
     ;; link back to constraint
@@ -581,7 +646,7 @@
     copy))
 
 
-(defun copy-unify-constraints (type unify-type &key cast)
+(defun copy-unify-constraints (type unify-type &key cast name)
   (format t "~&c-u-c ~s ~s~%" type unify-type)
   (unless unify-type
     (assert (typep type 'optional-arg-type))
@@ -590,6 +655,7 @@
     (format t "~&c-unify ~s ~s~%" copy unify-type)
     (if cast
         (let ((cast-constraint (make-instance 'cast-constraint
+                                              :name name
                                               :in unify-type
                                               :out copy
                                               :cast-type cast)))
@@ -723,7 +789,10 @@
 (defmethod walk ((form function-call) (walker infer-build-constraints))
   (format t "~&infer ~s (~s) =~%" (name (called-function form)) form)
   (let* ((called (called-function form))
-         (*copy-constraints-hash* (make-hash-table)))
+         (*copy-constraints-hash* (make-hash-table))
+         (call-site (when (typep called 'global-function)
+                      (make-instance 'inference-call-site
+                                     :called-function called))))
     (when (typep called 'unknown-function-binding)
       (error "got call to unknown function ~s during type inference"
              (name called)))
@@ -745,15 +814,18 @@
           do (setf (gethash (value-type binding) *copy-constraints-hash*) nil))
 
     ;; walk remaining args and copy as usual
-    (loop with args = (arguments form)
-          for arg = (pop args)
-          for binding in (bindings called)
-          collect (copy-unify-constraints
-                   (value-type binding)
-                   (if arg
-                       (walk arg walker)
-                       nil)
-                   :cast (and arg (allow-casts binding))))
+    (let ((a (loop with args = (arguments form)
+                   for arg = (pop args)
+                   for binding in (bindings called)
+                   collect (copy-unify-constraints
+                            (value-type binding)
+                            (if arg
+                                (walk arg walker)
+                                nil)
+                            :cast (and arg (allow-casts binding))
+                            :name (name binding)))))
+      (when call-site
+        (setf (gethash call-site *current-function-local-types*) a)))
     ;; copy return type and any linked constraints
     ;; (may have already been copied if it depends on arguments)
     (format t "~&~s =>~s~%" (name called) (value-type called ))
@@ -774,7 +846,10 @@
           ;; it doesn't actually get returned?
           (return-type *current-function-constraint*))
         ;; normal function, just copy the return values as usual
-        (copy-constraints (value-type called)))))
+        (let ((vt (copy-constraints (value-type called))))
+          (when call-site
+            (push vt (gethash call-site *current-function-local-types*)))
+          vt))))
 
 (defmethod walk ((form variable-read) (walker infer-build-constraints))
   (format t "infer ~s =~%" form)
@@ -786,6 +861,7 @@
          (value (walk (value form) walker))
          ;; todo: avoid creating cast constraint if we know both types?
          (cast (make-instance 'cast-constraint
+                              :name form
                               :in value
                               :out binding)))
     (assert value)
@@ -857,6 +933,9 @@
                            (initial-value-form binding))
                 when initial-value-type
                   do (let ((cast (make-instance 'cast-constraint
+                                                :name (name
+                                                       (initial-value-form
+                                                        binding))
                                                 :cast-type :implicit
                                                 :in initial-value-type
                                                 :out declared-type)))
@@ -865,7 +944,9 @@
                        (flag-modified-constraint cast)
                        (flag-modified-constraint c))
                 do (add-constraint declared-type c)
-                collect (setf (value-type binding) declared-type)))
+                collect (setf (value-type binding) declared-type)
+                do (setf (gethash binding *current-function-local-types*)
+                         (value-type binding))))
     (setf (return-type c)
           (loop for a in (body form)
                 for ret = (walk a walker)
@@ -888,7 +969,9 @@
                                                  (second declared-type))))
                 else collect (setf (value-type binding)
                                    (set-type declared-type
-                                             :constraint c))))
+                                             :constraint c))
+                do (setf (gethash binding *current-function-local-types*)
+                         (value-type binding))))
     ;; fixme: add a constraint (or just a type?) if return type isn't T
     (assert (or (eq t (value-type form))
                 (typep (value-type form) 'any-type)))
@@ -902,7 +985,10 @@
       (print
        (if (slot-boundp c 'return-type)
            (setf (value-type form) (unify (return-type c) v))
-           (setf (return-type c) v))))
+           (setf (return-type c) v
+                 (value-type form) v)))
+      (setf (gethash :return *current-function-local-types*)
+             (value-type form)))
     c))
 
 
@@ -976,7 +1062,8 @@
   (let ((removed 0)
         (removed2 0)
         (arg-type-counts (make-array (length (argument-types constraint))
-                                     :initial-element 0)))
+                                     :initial-element 0))
+        (return-type-count t))
     ;; no point in processing a T*->T function, since it won't
     ;; restrict any of the arguments or return type, so it shouldn't
     ;; have a constraint in the first place...
@@ -989,6 +1076,13 @@
     (format t "  constrained = ~{~s~%                 ~}-> ~s~%"
             (argument-types constraint)
             (return-type constraint))
+    (typecase (return-type constraint)
+      (constrained-type
+       (setf return-type-count
+             (hash-table-count (types (return-type constraint)))))
+      (concrete-type
+       (setf return-type-count 1)))
+
     (print-bindings/ret (name constraint) (argument-types constraint) (return-type constraint))
     ;; loop through function types, keep ones that match the argument/ret types
     (setf (function-types constraint)
@@ -1078,12 +1172,29 @@
                         (setf (gethash ftype-arg (types arg)) t)
                         (incf removed2)))
     ;; flag any modified types
-    (loop for a in (argument-types constraint)
-          for i from 0
-          when (and (typep a 'constrained-type)
-                    (/= (aref arg-type-counts i)
-                        (hash-table-count (types a))))
-            do (flag-modified-type a))
+    (flet ((clean-hash (h)
+             (maphash (lambda (k v) (unless v (remhash k h))) h)
+             h))
+      (loop for a in (argument-types constraint)
+            for i from 0
+            when (and (typep a 'constrained-type)
+                      (/= (aref arg-type-counts i)
+                          (hash-table-count (clean-hash (types a)))))
+              do (flag-modified-type a))
+      (format t "check return type ~s/~s (was ~s)~%"
+              (return-type constraint)
+              (debug-type-names (return-type constraint))
+              return-type-count)
+      (etypecase (return-type constraint)
+        (constrained-type
+         (unless (= return-type-count
+                    (hash-table-count
+                     (clean-hash (types (return-type constraint)))))
+           (format t "flag ~s modified:~% ~s~%"
+                   (return-type constraint)
+                   (constraints (return-type constraint)))
+           (flag-modified-type (return-type constraint))))
+        (concrete-type)))
 
     ;; (possibly loop through arg types again and remove NIL values?
     (format t "updated constraint, removed ~s ftypes, ~s arg types~%" removed removed2)
@@ -1100,8 +1211,8 @@
         (out-casts (make-hash-table))
         (any-in (typep (in-type constraint) 'any-type))
         (any-out (typep (out-type constraint) 'any-type)))
-    (format t "update cast constraint ~s:~%  ~s -> ~s~%"
-            constraint
+    (format t "update cast constraint ~s (~s):~%  ~s -> ~s~%"
+            constraint (name constraint)
             (debug-type-names(in-type constraint))
             (debug-type-names(out-type constraint)))
     (labels ((add-casts (type casts hash)
@@ -1529,22 +1640,37 @@
   (print-bindings/ret (name constraint) (argument-types constraint) (return-type constraint)))
 
 
+(defun run-type-inference ()
+  (format t "~&running type inference, ~s elements in worklist~%"
+          (length *inference-worklist*))
+  (loop with start-count = (length *inference-worklist*)
+        for constraint = (pop *inference-worklist*)
+        while constraint
+        for i from 1
+        when (zerop (mod i 2000))
+          do (break "~a loops in inference?" i)
+        do (assert (modified constraint))
+        do (format t "~&~%~s: updating constraint ~s (~s left)~%"
+                   i constraint (length *inference-worklist*))
+           (dump-constraint constraint)
+        do (update-constraint constraint)
+           ;; clear flag after updating so it doesn't get put back
+           ;; when constrained types change
+           (setf (modified constraint) nil)
+        do (format t "~&==updated constraint:~%")
+           (dump-constraint constraint)
+        finally (progn
+                  (format t "~&finished type inference, ~s updates~%" i)
+                  (return (list start-count i)))))
+
 (defun infer (function)
   (let* ((*inference-worklist* nil)
+         (*current-function-local-types* (local-binding-type-data function))
          (gfc (walk function (make-instance 'infer-build-constraints))))
     ;; leaves are at end of list, so we process them before interior nodes
     ;; (should be correct either way, but wastes effort doing interior first)
     (setf *inference-worklist* (nreverse *inference-worklist*))
-    (loop for constraint = (pop *inference-worklist*)
-          while constraint
-          for i from 1
-          when (zerop (mod i 1000))
-            do (break "~a loops in inference?" i)
-          do (assert (modified constraint))
-          do (update-constraint constraint)
-             ;; clear flag after updating so it doesn't get put back
-             ;; when constrained types change
-             (setf (modified constraint) nil))
+    (run-type-inference)
     (loop for b in (bindings function)
           for type in (argument-types gfc)
           do (setf (value-type b) type))
@@ -1554,6 +1680,7 @@
               (eq (value-type function) t))
       (setf (value-type function)
             (get-type-binding :void)))
+    ;(break "infer" *current-function-local-types*
     (print-bindings/ret (name function) (bindings function)
                         (value-type function))
     (print-bindings/ret (name function) (argument-types gfc)
@@ -1586,11 +1713,11 @@
                  (setf (gethash up (gethash f in)) t))))
       (mapcar #'walk functions))
     (loop for (k . v) in (alexandria:hash-table-alist in)
-          do (format t "~s <-~{ ~s~}~%" (name k)
+          do (format t "imf ~s <-~{ ~s~}~%" (name k)
                      (mapcar 'name (alexandria:hash-table-keys v))))
 
     (loop for (k . v) in (alexandria:hash-table-alist out)
-          do (format t "~s ->~{ ~s~}~%" (name k)
+          do (format t "imf ~s ->~{ ~s~}~%" (name k)
                      (mapcar 'name (alexandria:hash-table-keys v))))
     ;; topo sort function list
     (loop for c = 0
@@ -1770,5 +1897,43 @@
   (compile-block '((defun h ()
                      (return (glsl:vec2 1))
                      (return (glsl:ivec2 1))))
+                 'h
+                 :vertex)))
+
+
+#++
+(print
+ (multiple-value-list
+  (compile-block '((defun p1 (g)
+                     (return (- (* 1.2 g) 1))
+                     (return 1))
+                   (defun h ()
+                     (let ((a (p1 1.0))))))
+                 'h
+                 :vertex)))
+
+#++
+(print
+ (multiple-value-list
+  (compile-block '((defun p1 (g)
+                     (if g
+                         (return (glsl::ivec2 1 2))
+                         (return (glsl::vec2 1 2))))
+                   (defun h ()
+                     (let ((a (p1 (> 1 2))))
+                       ;(return a)
+                       )))
+                 'h
+                 :vertex)))
+#++
+(print
+ (multiple-value-list
+  (compile-block '((defun p1 (a b)
+                     (let ((tmp ))
+                       (setf tmp (- 1 (* a b)))
+                       (return tmp)))
+                   (defun h ()
+                     (let ((a (p1 1.0 2.0)))
+                       )))
                  'h
                  :vertex)))
