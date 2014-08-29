@@ -109,7 +109,11 @@
    ;; matches an arg type)
    (declared-type :accessor declared-type :initarg :declared-type
                   :initform t)
-   (qualifiers :accessor qualifiers :initform nil)))
+   (qualifiers :accessor qualifiers :initform nil)
+   ;; set to true if variable needs renamed due to a scoping conflict
+   ;; (for example shadows a variable used in initialization of
+   ;; variable in same scope)
+   (conflicts :accessor conflicts :initform nil)))
 
 (defclass initialized-binding (binding)
   ;; for actual variables in the code (global or local)

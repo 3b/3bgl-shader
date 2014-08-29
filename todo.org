@@ -29,7 +29,8 @@
    CLOSED: [2014-08-28 Thu 14:57]
 ** DONE clean up debug noise/commented junk, reformat code
    CLOSED: [2014-08-28 Thu 16:56]
-** make sure var initialization uses correct bindings whem vars are shadowed
+** DONE make sure var initialization uses correct bindings whem vars are shadowed
+   CLOSED: [2014-08-29 Fri 15:53]
    internally they refer to correct bindings, but if they have same name they
    might be wrong when printed
    ex:
@@ -89,6 +90,7 @@
      instead of name for ones that were
 ** figure out/add rules for SETF stuff
    (setf (.rgb foo) ...) is ok, (setf (.rrr foo) ...) is bad, etc
+** clean up/remove duplication between cl-walker and glsl-walker
 * would be nice
 ** remove unused variables
 ** detect/remove dead code (after RETURN, etc)

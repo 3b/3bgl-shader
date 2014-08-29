@@ -2,6 +2,16 @@
 
 (defparameter *verbose* nil "enable debugging printouts")
 
+;; we can't access variables from outer scopes when initializing
+;; variables, so we need to flag some variables for renaming when
+;; there are conflicts. For example in (let ((a 1)) (let ((a) (b a))),
+;; B should get value of outer A, so inner A needs to be renamed when
+;; printing to GLSL
+(defparameter *check-conflict-vars* nil
+  "if bound, should be a hash of variable names to flag as conflicts when looking up variable. Names are flagged by setting value in hash to :CONFLICT.")
+(defparameter *add-conflict-vars* nil
+  "if bound, should be a hash of variable names to flag as conflicts when adding variable if value in hash is :CONFLICT.")
+
 (defclass walker ()
   ())
 
@@ -38,6 +48,9 @@
 (defparameter *cl-environment* (make-instance 'environment))
 
 (defun get-variable-binding (name &key (env *environment*))
+  (when (and *check-conflict-vars*
+             (gethash name *check-conflict-vars*))
+    (setf (gethash name *check-conflict-vars*) :conflict))
   (and env
        (or (gethash name (variable-bindings env))
            (get-variable-binding name :env (parent-scope env)))))
@@ -111,12 +124,17 @@
 
 (defun add-variable (name init &key (env *environment*) binding
                                  (type 'variable-binding) value-type)
-  (setf (gethash name (variable-bindings env))
-        (or binding
-            (make-instance type
-                           :name name
-                           :value-type (or (get-type-binding value-type) T)
-                           :init init))))
+  (let ((v (setf (gethash name (variable-bindings env))
+                 (or binding
+                     (make-instance type
+                                    :name name
+                                    :value-type
+                                    (or (get-type-binding value-type) T)
+                                    :init init)))))
+    (when (and *add-conflict-vars*
+               (eq :conflict (gethash name *add-conflict-vars*)))
+      (setf (conflicts v) t))
+    v))
 
 
 (defun make-&key-expander (lambda-list)
@@ -407,15 +425,19 @@
 
 (defwalker cl-walker (let (&rest bindings) &rest body)
   ;; walk default values if any, and body
-  `(let (,@(mapcar (lambda (a)
-                     (let ((var (if (consp a) (car a) a))
-                          (init (if (consp a) (cadr a) nil)))
-                      (list var (@ init))))
-                   bindings))
-     ,@(with-environment-scope ()
-         (mapcar (lambda (a) (add-variable (if (consp a) (car a) a) nil))
-                 bindings)
-         (@@ body :declare t))))
+  (let ((previous (make-hash-table)))
+    `(let (,@(mapcar (lambda (a)
+                       (let ((var (if (consp a) (car a) a))
+                             (init (if (consp a) (cadr a) nil)))
+                         (setf (gethash var previous) t)
+                         (let ((*check-conflict-vars* previous))
+                           (list var (@ init)))))
+                     bindings))
+       ,@(let ((*add-conflict-vars* previous))
+           (with-environment-scope ()
+             (mapcar (lambda (a) (add-variable (if (consp a) (car a) a) nil))
+                     bindings)
+             (@@ body :declare t))))))
 
 (defwalker cl-walker (let* (&rest bindings) &rest body)
   ;; walk default values if any, and body

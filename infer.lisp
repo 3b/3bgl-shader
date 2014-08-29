@@ -1737,3 +1737,21 @@
                        )))
                  'h
                  :vertex)))
+
+#++
+(print
+ (multiple-value-list
+  (compile-block '((defun h ()
+                     (let ((a 1.0)
+                           (cl-user::a 2))
+                       (let ((a 2)
+                             (b a))
+                         (setf cl-user::a (+ a b))
+                         (let ((b 1)
+                               (a 2))
+                           (setf cl-user::a (+ cl-user::a a b))))
+                       (return (+ a cl-user::a)))))
+                 'h
+                 :vertex)))
+
+

@@ -8,6 +8,12 @@
 ;; MAIN.
 (defparameter *print-as-main* nil)
 
+;; we need to rename variables in some cases to avoid conflicts so
+;; track which variables are live to avoid creating other conflicts in
+;; the process
+;; glsl name -> lisp symbol
+(defparameter *live-variables* (make-hash-table :test 'equal))
+
 ;; we want to use call-next-method to print mixins, so using a custom
 ;; print function rather than pprint-dispatch stuff...
 
@@ -51,7 +57,16 @@
   (%translate-name x))
 
 (defmethod translate-name ((x binding))
-  (or (glsl-name x) (%translate-name (name x))))
+  (let ((n (or (glsl-name x) (%translate-name (name x)))))
+    (when (or (conflicts x)
+              (and (gethash n *live-variables*)
+                   (not (eq (name (gethash n *live-variables*)) (name x)))))
+      (loop for i from 2 below 1000
+            for rn = (format nil "~a_~a" n i)
+            for c = (gethash rn *live-variables*)
+            while (and c (not (eq c x)))
+            finally (setf n rn)))
+    n))
 
 (defmethod translate-name ((x function-binding))
   (if (eq x *print-as-main*)
@@ -382,8 +397,21 @@
   ;; fixme: avoid extra {} in LET at top level of a function
   ;; (bind a special when inside LET scope, clear it inside scopes
   ;;  that add a binding scope (like FOR, DEFUN, etc?))
-  (format t "{~%~<  ~@;~@{~a;~^~%~}~:>~%" (bindings o))
-  (call-next-method)
+  (let ((shadowed nil))
+    (loop for binding in (bindings o)
+          for glsl = (translate-name binding)
+          for old = (gethash glsl *live-variables*)
+          do (if old
+                 (push (cons glsl old) shadowed)
+                 (push (cons glsl nil) shadowed))
+             (setf (gethash glsl *live-variables*)
+                   binding))
+    (format t "{~%~<  ~@;~@{~a;~^~%~}~:>~%" (bindings o))
+    (call-next-method)
+    (loop for (g . l) in shadowed
+          do (if l
+                 (setf (gethash g *live-variables*) l)
+                 (remhash g *live-variables*))))
   (format t "~&}"))
 
 (defprint variable-read (o)

@@ -256,23 +256,30 @@
                                  :declarations declare :docs doc))))
 
 (3bgl-shaders::defwalker glsl-walker (let (&rest bindings) &rest body+d)
-  (3bgl-shaders::process-type-declarations-for-scope
-   (multiple-value-bind (body declare)
-       (alexandria:parse-body body+d)
-     (let ((l (make-instance
-               '3bgl-shaders::binding-scope
-               :bindings (loop for (n i) in bindings
-                               collect (make-instance
-                                        '3bgl-shaders::local-variable
-                                        :name n
-                                        :init (3bgl-shaders::@ i)
-                                        :value-type t))
-               :declarations declare
-               :body nil)))
-       (setf (3bgl-shaders::body l)
-             (3bgl-shaders::with-lambda-list-vars (l)
-               (3bgl-shaders::@@ body)))
-       l))))
+  (let ((previous (make-hash-table)))
+    (3bgl-shaders::process-type-declarations-for-scope
+     (multiple-value-bind (body declare)
+         (alexandria:parse-body body+d)
+       (let ((l (make-instance
+                 '3bgl-shaders::binding-scope
+                 :bindings (loop for (n i) in bindings
+                                 do (setf (gethash n previous) t)
+                                 collect (make-instance
+                                          '3bgl-shaders::local-variable
+                                          :name n
+                                          :init (let ((3bgl-shaders::*check-conflict-vars* previous))
+                                                  (3bgl-shaders::@ i))
+                                          :value-type t))
+                 :declarations declare
+                 :body nil)))
+         (loop for (n i) in bindings
+               for b in (3bgl-shaders::bindings l)
+               when (eq (gethash n previous) :conflict)
+                 do (setf (3bgl-shaders::conflicts b) t))
+         (setf (3bgl-shaders::body l)
+               (3bgl-shaders::with-lambda-list-vars (l)
+                 (3bgl-shaders::@@ body)))
+         l)))))
 
 (3bgl-shaders::defwalker glsl-walker (let* (&rest bindings) &rest body+d)
   (multiple-value-bind (body declare)
