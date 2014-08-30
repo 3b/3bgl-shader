@@ -304,7 +304,14 @@
                (warn "declared unknown type ~a for variables ~a?" d a))
              (loop for var in a
                    for b = (find var (bindings scope) :key 'name)
-                   for bt = (declared-type b)
+                   for bt = (if (not b)
+                                ;; todo: possibly should add a constraint
+                                ;; on free but existing bindings?
+                                ;; for now just not allowing them, since
+                                ;; variables are always same type in glsl...
+                                (error "got declaration for free binding ~s?"
+                                       var)
+                              (declared-type b))
                    do (when (not (member bt (list type d t)))
                         (warn "changing type of ~a from ~a to ~a?"
                               var (declared-type b) type))
@@ -317,10 +324,17 @@
                   (process-declaration (car args) (cdr args)))
                  ;; handle 'values' for return type
                  ((eql decl 'values)
-                  (setf (declared-type scope)
-                        (if args
-                            (get-type-binding (car args))
-                            (get-type-binding :void))))
+                  (unless (typep scope 'global-function)
+                    (error "VALUES declaration not handled for ~s yet?"
+                           (type-of scope)))
+                  (let* ((type-name (if args
+                                        (car args)
+                                        :void))
+                         (type (get-type-binding type-name)))
+                    (unless type
+                      (error "declared unknown return type ~s in VALUES?"
+                             type-name))
+                    (setf (declared-type scope) type)))
                  ;; 'layout' declarations (for geometry shaders, etc)
                  ;; (layout (:in primitive &rest) (:out prim &rest args) ...)
                  ((eql decl 'layout)

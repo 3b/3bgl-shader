@@ -42,6 +42,10 @@
                       :key 'cdr))))
     (optional-arg-type
      (format nil "(or NIL ~s)" (debug-type-names (arg-type type))))
+    (hash-table
+     (let ((x))
+       (maphash (lambda (k v) (when v (push (debug-type-names k) x))) type)
+       x))
     (t (error "foo!"))))
 
 
@@ -342,12 +346,11 @@
   b)
 
 (defmethod2 unify ((a any-type) (b concrete-type))
-  (assert (gethash b (types a)))
   (loop for c being the hash-keys of (constraints a) using (hash-value v)
         when v
-          do (replace-constraint-type b a c)
-             (unless (gethash c (constraints b))
-               (setf (gethash c (constraints b)) t)))
+          ;; concrete-type doesn't have any constraints, so just replace
+          ;; A with B in A's constraints
+          do (replace-constraint-type b a c))
   (update-constraint-cache b a)
   b)
 
@@ -889,8 +892,17 @@
                 do (setf (gethash binding *current-function-local-types*)
                          (value-type binding))))
     ;; fixme: add a constraint (or just a type?) if return type isn't T
-    (assert (or (eq t (value-type form))
-                (typep (value-type form) 'any-type)))
+    (when (and (declared-type form)
+               (not (eq (declared-type form) t)))
+      (when (or (not (value-type form))
+                (eq t (value-type form)))
+        (setf (value-type form) (declared-type form)))
+      (when (typep (value-type form) 'any-type)
+        (setf (value-type form) (unify (value-type form)
+                                       (declared-type form)))))
+
+    (unless (typep (value-type form) 'symbol)
+      (setf (return-type c) (value-type form)))
     (loop for a in (body form)
           do (walk a walker))
     (let ((v (if (and (value-type form)
@@ -1151,15 +1163,20 @@
                 (out-type constraint)))
         (t
          (flet ((c (type cast-types)
-                  (when (typep type 'constrained-type)
-                    (let ((old (hash-table-count (types type))))
-                      (maphash (lambda (k v)
-                                 (unless (and v (gethash k cast-types))
-                                   (remhash k (types type))))
-                               (types type))
-                      (assert (plusp (hash-table-count (types type))))
-                      (when (/= old (hash-table-count (types type)))
-                        (flag-modified-type type))))))
+                  (typecase type
+                    (constrained-type
+                     (let ((old (hash-table-count (types type))))
+                       (maphash (lambda (k v)
+                                  (unless (and v (gethash k cast-types))
+                                    (remhash k (types type))))
+                                (types type))
+                       (assert (plusp (hash-table-count (types type))))
+                       (when (/= old (hash-table-count (types type)))
+                         (flag-modified-type type))))
+                    (concrete-type
+                     (unless (gethash type cast-types)
+                       (error "couldn't cast ~s to ~s" (debug-type-names type)
+                              (debug-type-names cast-types)))))))
            (c (in-type constraint) out-casts)
            (c (out-type constraint) in-casts)
            (handle-fixed-constraint)))))))
@@ -1755,3 +1772,19 @@
                  :vertex)))
 
 
+#++
+(print
+ (multiple-value-list
+  (compile-block '((defun a (g)
+                     (declare (values :dvec2))
+                     (let ((a))
+                       (declare (:float a))
+                      (if g
+                          (return (glsl::ivec2 1 2))
+                          (return (glsl::vec2 1 2)))))
+                   (defun h ()
+                     (let ((a (a (> 1 2))))
+                       (return (values))
+                       )))
+                 'h
+                 :vertex)))

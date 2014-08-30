@@ -296,7 +296,12 @@
 (defprinti (return x) ()
   (assert-statement)
   (let ((*in-expression* t))
-    (format t "return ~a" x))) 
+    (format t "return ~a" x)))
+
+(defprinti (values &optional x) ()
+  (when x
+    (let ((*in-expression* t))
+      (format t "~a" x))))
 
 
 

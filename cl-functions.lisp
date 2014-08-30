@@ -1590,7 +1590,9 @@
        (glsl::mat4x3 (a &optional b c d e f g h i j k l) 12 :mat4x3)
        (glsl::mat4 (a &optional b c d e f g h i j k l m n o p) 16 :mat4))
       ;; todo :dmat*
-      )))
+
+      (add/s
+       (values (&optional v) '(t) '(= 0))))))
 
 ;; define compiler macros for binary ops like + which accept any
 ;; number of args in CL
