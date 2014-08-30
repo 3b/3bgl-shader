@@ -39,19 +39,29 @@
            (b a))
        b ;; should be 1
       ))
-** make sure type declarations are used correctly
+** DONE make sure type declarations are used correctly
+   CLOSED: [2014-08-30 Sat 13:05]
    particularly function return
+** DONE handle (values) as 'void'
+   CLOSED: [2014-08-30 Sat 13:05]
+** hook to call with list of modified functions when function is recompiled
+   pass list of function name + names of all functions that depend on it?
+   - only on successful compile
+   (if possible, figure out how to avoid multiple calls from C-c C-k?)
+   program using shaders could check for names of any active shaders,
+     and try to finalize them for upload to card
+** pass to recompile dependents as needed
+* 'beta'
 ** assign priorities to constraints, process worklist in priority order?
    priority of type = 1+ highest priority of constraint with that type as 'output' or 0
    priority of constraint = 1+ highest priority of 'input' types?
-** pass to recompile dependents as needed
-** handle (values) as 'void'
-* 'beta'
 ** api for getting info about uniforms/attributes/outputs of a shader
 ** better errors/warnings
 *** should be able to resolve a static type for 0-arity functions?
 *** error/warning for any constraints that can't be met
 *** track variable names etc in constraints for useful errors?
+*** misc specific errors
+**** VALUES declaration other than on a function/lambda
 ** add compiler macros for more complicated binops like =, <, etc
    = : (and (= a b) (= b c) ...)
    < : (and (< a b) (< b c) ...)
@@ -91,6 +101,16 @@
 ** figure out/add rules for SETF stuff
    (setf (.rgb foo) ...) is ok, (setf (.rrr foo) ...) is bad, etc
 ** clean up/remove duplication between cl-walker and glsl-walker
+** decide how to handle 'free' declarations
+   (let ((a))
+     (let ((b))
+       (declare (:float a))
+       ..
+       ))
+   not sure if that should:
+     a. be an error
+     b. force A to be a float
+     c. add a constraint that a can implicit-cast to float
 * would be nice
 ** remove unused variables
 ** detect/remove dead code (after RETURN, etc)
