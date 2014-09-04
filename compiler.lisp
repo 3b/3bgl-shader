@@ -62,10 +62,7 @@
       ;; in disjoint sets of stages...
       (assert *function-stages*)
       (setf (valid-stages glsl::*current-function*)
-            (alexandria:ensure-list *function-stages*))
-      ;; fixme: move all these 'reset' things into add-function or something
-      (clrhash (local-binding-type-data glsl::*current-function*))
-      (clrhash (final-binding-type-cache glsl::*current-function*)))
+            (alexandria:ensure-list *function-stages*)))
     nil))
 
 

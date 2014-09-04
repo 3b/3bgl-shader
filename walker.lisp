@@ -224,8 +224,11 @@
                       (apply #'change-class old function-type
                              args))
                      (function-binding-function
-                      (apply #'reinitialize-instance old
-                             args))
+                      (prog1
+                          (apply #'reinitialize-instance old
+                                 args)
+                        (clrhash (local-binding-type-data old))
+                        (clrhash (final-binding-type-cache old))))
                      (null
                       (setf (gethash name (function-bindings env))
                             (apply #'make-instance function-type
