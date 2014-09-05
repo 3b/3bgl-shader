@@ -44,6 +44,9 @@
    particularly function return
 ** DONE handle (values) as 'void'
    CLOSED: [2014-08-30 Sat 13:05]
+** DONE figure out why inference work grows with repeated C-c C-c
+   CLOSED: [2014-09-04 Thu 23:12]
+** track function dependencies with glsl:defun macro
 ** hook to call with list of modified functions when function is recompiled
    pass list of function name + names of all functions that depend on it?
    - only on successful compile
