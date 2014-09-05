@@ -556,7 +556,6 @@
        (let ((,f (3bgl-shaders::walk '(cl:defun ,name ,args ,@body)
                                      (make-instance
                                       '3bgl-shaders::extract-functions))))
-         (format t "defined function ~s = ~s~%" ',name ,f)
          (3bgl-shaders::infer-modified-functions
           (list (3bgl-shaders::get-function-binding ',name))))
        nil)))
