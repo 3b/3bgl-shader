@@ -413,7 +413,6 @@
           (mapcar 'copy-constraints (argument-types constraint)))
     (setf (slot-value copy 'return-type)
           (copy-constraints (return-type constraint)))
-    (flag-modified-constraint copy)
     copy))
 
 (defmethod copy-constraints ((constraint variable-arity-function-application))
@@ -430,7 +429,6 @@
           (copy-constraints (return-type constraint)))
     (setf (slot-value copy 'argument-types)
           (mapcar 'copy-constraints (argument-types constraint)))
-    (flag-modified-constraint copy)
     copy))
 
 
@@ -446,7 +444,6 @@
           (mapcar 'copy-constraints (argument-types constraint)))
     (setf (slot-value copy 'return-type)
           (copy-constraints (return-type constraint)))
-    (flag-modified-constraint copy)
     copy))
 
 (defmethod copy-constraints ((constraint same-type-or-scalar-constraint))
@@ -459,7 +456,6 @@
           (copy-constraints (ctype constraint)))
     (setf (slot-value copy 'other-type)
           (copy-constraints (other-type constraint)))
-    (flag-modified-constraint copy)
     copy))
 
 (defmethod copy-constraints ((constraint scalar-type-of-constraint))
@@ -472,7 +468,6 @@
           (copy-constraints (ctype constraint)))
     (setf (slot-value copy 'other-type)
           (copy-constraints (other-type constraint)))
-    (flag-modified-constraint copy)
     copy))
 
 (defmethod copy-constraints ((constraint cast-constraint))
@@ -487,7 +482,6 @@
           (copy-constraints (in-type constraint)))
     (setf (slot-value copy 'out-type)
           (copy-constraints (out-type constraint)))
-    (flag-modified-constraint copy)
     copy))
 
 (defmethod copy-constraints ((constraint same-size-different-base-type-constraint))
@@ -504,7 +498,6 @@
           (copy-constraints (ctype constraint)))
     (setf (slot-value copy 'other-type)
           (copy-constraints (other-type constraint)))
-    (flag-modified-constraint copy)
     copy))
 
 (defmethod copy-constraints ((constraint same-base-type-different-size-constraint))
@@ -519,7 +512,6 @@
           (copy-constraints (ctype constraint)))
     (setf (slot-value copy 'other-type)
           (copy-constraints (other-type constraint)))
-    (flag-modified-constraint copy)
     copy))
 
 (defmethod copy-constraints ((type generic-type))
