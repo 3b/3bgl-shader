@@ -1,6 +1,5 @@
 (in-package #:3bgl-shaders)
 
-
 ;;; passes
 ;;; +base pass (expand macros, symbol macros, etc)
 ;;     (possibly combined with next pass, since it probably inherits from
@@ -55,7 +54,7 @@
                            nil
                            :declarations declare :docs doc)))
           (*function-stages* t))
-      (clrhash (function-dependencies glsl::*current-function*))
+      (clrhash (bindings-used-by glsl::*current-function*))
       (when (boundp '*new-function-definitions*)
         (pushnew glsl::*current-function* *new-function-definitions*))
       (setf (body glsl::*current-function*)
@@ -66,6 +65,40 @@
       (setf (valid-stages glsl::*current-function*)
             (alexandria:ensure-list *function-stages*)))
     nil))
+
+(macrolet ((track-globals (&rest forms)
+             (print
+              `(progn
+                 ,@(loop for form in forms
+                         collect
+                         `(defwalker extract-functions (,form name &rest rest)
+                            (declare (ignore rest))
+                            (prog1
+                                (call-next-method)
+                              (when (boundp '*new-global-definitions*)
+                                (assert (get-variable-binding name))
+                                (pushnew (list name (get-variable-binding name))
+                                         *new-global-definitions*)))))))))
+  (track-globals defconstant defparameter
+                 glsl:defconstant glsl::%defconstant
+                 glsl:attribute glsl:uniform
+                 glsl:input glsl:output
+                 glsl:bind-interface))
+
+(macrolet ((track-types (&rest forms)
+             `(progn
+                ,@(loop for form in forms
+                        collect
+                        `(defwalker extract-functions (,form name &rest rest)
+                           (declare (ignore rest))
+                           (prog1
+                               (call-next-method)
+                             (when (boundp '*new-type-definitions*)
+                               (pushnew (list name (get-type-binding name))
+                                        *new-type-definitions*))))))))
+  (track-types defstruct))
+
+
 
 
 (defmethod check-stages (interface-binding)
@@ -134,7 +167,7 @@
 ;(defparameter *tree-shaker-roots* nil)
 (defparameter *tree-shaker-hook* (lambda (&rest r) (declare (ignore r))))
 (defparameter *tree-shaker-type-hook* (lambda (&rest r) (declare (ignore r))))
-
+;; fixme: rename this stuff, since tree-shaker doesn't use it anymore
 (defclass tree-shaker (glsl::glsl-walker)
   ())
 
@@ -170,92 +203,42 @@
 
 
 (defmethod walk ((form interface-binding) (walker tree-shaker))
-  (let ((b (stage-binding form)))
-    (when b
-      (if (interface-block b)
-          (funcall *tree-shaker-type-hook* form)
-          (funcall *tree-shaker-type-hook* form))))
+  (funcall *tree-shaker-type-hook* form)
   (call-next-method))
 
 ;; todo: rewrite this to use pregenerated dependencies?
 (defun tree-shaker (root)
   ;; we assume local functions have been inlined or extracted, and
   ;; names have been alpha converted as needed, etc already...
-  (let* ((root (get-function-binding root))
-         (in-edges (make-hash-table))
-         (out-edges (make-hash-table))
-         (roots (list root))
-         (live ())
-         (live-types ())
-         (current-function root))
-;;; first pass: walk the tree starting from root, and collect all edges
-    (loop with *tree-shaker-hook*
-            =
-            (lambda (name)
-              ;; store outgoing edges from current function being walked,
-              ;; so we don't need to walk it again for next pass
-              (setf (gethash name (gethash current-function out-edges)) name)
-              ;; then if we haven't seen the function being called before,
-              ;; add it to list to be walked
-              (unless (gethash name in-edges)
-                (push name roots)
-                (setf (gethash name in-edges) (make-hash-table)))
-              ;; finally, add an incoming edge from current function to
-              ;; function being called
-              (setf (gethash current-function (gethash name in-edges))
-                    current-function))
-          with *tree-shaker-type-hook* = (lambda (name)
-                                           (pushnew name live-types))
-          for root = (pop roots)
-          while root
-          do (setf (gethash root out-edges) (make-hash-table)
-                   current-function root)
-             (when (typep root 'global-function)
-               (walk root (make-instance 'tree-shaker))))
-
-;;; second pass: topo sort entries
-    (setf roots (list root))
-    (push (name root) live)
-    (loop for root = (pop roots)
-          ;; remove edges from roots to children, then add
-          ;; any children with no more incoming edges to roots
-          while root
-          do
-             (alexandria:maphash-keys
-              (lambda (k)
-                (unless (eq root k)
-                  (let ((in (gethash k in-edges)))
-                    ;; remove link from current root
-                    (remhash root in)
-                    ;; and add child to list of roots if there are no
-                    ;; other callers
-                    (when (zerop (hash-table-count in))
-                      (push (name k) live)
-                      (push k roots)))))
-              (gethash root out-edges))
-             (remhash root out-edges))
-    (values live (reverse live-types))))
+  (let* ((root (get-function-binding root)))
+    (assert root)
+    (reverse (topo-sort-dependencies root #'bindings-used-by))))
 
 
 ;; add dependencies to specified function-binding-function
 ;;  also add function as a dependent to any functions it depends on?
-(defun update-dependencies (function)
+(defun update-dependencies (form)
   ;; reuse tree-shaker walker, find all functions called and add to list
   ;;
-  (let* ((current-function (if (symbolp function)
-                               (get-function-binding function)
-                               function))
+  (assert (not (symbolp form)))
+  (let* ((current-object form)
          (*tree-shaker-hook*
            (lambda (f)
-             (assert (or (typep f 'function-binding-function)
-                         (typep f 'unknown-function-binding)))
-             ;; fixme: add a proper "unknown function" warning,
-             ;;  and somehow mark to skip type inference step
-             (setf (gethash f (function-dependencies current-function))
-                   f)
-             (setf (gethash current-function (function-dependents f))
-                   current-function))))
-    (walk current-function (make-instance 'tree-shaker))))
+             (when (and (not (eq f current-object))
+                        (typep f 'binding-with-dependencies))
+               (setf (gethash f (bindings-used-by current-object))
+                     f)
+               (setf (gethash current-object (bindings-using f))
+                     current-object))))
+         (*tree-shaker-type-hook*
+           (lambda (f)
+             (when (and (not (eq f current-object))
+                        (typep f 'binding-with-dependencies))
+               (setf (gethash f (bindings-used-by current-object))
+                     f)
+               (setf (gethash current-object (bindings-using f))
+                     current-object)))))
+    (walk current-object (make-instance 'tree-shaker))))
 
 (defclass update-calls (glsl::glsl-walker)
   ((modified :initarg :modified :reader modified)))
@@ -268,75 +251,6 @@
                   (funcall (expander (called-function form))
                            (raw-arguments form)))))
   (call-next-method))
-
-;;;; main entry point for compiler
-(defun compile-block (forms tree-shaker-root *current-shader-stage*
-                      &key env print-as-main)
-  (let* ((*environment* (or env
-                            (make-instance 'environment
-                                           :parent glsl::*glsl-base-environment*)))
-         (*global-environment* *environment*)
-         (*new-function-definitions* nil))
-    (setf forms (walk (cons 'progn forms) (make-instance 'extract-functions)))
-    (loop for f in *new-function-definitions*
-          do (update-dependencies f))
-    ;; if any functions' lambda list was changed, recompile any calls to those
-    ;; functions in their dependents
-    (let* ((changed-signatures (remove-if-not #'function-signature-changed
-                                              *new-function-definitions*))
-           (deps (make-hash-table))
-           (update-calls (make-instance 'update-calls
-                                        :modified (alexandria:alist-hash-table
-                                                   (mapcar (lambda (a)
-                                                             (cons a nil))
-                                                           changed-signatures)))))
-      (loop for i in changed-signatures
-            do (maphash (lambda (k v) (setf (gethash k deps) v))
-                        (function-dependents i))
-               (setf (old-lambda-list i)
-                     (lambda-list i)))
-      (maphash (lambda (k v)
-                 (declare (ignore v))
-                 (walk k update-calls))
-               deps))
-
-    (when *verbose* (print forms))
-    (let ((*print-as-main* (when print-as-main
-                             (get-function-binding print-as-main)))
-          (inferred-types))
-      (multiple-value-bind (shaken shaken-types)
-          (tree-shaker tree-shaker-root)
-        (values
-         forms
-         *environment*
-         shaken
-         shaken-types
-         (infer-modified-functions *new-function-definitions*)
-         (setf inferred-types
-               (finalize-inference (get-function-binding tree-shaker-root)))
-         (with-output-to-string (*standard-output*)
-           (format t "#version 440~%")
-           (pprint-glsl forms)
-           (loop with dumped = (make-hash-table)
-                 for type in shaken-types
-                 for stage-binding = (stage-binding type)
-                 for interface-block = (when stage-binding
-                                         (interface-block stage-binding))
-                 unless (or (internal type) (gethash interface-block dumped))
-                   do (pprint-glsl type)
-                      (when interface-block
-                        (setf (gethash interface-block dumped) t)))
-           (loop for name in shaken
-                 for def = (gethash name (function-bindings *environment*))
-                 for overloads = (gethash def inferred-types)
-                 when (typep def 'global-function)
-                   do (assert overloads)
-                      (loop for overload in overloads
-                            for *binding-types*
-                              = (gethash overload
-                                         (final-binding-type-cache def))
-                            do (assert *binding-types*)
-                               (pprint-glsl def)))))))))
 
 
 #++

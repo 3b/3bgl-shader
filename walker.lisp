@@ -124,13 +124,36 @@
 
 (defun add-variable (name init &key (env *environment*) binding
                                  (type 'variable-binding) value-type)
-  (let ((v (setf (gethash name (variable-bindings env))
-                 (or binding
-                     (make-instance type
-                                    :name name
-                                    :value-type
-                                    (or (get-type-binding value-type) T)
-                                    :init init)))))
+  (if binding
+      (setf (gethash name (variable-bindings env)) binding)
+      (let ((old (gethash name (variable-bindings env))))
+        (flet ((add-or-update (&rest args)
+                 (etypecase old
+                   ((or variable-binding constant-binding)
+                    (if (typep old type)
+                        (apply #'reinitialize-instance old args)
+                        (apply #'change-class old type args)))
+                   (null
+                    (setf (gethash name (variable-bindings env))
+                          (apply #'make-instance type
+                                 args))))))
+          (when (member type '(variable-binding constant-binding))
+            (assert value-type))
+          (when value-type
+            (assert (get-type-binding value-type)))
+          (add-or-update :name name
+                         :value-type (or (get-type-binding value-type)
+                                         t)
+                         :init init))))
+  (let ((v (gethash name (variable-bindings env))))
+    ;; mark binding as not using any other bindings since it might use
+    ;; a different set, which will be added back later
+    (when (typep v 'binding-with-dependencies)
+      (maphash (lambda (k .v)
+                 (declare (ignore .v))
+                 (remhash v (bindings-using k)))
+               (bindings-used-by v))
+      (clrhash (bindings-used-by v)))
     (when (and *add-conflict-vars*
                (eq :conflict (gethash name *add-conflict-vars*)))
       (setf (conflicts v) t))
@@ -241,7 +264,17 @@
                            :body body
                            :docs docs
                            :declarations declarations
-                           :value-type t))))))
+                           :value-type t)))))
+  (let ((f (gethash name (function-bindings env))))
+    ;; mark binding as not using any other bindings since it might use
+    ;; a different set, which will be added back later
+    (when (typep f 'binding-with-dependencies)
+      (maphash (lambda (k .v)
+                 (declare (ignore .v))
+                 (remhash f (bindings-using k)))
+               (bindings-used-by f))
+      (clrhash (bindings-used-by f)))
+    f))
 
 (defun add-function-arguments (function &key (env *environment*))
   ;; add the bindings from a functions's arglist to current environment

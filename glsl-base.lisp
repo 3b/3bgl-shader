@@ -233,7 +233,8 @@
 
 (3bgl-shaders::defwalker glsl-walker (defparameter name value &optional docs)
   (declare (ignore docs))
-  (3bgl-shaders::add-variable name (3bgl-shaders::@ value)))
+  (3bgl-shaders::add-variable name (3bgl-shaders::@ value)
+                              :type '3bgl-shaders::global-variable))
 
 (3bgl-shaders::defwalker glsl-walker (cl:defconstant name value &optional docs)
   (declare (ignore docs))

@@ -115,6 +115,14 @@
    ;; variable in same scope)
    (conflicts :accessor conflicts :initform nil)))
 
+(defclass binding-with-dependencies ()
+  ;; we need to track dependencies to allow automatic recompiling, but
+  ;; not for all bindings (builtin functions/variables shouldn't be
+  ;; changing for example, so we don't want them holding references to
+  ;; old functions forever)
+  ((bindings-used-by :reader bindings-used-by :initform (make-hash-table))
+   (bindings-using :reader bindings-using :initform (make-hash-table))))
+
 (defclass initialized-binding (binding)
   ;; for actual variables in the code (global or local)
   ((initial-value-form :accessor initial-value-form :initarg :init)))
@@ -122,15 +130,17 @@
 (defclass variable-binding (initialized-binding)
   ())
 
-(defclass constant-binding (initialized-binding)
+(defclass constant-binding (initialized-binding  binding-with-dependencies)
   ((internal :accessor internal :initform nil)))
 
 (defmethod initialize-instance :after ((i constant-binding)
                                        &key &allow-other-keys)
   (pushnew :const (qualifiers i)))
 
-;; do we need to distinguish locals from globals?
 (defclass local-variable (variable-binding)
+  ())
+
+(defclass global-variable (variable-binding binding-with-dependencies)
   ())
 
 (defclass symbol-macro (binding)
@@ -178,7 +188,7 @@
    (declared-type :accessor declared-type :initarg :declared-type
                   :initform t)))
 
-(defclass function-binding-function (function-binding)
+(defclass function-binding-function (function-binding binding-with-dependencies)
   ;; todo: add some way to detect changes in type inference data
   ;; so we don't need to redo type inference for callers if not needed?
   ;; not sure how often they will actually be similar enough though,
@@ -229,20 +239,7 @@
    ;; todo: compile this lazily like macros? (and maybe combine with them?)
    (expander :accessor expander :initarg :expander :initform #'identity)
    ;; 'layout' qualifiers for shader with this function as 'main'
-   (layout-qualifiers :accessor layout-qualifiers :initform (make-hash-table))
-   ;; functions called by this function, + signature and ftype
-   ;; originally planned to use timestamps to detect changes in ftype/signature
-   ;; but that gets confused if we do type inference in a separate pass
-   ;; (since we will update function with 'unknown' ftype, then set it
-   ;;  to new value, so it will always look modified)
-   ;; instead, just store the old values with link and compare explicitly
-   (function-dependencies :initform (make-hash-table) :reader function-dependencies)
-   ;; functions that depend directly on this function
-   ;; (possibly should add reinitialize-instance method to clean it up?
-   ;;  or just clean it up on use, when checking a dependent make sure it
-   ;;  is still a dependent?)
-   (function-dependents :initform (make-hash-table) :reader function-dependents)
-))
+   (layout-qualifiers :accessor layout-qualifiers :initform (make-hash-table))))
 
 (defun function-signature-changed (fun)
   ;; todo: ignore changed names (but keep changed defaults, so can't
@@ -257,18 +254,14 @@
   ;; global function definitions, with function body
   ())
 
-(defclass unknown-function-binding (function-binding)
+(defclass unknown-function-binding (function-binding binding-with-dependencies)
   ;; reference to an unknown function, will be CHANGE-CLASSed to
   ;;    function-binding-function when defined
   ;; store onvironment that was current when the reference was made,
   ;;   so we can check there, will also check for an environment in
   ;;   symbol-package of function's name
   ;; (probably should be in package's
-  ((environment :accessor environment :initarg :environment)
-   (function-dependencies :initform (make-hash-table)
-                          :reader function-dependencies)
-   (function-dependents :initform (make-hash-table)
-                        :reader function-dependents)))
+  ((environment :accessor environment :initarg :environment)))
 
 (defclass builtin-function (function-binding-function bindings)
   ;; declarations for functions provided by glsl

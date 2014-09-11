@@ -1508,24 +1508,27 @@
 
 (defun infer (function)
   (let* ((*inference-worklist* nil)
-         (*current-function-local-types* (local-binding-type-data function))
-         (ret (walk function (make-instance 'infer-build-constraints))))
+         (*current-function-local-types* (local-binding-type-data function)))
+    ;; reset some fields on function, so we don't leak between runs
+    (clrhash *current-function-local-types*)
+    (setf (value-type function) (make-instance 'any-type))
+    ;; build constraints
+    (walk function (make-instance 'infer-build-constraints))
+
     ;; leaves are at end of list, so we process them before interior nodes
     ;; (should be correct either way, but wastes effort doing interior first)
+    ;; fixme: is that still true?
     (setf *inference-worklist* (nreverse *inference-worklist*))
     (run-type-inference)
     (when (or (not (value-type function))
               (eq (value-type function) t))
       (setf (value-type function)
             (get-type-binding :void)))
-    ret))
+    (values)))
 
 
-(defun infer-modified-functions (functions)
-  ;; find dependents of modified functions, and add to a list in
-  ;; dependency order
-  (when *verbose*
-    (format t "infer-modified-functions ~s~%" functions))
+(defun topo-sort-dependencies (roots child-function)
+  (setf roots (alexandria:ensure-list roots))
   (let ((in (make-hash-table))
         (out (make-hash-table))
         (leaves nil))
@@ -1537,12 +1540,14 @@
                        (gethash f out) (make-hash-table))
                  (maphash (lambda (k v)
                             (declare (ignore v))
-                            (setf (gethash k (gethash f out)) t)
-                            (walk k f))
-                          (function-dependents f)))
+                            (unless (eq k f)
+                              (setf (gethash k (gethash f out)) t)
+                              (walk k f)))
+                          (funcall child-function f)))
                (when up
                  (setf (gethash up (gethash f in)) t))))
-      (mapcar #'walk functions))
+      (mapcar #'walk roots))
+
     ;; topo sort function list
     (loop for c = 0
           while (plusp (hash-table-count out))
@@ -1560,6 +1565,14 @@
                                    (gethash k in))))
                       out)
           when (zerop c) do (error "?~s ~s ~s" in out leaves))
+    leaves))
+
+(defun infer-modified-functions (functions)
+  ;; find dependents of modified functions, and add to a list in
+  ;; dependency order
+  (when *verbose*
+    (format t "infer-modified-functions ~s~%" functions))
+  (let ((leaves (topo-sort-dependencies functions #'bindings-using)))
     ;; run type inference on list
     (loop for function in leaves
           ;; when (function-type-changed function)
@@ -1577,8 +1590,7 @@
              ;; assuming it THROWs to higher level for now...
 
              ;; mark dependents as needing inference
-             (loop for k being the hash-keys of (function-dependents
-                                                 function)
+             (loop for k being the hash-keys of (bindings-using function)
                    do (setf (type-inference-state k) nil)))
     ;; return list of modified functions
     leaves))
@@ -1787,3 +1799,21 @@
                        )))
                  'h
                  :vertex)))
+
+#++
+(gethash *package* glsl::*package-environments*)
+#++
+(remhash *package* glsl::*package-environments*)
+
+#++
+(progn
+  (glsl:defconstant +foo+ 1 :float)
+
+  (glsl:defun a (a1)
+    +foo+
+    (return a1))
+
+  (glsl:defun b ()
+    (a 1))
+
+  (glsl:defconstant +foo+ 1 :float))

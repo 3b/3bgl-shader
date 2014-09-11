@@ -45,7 +45,7 @@
 (defclass aggregate-type (generic-type bindings)
   ())
 
-(defclass struct-type (aggregate-type)
+(defclass struct-type (aggregate-type binding-with-dependencies)
   ())
 
 (defclass interface-type (aggregate-type)
@@ -117,7 +117,7 @@
 
 (defparameter *current-shader-stage* nil)
 
-(defclass interface-binding (binding)
+(defclass interface-binding (binding binding-with-dependencies)
   ;; binding of a name to an interface in a particular stage
   ;; (just a plist stage -> binding for now, so we don't need to enumerate
   ;;  them all in advance...)
