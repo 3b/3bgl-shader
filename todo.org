@@ -58,17 +58,17 @@
 ** DONE track dependencies on types/constants/uniforms/varyings, call modified hook
 ** DONE pass to recompile dependents as needed
 ** DONE update constants when redefined
+** DONE ? figure out how to avoid errors when reloading shaders with C-c C-l or C-c C-k
+   'next frame' isn't enough delay, since compiling whole file might
+   take more than a frame
+   lock might be enough to avoid errors, but still get some redundant compiles
+** DONE handle dependencies between initialization of globals
+   ex (defconstant +foo+ (* +bar+ 2))
 ** split out into separate repo
 ** rename 'glsl' package to longer name
 ** check exports
 ** name stages :VERTEX-SHADER etc instead of :VERTEX, to match gl:create-shader?
 ** documentation
-** figure out how to avoid errors when reloading shaders with C-c C-l or C-c C-k
-   'next frame' isn't enough delay, since compiling whole file might
-   take more than a frame
-   lock might be enough to avoid errors, but still get some redundant compiles
-** handle dependencies between initialization of globals
-   ex (defconstant +foo+ (* +bar+ 2))
 ** handle return type of IF better
 *** don't try to unify types if return type isn't used
     probably add an ':ignored' or ':unused-return' keyword to WALK and
