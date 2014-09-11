@@ -1579,7 +1579,9 @@
              ;; mark dependents as needing inference
              (loop for k being the hash-keys of (function-dependents
                                                  function)
-                   do (setf (type-inference-state k) nil)))))
+                   do (setf (type-inference-state k) nil)))
+    ;; return list of modified functions
+    leaves))
 #++
 (multiple-value-list
  (compile-block '((defun h (a b)

@@ -72,9 +72,10 @@ program OLD and return new program, otherwise return OLD"
                     (errorp
                      (error "shader compile failed: ~s" (gl:get-shader-info-log shader)))
                     (t
-                     (format (or verbose t) "vertex shader compile failed: ~s" (gl:get-shader-info-log shader))))))
-           (try-shader vs (glsl:generate-stage :vertex v))
-           (try-shader fs (glsl:generate-stage :fragment f))
+                     (format (or verbose t) "shader compile failed: ~s" (gl:get-shader-info-log shader))
+                     (return-from reload-program old)))))
+           (try-shader vs (3bgl-shaders::generate-stage :vertex v))
+           (try-shader fs (3bgl-shaders::generate-stage :fragment f))
            (when gs
              (try-shader gs (glsl::generate-stage :geometry geometry)))
            (gl:link-program program)

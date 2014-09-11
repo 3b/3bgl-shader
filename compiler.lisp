@@ -42,6 +42,8 @@
 ;;;  defined and need things like dependencies added and type
 ;;;  inference by later passes)
 (defvar *new-function-definitions*)
+(defvar *new-type-definitions*)
+(defvar *new-global-definitions*)
 (defvar *function-stages*)
 
 (defwalker extract-functions (defun name lambda-list &body body+d)

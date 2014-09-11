@@ -247,6 +247,7 @@
                               :type '3bgl-shaders::constant-binding
                               :value-type type))
 
+#++
 (3bgl-shaders::defwalker glsl-walker (cl:defun name lambda-list &body body+d)
   (3bgl-shaders::process-type-declarations-for-scope
    (multiple-value-bind (body declare doc)
@@ -485,8 +486,11 @@
         (3bgl-shaders::*global-environment* (ensure-package-environment package)))
     (funcall thunk)))
 
-(cl:defmacro with-package-environment (() &body body)
-  `(call-with-package-environment (lambda () ,@body)))
+(cl:defmacro with-package-environment ((&optional symbol) &body body)
+  `(call-with-package-environment (lambda () ,@body)
+                                  :package ,(if symbol
+                                                `(symbol-package ,symbol)
+                                                '*package*)))
 
 ;;; api for defining GLSL code from CL code
 ;; (as opposed to compiling a block of GLSL code as GLSL code, which can
@@ -533,69 +537,6 @@
                          (make-instance '3bgl-shaders::extract-functions))))
 
 (cl:defmacro glsl-bind-interface (stage block-name interface-qualifier instance-name)
-  `(with-package-environment ()
-     (3bgl-shaders::walk '(bind-interface ,stage ,block-name
-                           ,interface-qualifier ,instance-name)
-                         (make-instance '3bgl-shaders::extract-functions))))
-
-(cl:defun generate-stage (stage main)
-  (let ((*package* (or (symbol-package main) *package*)))
-    (nth-value 6
-               (glsl::with-package-environment()
-                 (3bgl-shaders::compile-block nil main stage
-                                              :env 3bgl-shaders::*environment*
-                                              :print-as-main main)))))
-
-
-;;; CL macros for the glsl API (for use with slime when working on files
-;;;  to be loaded as glsl code)
-
-(cl:defmacro defun (name args &body body)
-  (let ((f (gensym)))
-    `(with-package-environment ()
-       (let ((,f (3bgl-shaders::walk '(cl:defun ,name ,args ,@body)
-                                     (make-instance
-                                      '3bgl-shaders::extract-functions))))
-         (3bgl-shaders::infer-modified-functions
-          (list (3bgl-shaders::get-function-binding ',name))))
-       nil)))
-
-(cl:defmacro defconstant (name value type)
-  `(with-package-environment ()
-     (3bgl-shaders::walk '(%defconstant ,name ,value ,type)
-                         (make-instance '3bgl-shaders::extract-functions))))
-
-(cl:defmacro interface (name (&rest args &key in out uniform) &body slots)
-  (declare (ignore in out uniform))
-  `(with-package-environment ()
-     (3bgl-shaders::walk '(interface ,name ,args ,@slots)
-                         (make-instance '3bgl-shaders::extract-functions))))
-
-(cl:defmacro attribute (name type &rest args &key location)
-  (declare (ignore location))
-  `(with-package-environment ()
-     (3bgl-shaders::walk '(attribute ,name ,type ,@args)
-                         (make-instance '3bgl-shaders::extract-functions))))
-
-(cl:defmacro input (name type &rest args &key  stage location)
-  (declare (ignore location))
-  `(with-package-environment ()
-     (3bgl-shaders::walk '(input ,name ,type ,@args)
-                         (make-instance '3bgl-shaders::extract-functions))))
-
-(cl:defmacro output (name type &rest args &key stage location)
-  (declare (ignore location))
-  `(with-package-environment ()
-     (3bgl-shaders::walk '(output ,name ,type ,@args)
-                         (make-instance '3bgl-shaders::extract-functions))))
-
-(cl:defmacro uniform (name type &rest args &key  stage location)
-  (declare (ignore location stage))
-  `(with-package-environment ()
-     (3bgl-shaders::walk '(uniform ,name ,type ,@args)
-                         (make-instance '3bgl-shaders::extract-functions))))
-
-(cl:defmacro bind-interface (stage block-name interface-qualifier instance-name)
   `(with-package-environment ()
      (3bgl-shaders::walk '(bind-interface ,stage ,block-name
                            ,interface-qualifier ,instance-name)
