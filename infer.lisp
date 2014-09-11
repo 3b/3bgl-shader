@@ -1059,7 +1059,10 @@
              (if (or (not arg)
                      (typep arg 'any-type)
                      (typep arg 'concrete-type))
-                 arg
+                 (progn
+                   (when (plusp c)
+                     (incf removed2))
+                   arg)
                  (let ((last-type))
                    (maphash (lambda (k v)
                               (if v
