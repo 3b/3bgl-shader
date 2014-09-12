@@ -2,7 +2,9 @@
   (:use :cl)
   (:intern #:%glsl-macro)
   (:export
-   :layout))
+   :layout
+   :generate-stage
+   :compile-form))
 
 (defpackage #:3bgl-glsl
   (:use :cl)
