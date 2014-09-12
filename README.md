@@ -12,7 +12,7 @@
 Just transform the vertex, and send color to be interpolated.
 (A longer (if inefficient) example can be found [here](https://github.com/3b/3bgl-misc/blob/master/skybox/shaders.lisp).)
 
-```Common Lisp
+```Lisp
 ;; define a package for the shader functions, :USEing :3bgl-glsl and :cl
 (cl:defpackage #:shader
   (:use :cl :3bgl-glsl)
@@ -56,12 +56,11 @@ Just transform the vertex, and send color to be interpolated.
 ;; an alternate fragment shader
 (defun inverted-fragment ()
   (setf out-color (invert-and-scale (@ ins color))))
-
 ```
 
 #### Convert to glsl
 
-```Common Lisp
+```Lisp
 (3bgl-shaders:generate-stage :vertex 'shader::vertex)
 (3bgl-shaders:generate-stage :fragment 'shader::boring-fragment)
 (3bgl-shaders:generate-stage :fragment 'shader::inverted-fragment)
@@ -209,7 +208,7 @@ have a version for each type.
 
 For example the previous code could have had
 
-```Common Lisp
+```Lisp
 
  ;; X can be any type that works with scalar `*` and `-`
 (defun invert-and-scale (x)
@@ -253,7 +252,7 @@ with type inference.
 
 for example
 
-```Common Lisp
+```Lisp
 (defun foo (x y)
   (declare (values :float) (:float x))
   (let ((a (+ x y)))
