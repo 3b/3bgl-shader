@@ -1,3 +1,0 @@
-;; shader definition junk
-
-;; inputs
