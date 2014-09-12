@@ -859,7 +859,7 @@
 
       (add/s
        (3bgl-glsl::step (edge x) `((=s 1) (or ,@gen-type ,@gen-dtype)) '(= 1))
-       ((3bgl-glsl::smooth-step "smoothStep") (edge0 edge1 x) `((=s 2)
+       ((3bgl-glsl::smooth-step "smoothstep") (edge0 edge1 x) `((=s 2)
                                                                 (=s 0)
                                                                 (or ,@gen-type
                                                                     ,@gen-dtype))
@@ -1329,8 +1329,8 @@
                                        '(:sampler-1d (or :vec2 :vec4) :float)
                                        :vec4)
 
-       (3bgl-glsl::texture-2d (sampler coord &optional bias)
-                              '(:sampler-2d :vec2 :float) :vec4)
+       ((3bgl-glsl::texture-2d "texture2D")
+        (sampler coord &optional bias) '(:sampler-2d :vec2 :float) :vec4)
        (3bgl-glsl::texture-2d-proj (sampler coord &optional bias)
                                    '(:sampler-2d (or :vec3 :vec4) :float) :vec4)
        (3bgl-glsl::texture-2d-lod (sampler coord lod)
@@ -1525,8 +1525,8 @@
       (add/s
        (3bgl-glsl::emit-stream-vertex (stream) '(:int) :void)
        (3bgl-glsl::end-stream-primitive (stream) '(:int) :void)
-       (3bgl-glsl::emit-vertex () '() :void)
-       (3bgl-glsl::end-primitive () '() :void))
+       ((3bgl-glsl::emit-vertex "EmitVertex") () '() :void)
+       ((3bgl-glsl::end-primitive "EndPrimitive") () '() :void))
 
       ;; 8.16 shader invocation control functions
       ;; todo: restrict to tessellation control and compute shaders
