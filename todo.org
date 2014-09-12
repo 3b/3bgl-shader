@@ -80,6 +80,9 @@
 *** status/notes/warnings
 **** branches of IF have to unify?
 **** bad errors
+** DONE fix names of glsl functions with 1D, 2D, 3D
+   CLOSED: [2014-09-12 Fri 05:28]
+   proofread names in general, emit-stream-vertex etc
 ** check exports
 ** handle return type of IF better
 *** don't try to unify types if return type isn't used
@@ -91,8 +94,6 @@
 ** cleanup/remove/update examples, add new examples
 ** not getting dependencies right inside swizzle?
    ex uniform named UV, only accessed as (.xy uv)
-** fix names of glsl functions with 1D, 2D, 3D
-   proofread names in general, emit-stream-vertex etc
 * 'beta'
 ** assign priorities to constraints, process worklist in priority order?
    priority of type = 1+ highest priority of constraint with that type as 'output' or 0
