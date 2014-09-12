@@ -66,16 +66,9 @@
    ex (defconstant +foo+ (* +bar+ 2))
 ** DONE split out into separate repo
 ** DONE rename 'glsl' package to longer name
-** check exports
-** name stages :VERTEX-SHADER etc instead of :VERTEX, to match gl:create-shader?
-** handle return type of IF better
-*** don't try to unify types if return type isn't used
-    probably add an ':ignored' or ':unused-return' keyword to WALK and
-    pass it as needed (all but last form in progn, all forms in global
-    function, all forms in progn with that flag set)
-*** if return value is used, return a type with casts from both branches
-    instead of unifying branches directly
-** documentation
+** DONE name stages :VERTEX-SHADER etc instead of :VERTEX, to match gl:create-shader?
+** DONE documentation
+   CLOSED: [2014-09-12 Fri 04:01]
 *** usage (host)
 **** updating programs/modified hook
 *** usage (glsl)
@@ -87,6 +80,14 @@
 *** status/notes/warnings
 **** branches of IF have to unify?
 **** bad errors
+** check exports
+** handle return type of IF better
+*** don't try to unify types if return type isn't used
+    probably add an ':ignored' or ':unused-return' keyword to WALK and
+    pass it as needed (all but last form in progn, all forms in global
+    function, all forms in progn with that flag set)
+*** if return value is used, return a type with casts from both branches
+    instead of unifying branches directly
 ** cleanup/remove/update examples, add new examples
 * 'beta'
 ** assign priorities to constraints, process worklist in priority order?
