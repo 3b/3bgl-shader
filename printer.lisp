@@ -224,7 +224,7 @@
 (defprint-binop / "/" 1.0 (format t "(1.0 / ~a)" (car args)))
 (defprint-binop or "||" 0 t)
 (defprint-binop and "&&" 1 t) ;; should this be #xffffffff instead of 1 for t?
-(defprint-binop glsl:^^ "^^" 0 t)
+(defprint-binop 3bgl-glsl:^^ "^^" 0 t)
 (defprint-binop logior "|" 0 t)
 (defprint-binop logand "&" #xffffffff t) ;; fixme: how many bits is -1?
 (defprint-binop logxor "^" 0 t)
@@ -241,21 +241,21 @@
   (let ((*in-expression* t))
     (format t "~a" `(! ,x))))
 
-(defprinti (glsl::incf x &optional y) ()
+(defprinti (3bgl-glsl::incf x &optional y) ()
   (let ((*in-expression* t))
     (if y
         (format t "(~a+=~a)" x y)
         (format t "(~a++)" x))))
-(defprinti (glsl::decf x &optional y) ()
+(defprinti (3bgl-glsl::decf x &optional y) ()
   (let ((*in-expression* t))
     (if y
         (format t "(~a-=~a)" x y)
         (format t "(~a--)" x))))
 
-(defprinti (glsl::++ x) ()
+(defprinti (3bgl-glsl::++ x) ()
   (let ((*in-expression* t))
     (format t "(++~a)" x)))
-(defprinti (glsl::-- x) ()
+(defprinti (3bgl-glsl::-- x) ()
   (let ((*in-expression* t))
     (format t "(--~a)" x)))
 
@@ -285,11 +285,11 @@
        (format t "(~a ~a ~a)" i (if (plusp c) "<<" ">>") (abs c))))
     (t (error "tried to print ASH with non-constant shift?"))))
 
-(defprinti (glsl::<< i c) ()
+(defprinti (3bgl-glsl::<< i c) ()
  (let ((*in-expression* t))
    (format t "(~a << ~a)" i c)))
 
-(defprinti (glsl::>> i c) ()
+(defprinti (3bgl-glsl::>> i c) ()
  (let ((*in-expression* t))
    (format t "(~a >> ~a)" i c)))
 

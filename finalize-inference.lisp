@@ -2,7 +2,7 @@
 
 ;;; try to resolve a call graph to static types
 
-(defclass finalize (glsl::glsl-walker)
+(defclass finalize (3bgl-glsl::glsl-walker)
   ())
 
 

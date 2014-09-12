@@ -1,4 +1,4 @@
-(in-package #:glsl)
+(in-package #:3bgl-glsl)
 
 ;; define builtin types, probably should move builtin functions here
 ;; from glsl-base, and add separate package for each version...

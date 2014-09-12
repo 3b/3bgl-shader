@@ -2,7 +2,7 @@
 
 ;; fixme: rearrange stuff so this doesn't need eval-when
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (defparameter glsl::*glsl-base-environment*
+  (defparameter 3bgl-glsl::*glsl-base-environment*
     (make-instance 'environment
                    :parent *cl-environment*)))
 
@@ -57,7 +57,7 @@
 
 
 (defmacro %glsl-macro (name lambda-list &body body)
-  `(let ((3bgl-shaders::*environment* glsl::*glsl-base-environment*))
+  `(let ((3bgl-shaders::*environment* 3bgl-glsl::*glsl-base-environment*))
      (3bgl-shaders::add-macro ',name
                               (lambda (form env)
                                 (declare (ignorable env))
@@ -72,7 +72,7 @@
 
 (defmacro %glsl-compiler-macro (name lambda-list &body body)
   (print
-   `(let ((3bgl-shaders::*environment* glsl::*glsl-base-environment*))
+   `(let ((3bgl-shaders::*environment* 3bgl-glsl::*glsl-base-environment*))
       (3bgl-shaders::add-compiler-macro ',name
                                         (lambda (form env)
                                           (declare (ignore env))
@@ -189,7 +189,7 @@
                               :binding type
                               :array-size array)))))))
 
-(%glsl-macro glsl::interface (%name (&key in out uniform internal)
+(%glsl-macro 3bgl-glsl::interface (%name (&key in out uniform internal)
                                     &body slots)
   ;; in/out/uniform are either T,NAME,or (&key :vertex :fragment ...)
   ;; where T means make slots directly visible in all stages,
@@ -259,30 +259,30 @@
                          :layout-qualifier layout-qualifier
                          :binding (or (get-type-binding type) type)))))
 
-(%glsl-macro glsl::attribute (%name type &key location internal)
+(%glsl-macro 3bgl-glsl::attribute (%name type &key location internal)
   (in/out/uniform/attrib :attribute %name type :location location :internal internal :stage :vertex)
   nil)
 
-(%glsl-macro glsl::input (%name type &key location (stage :vertex)
+(%glsl-macro 3bgl-glsl::input (%name type &key location (stage :vertex)
                                       internal)
   (in/out/uniform/attrib :in %name type
                          :location location :internal internal :stage stage)
   nil)
 
-(%glsl-macro glsl::output (%name type &key location (stage :fragment)
+(%glsl-macro 3bgl-glsl::output (%name type &key location (stage :fragment)
                                        internal)
   (in/out/uniform/attrib :out %name type
                          :location location :internal internal :stage stage)
   nil)
 
-(%glsl-macro glsl::uniform (%name type &key location (stage t)
+(%glsl-macro 3bgl-glsl::uniform (%name type &key location (stage t)
                                        internal)
   (in/out/uniform/attrib :uniform %name type
                          :location location :internal internal :stage stage)
   nil)
 
 
-(%glsl-macro glsl::bind-interface (stage block-name interface-qualifier instance-name)
+(%glsl-macro 3bgl-glsl::bind-interface (stage block-name interface-qualifier instance-name)
   (bind-interface stage block-name interface-qualifier instance-name)
   nil)
 
@@ -352,7 +352,7 @@
                            :name name
                            :glsl-name glsl-name))))
 
-(let ((*environment* glsl::*glsl-base-environment*))
+(let ((*environment* 3bgl-glsl::*glsl-base-environment*))
   (add-concrete-type :void "void")
   (add-concrete-type :bool "bool")
   (add-concrete-type :int "int")
@@ -477,7 +477,7 @@
 
 
 ;; add implicit casts to types
-(let ((*environment* glsl::*glsl-base-environment*))
+(let ((*environment* 3bgl-glsl::*glsl-base-environment*))
   (flet ((c (&rest types)
            (loop for (.type . to) on types
                  for type = (get-type-binding .type)
@@ -507,7 +507,7 @@
        (:mat4x3 :dmat4x3)))))
 
 ;;; add explicit casts to types
-(let ((*environment* glsl::*glsl-base-environment*))
+(let ((*environment* 3bgl-glsl::*glsl-base-environment*))
   (flet ((c (&rest types)
            (loop for type in types
                  do (setf (explicit-casts (get-type-binding type))
@@ -531,7 +531,7 @@
        (:mat4 :dmat4))))) ;; 16
 
 ;;; add scalar/vector set/size to types
-(let ((*environment* glsl::*glsl-base-environment*))
+(let ((*environment* 3bgl-glsl::*glsl-base-environment*))
   (flet ((c (&rest types)
            (loop with set = (coerce (cons nil (mapcar 'get-type-binding types)) 'vector)
                  for i from 0
@@ -551,7 +551,7 @@
        (:double :dvec2 :dvec3 :dvec4)))))
 
 ;; add sizes for matrix types
-(let ((*environment* glsl::*glsl-base-environment*))
+(let ((*environment* 3bgl-glsl::*glsl-base-environment*))
   (loop for f in '(:mat2 :mat2x3 :mat2x4 :mat3x2 :mat3 :mat3x4
                    :mat4x2 :mat4x3 :mat4)
         for d in '(:dmat2 :dmat2x3 :dmat2x4 :dmat3x2 :dmat3 :dmat3x4

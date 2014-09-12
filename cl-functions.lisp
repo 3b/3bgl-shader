@@ -352,8 +352,8 @@
                     (ensure-list* ret l)
                     (mapcar (lambda (a) (ensure-list* a l))
                             args)))))
-  (let* ((*environment* glsl::*glsl-base-environment*)
-         (*global-environment* glsl::*glsl-base-environment*)
+  (let* ((*environment* 3bgl-glsl::*glsl-base-environment*)
+         (*global-environment* 3bgl-glsl::*glsl-base-environment*)
          ;; meta-types for defining the overloads
          (scalar (list :bool :int :uint :float :double))
          (vec (list :vec2 :vec3 :vec4))
@@ -611,26 +611,28 @@
     ;; glsl ++ and -- are post-[in/de]crement for now (incf/decf are pre)
     ;; (incf/decf work on vec/mat also, so might want to shadow cl:
     ;;  versions at some point)
-    (add-internal-function/s 'glsl::incf '(a &optional b)
+    (add-internal-function/s '3bgl-glsl::incf '(a &optional b)
                              `((or ,@gen-type
                                    ,@gen-itype ,@gen-utype
                                    ,@gen-dtype ,@mat ,@dmat)
                                (= 0))
                              '(= 0))
-    (add-internal-function/s 'glsl::decf '(a &optional b)
+    (add-internal-function/s '3bgl-glsl::decf '(a &optional b)
                              `((or ,@gen-type
                                    ,@gen-itype ,@gen-utype
                                    ,@gen-dtype ,@mat ,@dmat)
                                (= 0))
                              '(= 0))
-    (add-internal-function/s 'glsl::++ '(a) `((or ,@gen-type
-                                                  ,@gen-itype ,@gen-utype
-                                                  ,@gen-dtype ,@mat ,@dmat))
+    (add-internal-function/s '3bgl-glsl::++ '(a)
+                             `((or ,@gen-type
+                                   ,@gen-itype ,@gen-utype
+                                   ,@gen-dtype ,@mat ,@dmat))
                              '(= 0)
                              :cast nil)
-    (add-internal-function/s 'glsl::-- '(a) `((or ,@gen-type
-                                                  ,@gen-itype ,@gen-utype
-                                                  ,@gen-dtype ,@mat ,@dmat))
+    (add-internal-function/s '3bgl-glsl::-- '(a)
+                             `((or ,@gen-type
+                                   ,@gen-itype ,@gen-utype
+                                   ,@gen-dtype ,@mat ,@dmat))
                              '(= 0)
                              :cast nil)
     ;; should these work on vectors etc too?
@@ -652,7 +654,7 @@
                                 :cast nil)
     (add-internal-function/full 'and '(a b) '(((:bool :bool) :bool))
                                 :cast nil)
-    (add-internal-function/full 'glsl::^^ '(a b) '(((:bool :bool) :bool))
+    (add-internal-function/full '3bgl-glsl::^^ '(a b) '(((:bool :bool) :bool))
                                 :cast nil)
     ;; is this glsl '!' or glsl 'not' or both?
     ;; assuming we can get type info during printing to pick right one...
@@ -663,7 +665,8 @@
 
     ;; ?: (if is handled as special operator, but might use this to
     ;; avoid building constraints by hand...)
-    (add-internal-function/s 'glsl::|?:| '(c then else) '(:bool T (= 1)) '(= 1))
+    (add-internal-function/s '3bgl-glsl::|?:| '(c then else)
+                             '(:bool T (= 1)) '(= 1))
     ;;(add-internal-function/s 'if (c then else) (:bool T (= 1)) (= 1))
 
     ;; ~
@@ -677,7 +680,7 @@
     ;;  return is same type as first arg
     ;;  2nd arg is same size vec or scalar, but doesn't have to match
     ;;    signed vs unsigned
-    (add-internal-function/full 'glsl::<< '(integer count)
+    (add-internal-function/full '3bgl-glsl::<< '(integer count)
                                 `(((:int :int) :int)
                                   ((:int :uint) :int)
                                   ((:uint :int) :uint)
@@ -689,7 +692,7 @@
                                                 (append ivec uvec uvec ivec
                                                         ixv uxv uxv ixv)))
                                 :cast nil)
-    (add-internal-function/full 'glsl::>> '(integer count)
+    (add-internal-function/full '3bgl-glsl::>> '(integer count)
                                 `(((:int :int) :int)
                                   ((:int :uint) :int)
                                   ((:uint :int) :uint)
@@ -722,7 +725,7 @@
     (add-internal-function/s 'return '(value)
                              '(t) '(= 0))
 
-    ;; fixme: most of these belong in glsl: package
+    ;; fixme: most of these belong in 3bgl-glsl: package
     (macrolet ((add/s (&rest definitions)
                  `(progn
                     ,@(loop for (.name lambda-list arg-types return-type)
@@ -781,8 +784,8 @@
                            collect `(expand-signature ,r ,(cons 'list a))))))
       (add/s
        ;; 8.1 angle and trigonometry functions
-       (glsl::radians (degrees) `((or ,@gen-type)) `(= 0))
-       (glsl::degrees (radians) `((or ,@gen-type)) `(= 0))
+       (3bgl-glsl::radians (degrees) `((or ,@gen-type)) `(= 0))
+       (3bgl-glsl::degrees (radians) `((or ,@gen-type)) `(= 0))
        (sin (radians) `((or ,@gen-type)) `(= 0))
        (cos (radians) `((or ,@gen-type)) `(= 0))
        (tan (radians) `((or ,@gen-type)) `(= 0))
@@ -797,33 +800,34 @@
        (atanh (x) `((or ,@gen-type)) `(= 0))
 
        ;; 8.2 exponential functions
-       (glsl::pow (x y) `((or ,@gen-type) (= 0)) `(= 0))
+       (3bgl-glsl::pow (x y) `((or ,@gen-type) (= 0)) `(= 0))
        (exp (x) `((or ,@gen-type)) `(= 0))
        (log (x) `((or ,@gen-type)) `(= 0))
-       (glsl::exp2 (x) `((or ,@gen-type)) `(= 0))
-       (glsl::log2 (x) `((or ,@gen-type)) `(= 0))
+       (3bgl-glsl::exp2 (x) `((or ,@gen-type)) `(= 0))
+       (3bgl-glsl::log2 (x) `((or ,@gen-type)) `(= 0))
        (sqrt (x) `((or ,@gen-type ,@gen-dtype)) `(= 0))
-       (glsl::inverse-sqrt (x) `((or ,@gen-type ,@gen-dtype)) `(= 0))
+       (3bgl-glsl::inverse-sqrt (x) `((or ,@gen-type ,@gen-dtype)) `(= 0))
 
        ;; 8.3 common functions
        (abs (x) `((or ,@gen-type ,@gen-itype ,@gen-dtype)) `(= 0))
-       ;; cl:signum -> glsl:sign
+       ;; cl:signum -> 3bgl-glsl:sign
        (signum (x) `((or ,@gen-type ,@gen-itype ,@gen-dtype)) `(= 0))
-       (glsl::sign (x) `((or ,@gen-type ,@gen-itype ,@gen-dtype)) `(= 0))
+       (3bgl-glsl::sign (x) `((or ,@gen-type ,@gen-itype ,@gen-dtype)) `(= 0))
        ;; todo: compiler macro to expand (floor number divisor) to
        ;; (floor (/ number divisor))?
        ;; (and same for truncate, round, ceiling, etc)
        (floor (x) `((or ,@gen-type ,@gen-dtype)) `(= 0))
-       ;; cl:truncate -> glsl::trunc
+       ;; cl:truncate -> 3bgl-glsl::trunc
        (truncate (x) `((or ,@gen-type ,@gen-dtype)) `(= 0))
-       (glsl::trunc (x) `((or ,@gen-type ,@gen-dtype)) `(= 0))
+       (3bgl-glsl::trunc (x) `((or ,@gen-type ,@gen-dtype)) `(= 0))
        (round (x) `((or ,@gen-type ,@gen-dtype)) `(= 0))
-       (glsl::round-even (x) `((or ,@gen-type ,@gen-dtype)) `(= 0))
+       (3bgl-glsl::round-even (x) `((or ,@gen-type ,@gen-dtype)) `(= 0))
        (ceiling (x) `((or ,@gen-type ,@gen-dtype)) `(= 0))
-       (glsl::ceil (x) `((or ,@gen-type ,@gen-dtype)) `(= 0))
-       (glsl::fract (x) `((or ,@gen-type ,@gen-dtype)) `(= 0))
+       (3bgl-glsl::ceil (x) `((or ,@gen-type ,@gen-dtype)) `(= 0))
+       (3bgl-glsl::fract (x) `((or ,@gen-type ,@gen-dtype)) `(= 0))
        (mod (x y) `((or ,@gen-type ,@gen-dtype) (=s 0)) `(= 0))
-       (glsl::modf (x y) `((or ,@gen-type ,@gen-dtype) (:out (=s 0))) `(= 0))
+       (3bgl-glsl::modf (x y) `((or ,@gen-type ,@gen-dtype) (:out (=s 0)))
+                        `(= 0))
 
 
        (min (x y) `((or ,@gen-type ,@gen-dtype ,@gen-itype ,@gen-utype) (=s 0))
@@ -831,11 +835,11 @@
        (max (x y) `((or ,@gen-type ,@gen-dtype ,@gen-itype ,@gen-utype) (=s 0))
             `(= 0))
 
-       (glsl::clamp (x min max)
-                    `((or ,@gen-type ,@gen-dtype ,@gen-itype ,@gen-utype)
-                      (=s 0) (=s 0)) '(= 0)))
+       (3bgl-glsl::clamp (x min max)
+                         `((or ,@gen-type ,@gen-dtype ,@gen-itype ,@gen-utype)
+                           (=s 0) (=s 0)) '(= 0)))
 
-      (add-internal-function/full 'glsl::mix '(x y a)
+      (add-internal-function/full '3bgl-glsl::mix '(x y a)
                                   (make-ftype
                                    ` (:float
                                       ,@vec ,@vec
@@ -854,69 +858,69 @@
                                      ,@gen-btype ,@gen-btype ,@gen-btype)))
 
       (add/s
-       (glsl::step (edge x) `((=s 1) (or ,@gen-type ,@gen-dtype)) '(= 1))
-       ((glsl::smooth-step "smoothStep") (edge0 edge1 x) `((=s 2)
-                                                           (=s 0)
-                                                           (or ,@gen-type
-                                                               ,@gen-dtype))
+       (3bgl-glsl::step (edge x) `((=s 1) (or ,@gen-type ,@gen-dtype)) '(= 1))
+       ((3bgl-glsl::smooth-step "smoothStep") (edge0 edge1 x) `((=s 2)
+                                                                (=s 0)
+                                                                (or ,@gen-type
+                                                                    ,@gen-dtype))
         '(= 2))
-       ((glsl::is-nan "isnan") (x) `((or ,@gen-type ,@gen-dtype))
+       ((3bgl-glsl::is-nan "isnan") (x) `((or ,@gen-type ,@gen-dtype))
         `(=# 0 :bool))
-       ((glsl::is-inf "isinf") (x) `((or ,@gen-type ,@gen-dtype))
+       ((3bgl-glsl::is-inf "isinf") (x) `((or ,@gen-type ,@gen-dtype))
         `(=# 0 :bool))
-       (glsl::float-bits-to-int (value) `((or ,@gen-type))
-                                `(=# 0 :int))
-       (glsl::float-bits-to-uint (value) `((or ,@gen-type))
-                                 `(=# 0 :uint))
-       (glsl::int-bits-to-float (value) `((or ,@gen-itype))
-                                `(=# 0 :float))
-       (glsl::uint-bits-to-float (value) `((or ,@gen-utype))
-                                 `(=# 0 :float))
-       (glsl::fma (a b c) `((or ,@gen-type ,@gen-dtype) (= 0) (= 0)) '(= 0))
-       (glsl::frexp (x exp) `((or ,@gen-type ,@gen-dtype) (:out (=# 0 :int)))
-                    '(= 0))
-       (glsl::ldexp (x exp) `((or ,@gen-type ,@gen-dtype) (=# 0 :int))
-                    '(= 0))
+       (3bgl-glsl::float-bits-to-int (value) `((or ,@gen-type))
+                                     `(=# 0 :int))
+       (3bgl-glsl::float-bits-to-uint (value) `((or ,@gen-type))
+                                      `(=# 0 :uint))
+       (3bgl-glsl::int-bits-to-float (value) `((or ,@gen-itype))
+                                     `(=# 0 :float))
+       (3bgl-glsl::uint-bits-to-float (value) `((or ,@gen-utype))
+                                      `(=# 0 :float))
+       (3bgl-glsl::fma (a b c) `((or ,@gen-type ,@gen-dtype) (= 0) (= 0)) '(= 0))
+       (3bgl-glsl::frexp (x exp) `((or ,@gen-type ,@gen-dtype) (:out (=# 0 :int)))
+                         '(= 0))
+       (3bgl-glsl::ldexp (x exp) `((or ,@gen-type ,@gen-dtype) (=# 0 :int))
+                         '(= 0))
 
        ;; 8.4 floating-point pack and unpack functions
-       (glsl::pack-unorm-2x16 (v) `(:vec2) :uint)
-       (glsl::pack-snorm-2x16 (v) `(:vec2) :uint)
-       (glsl::pack-unorm-4x8 (v) `(:vec2) :uint)
-       (glsl::pack-snorm-4x8 (v) `(:vec2) :uint)
+       (3bgl-glsl::pack-unorm-2x16 (v) `(:vec2) :uint)
+       (3bgl-glsl::pack-snorm-2x16 (v) `(:vec2) :uint)
+       (3bgl-glsl::pack-unorm-4x8 (v) `(:vec2) :uint)
+       (3bgl-glsl::pack-snorm-4x8 (v) `(:vec2) :uint)
 
-       (glsl::unpack-unorm-2x16 (v) `(:uint) :vec2)
-       (glsl::unpack-snorm-2x16 (v) `(:uint) :vec2)
-       (glsl::unpack-unorm-4x8 (v) `(:uint) :vec2)
-       (glsl::unpack-snorm-4x8 (v) `(:uint) :vec2)
+       (3bgl-glsl::unpack-unorm-2x16 (v) `(:uint) :vec2)
+       (3bgl-glsl::unpack-snorm-2x16 (v) `(:uint) :vec2)
+       (3bgl-glsl::unpack-unorm-4x8 (v) `(:uint) :vec2)
+       (3bgl-glsl::unpack-snorm-4x8 (v) `(:uint) :vec2)
 
-       (glsl::pack-double-2x32 (v) `(:uvec2) :double)
-       (glsl::unpack-double-2x32 (v) `(:double) :uvec2)
+       (3bgl-glsl::pack-double-2x32 (v) `(:uvec2) :double)
+       (3bgl-glsl::unpack-double-2x32 (v) `(:double) :uvec2)
 
-       (glsl::pack-half-2x16 (v) `(:vec2) :uint)
-       (glsl::unpack-half-2x16 (v) `(:uint) :vec2)
+       (3bgl-glsl::pack-half-2x16 (v) `(:vec2) :uint)
+       (3bgl-glsl::unpack-half-2x16 (v) `(:uint) :vec2)
 
        ;; 8.5 geometric functions
        ;; geometric length, not count of elements in sequence
-       (glsl::length (x) `((or ,@gen-type ,@gen-dtype)) '(s 0))
-       (glsl::distance (p0 p1) `((or ,@gen-type ,@gen-dtype) (= 0)) '(s 0))
-       (glsl::dot (x y) `((or ,@gen-type ,@gen-dtype) (= 0)) '(s 0))
-       (glsl::cross (x y) `((or :vec3 :dvec3) (= 0)) '(= 0))
-       (glsl::normalize (x) `((or ,@gen-type ,@gen-dtype)) '(= 0))
+       (3bgl-glsl::length (x) `((or ,@gen-type ,@gen-dtype)) '(s 0))
+       (3bgl-glsl::distance (p0 p1) `((or ,@gen-type ,@gen-dtype) (= 0)) '(s 0))
+       (3bgl-glsl::dot (x y) `((or ,@gen-type ,@gen-dtype) (= 0)) '(s 0))
+       (3bgl-glsl::cross (x y) `((or :vec3 :dvec3) (= 0)) '(= 0))
+       (3bgl-glsl::normalize (x) `((or ,@gen-type ,@gen-dtype)) '(= 0))
        ;; compat/vertex shader only
-       (glsl::ftransform () () :vec4)
-       (glsl::face-forward (n i n-ref) `((or ,@gen-type ,@gen-dtype)
-                                         (= 0)
-                                         (= 0))
+       (3bgl-glsl::ftransform () () :vec4)
+       (3bgl-glsl::face-forward (n i n-ref) `((or ,@gen-type ,@gen-dtype)
+                                              (= 0)
+                                              (= 0))
+                                '(= 0))
+       (3bgl-glsl::reflect (i n) `((or ,@gen-type ,@gen-dtype) (= 0)) '(= 0))
+       (3bgl-glsl::refract (i n eta) `((or ,@gen-type ,@gen-dtype) (= 0) :float)
                            '(= 0))
-       (glsl::reflect (i n) `((or ,@gen-type ,@gen-dtype) (= 0)) '(= 0))
-       (glsl::refract (i n eta) `((or ,@gen-type ,@gen-dtype) (= 0) :float)
-                      '(= 0))
 
 
        ;; 8.6 matrix functions
-       (glsl::matrix-comp-mult (x y) `((or ,@mat ,@dmat) (= 0)) '(= 0)))
+       (3bgl-glsl::matrix-comp-mult (x y) `((or ,@mat ,@dmat) (= 0)) '(= 0)))
 
-      (add-internal-function/full 'glsl::outer-product '(x y)
+      (add-internal-function/full '3bgl-glsl::outer-product '(x y)
                                   (make-ftype
                                    '(:mat2 :mat3 :mat4
                                      :mat2x3 :mat3x2
@@ -943,7 +947,7 @@
                                      :dvec2 :dvec4
                                      :dvec3 :dvec4)))
 
-      (add-internal-function/full 'glsl::transpose '(m)
+      (add-internal-function/full '3bgl-glsl::transpose '(m)
                                   (make-ftype
                                    '(:mat2 :mat3 :mat4
                                      :mat2x3 :mat3x2
@@ -963,239 +967,250 @@
                                      :dmat4x3 :dmat3x4)))
 
       (add/s
-       (glsl::determinant (m) `((or :mat2 :mat3 :mat4 :dmat2 :dmat3 :dmat4))
-                          '(= 0))
-       (glsl::inverse (m) `((or :mat2 :mat3 :mat4 :dmat2 :dmat3 :dmat4)) '(= 0))
+       (3bgl-glsl::determinant (m) `((or :mat2 :mat3 :mat4 :dmat2
+                                         :dmat3 :dmat4))
+                               '(= 0))
+       (3bgl-glsl::inverse (m) `((or :mat2 :mat3 :mat4 :dmat2
+                                     :dmat3 :dmat4)) '(= 0))
 
 
        ;; 8.7 vector relational functions
-       (glsl::less-than (x y) `((or ,@vec ,@ivec ,@uvec ,@dvec) (= 0))
-                        '(=# 0 :bool))
-       (glsl::less-than-equal (x y) `((or ,@vec ,@ivec ,@uvec ,@dvec) (= 0))
-                              '(=# 0 :bool))
-       (glsl::greater-than (x y) `((or ,@vec ,@ivec ,@uvec ,@dvec) (= 0))
-                           '(=# 0 :bool))
-       (glsl::greater-than-equal (x y) `((or ,@vec ,@ivec ,@uvec ,@dvec) (= 0))
-                                 '(=# 0 :bool))
+       (3bgl-glsl::less-than (x y) `((or ,@vec ,@ivec ,@uvec ,@dvec) (= 0))
+                             '(=# 0 :bool))
+       (3bgl-glsl::less-than-equal (x y) `((or ,@vec ,@ivec ,@uvec ,@dvec)
+                                           (= 0))
+                                   '(=# 0 :bool))
+       (3bgl-glsl::greater-than (x y) `((or ,@vec ,@ivec ,@uvec ,@dvec) (= 0))
+                                '(=# 0 :bool))
+       (3bgl-glsl::greater-than-equal (x y) `((or ,@vec ,@ivec ,@uvec ,@dvec)
+                                              (= 0))
+                                      '(=# 0 :bool))
        ;; component-wise compare, unlike cl:equal
-       (glsl::equal (x y) `((or ,@vec ,@ivec ,@uvec ,@dvec ,@bvec) (= 0))
-                    '(=# 0 :bool))
-       (glsl::not-equal (x y) `((or ,@vec ,@ivec ,@uvec ,@dvec ,@bvec) (= 0))
-                        '(=# 0 :bool))
-       (glsl::any (x) `((or ,@bvec)) :bool)
-       (glsl::all (x) `((or ,@bvec)) :bool)
+       (3bgl-glsl::equal (x y) `((or ,@vec ,@ivec ,@uvec ,@dvec ,@bvec) (= 0))
+                         '(=# 0 :bool))
+       (3bgl-glsl::not-equal (x y) `((or ,@vec ,@ivec ,@uvec ,@dvec ,@bvec)
+                                     (= 0))
+                             '(=# 0 :bool))
+       (3bgl-glsl::any (x) `((or ,@bvec)) :bool)
+       (3bgl-glsl::all (x) `((or ,@bvec)) :bool)
        ;; component-wise negation, unlike cl:not
        ;; merged with cl:not for now?
-       ;; (glsl::not (x) `((or ,@bvec)) '(= 0))
+       ;; (3bgl-glsl::not (x) `((or ,@bvec)) '(= 0))
 
 
        ;; 8.8 integer functions
-       (glsl::uadd-carry (x y carry) `((or ,@gen-utype) (= 0) (:out (= 0)))
-                         '(= 0))
-       (glsl::usub-carry (x y borrow) `((or ,@gen-utype) (= 0) (:out (= 0)))
-                         '(= 0))
-       (glsl::umul-extended (x y msb lsb) `((or ,@gen-utype) (= 0)
-                                            (:out (= 0)) (:out (= 0)))
-                            '(= 0))
-       (glsl::imul-extended (x y msb lsb) `((or ,@gen-itype) (= 0)
-                                            (:out (= 0)) (:out (= 0)))
-                            '(= 0))
-       ;; todo: expand LDB/DPB to these?
-       (glsl::bitfield-extract (value offset bits)
-                               `((or ,@gen-itype ,@gen-utype) :int :int)
-                               '(= 0))
-       (glsl::bitfield-insert (base insert offset bits)
-                              `((or ,@gen-itype ,@gen-utype) (= 0) :int :int)
+       (3bgl-glsl::uadd-carry (x y carry) `((or ,@gen-utype) (= 0) (:out (= 0)))
                               '(= 0))
-       (glsl::bitfield-reverse (value) `((or ,@gen-itype ,@gen-utype)) '(= 0))
-       (glsl::bit-count (value) `((or ,@gen-itype ,@gen-utype)) '(=# 0 :int))
-       (glsl::find-lsb (value) `((or ,@gen-itype ,@gen-utype)) '(=# 0 :int))
-       (glsl::find-msb (value) `((or ,@gen-itype ,@gen-utype)) '(=# 0 :int)))
+       (3bgl-glsl::usub-carry (x y borrow) `((or ,@gen-utype) (= 0)
+                                             (:out (= 0)))
+                              '(= 0))
+       (3bgl-glsl::umul-extended (x y msb lsb) `((or ,@gen-utype) (= 0)
+                                                 (:out (= 0)) (:out (= 0)))
+                                 '(= 0))
+       (3bgl-glsl::imul-extended (x y msb lsb) `((or ,@gen-itype) (= 0)
+                                                 (:out (= 0)) (:out (= 0)))
+                                 '(= 0))
+       ;; todo: expand LDB/DPB to these?
+       (3bgl-glsl::bitfield-extract (value offset bits)
+                                    `((or ,@gen-itype ,@gen-utype) :int :int)
+                                    '(= 0))
+       (3bgl-glsl::bitfield-insert (base insert offset bits)
+                                   `((or ,@gen-itype ,@gen-utype) (= 0)
+                                     :int :int)
+                                   '(= 0))
+       (3bgl-glsl::bitfield-reverse (value) `((or ,@gen-itype ,@gen-utype))
+                                    '(= 0))
+       (3bgl-glsl::bit-count (value) `((or ,@gen-itype ,@gen-utype))
+                             '(=# 0 :int))
+       (3bgl-glsl::find-lsb (value) `((or ,@gen-itype ,@gen-utype))
+                            '(=# 0 :int))
+       (3bgl-glsl::find-msb (value) `((or ,@gen-itype ,@gen-utype))
+                            '(=# 0 :int)))
 
       ;; 8.9 Texture Functions
       (add/f
-       (glsl::texture-size (sampler &optional lod)
-                           (expand-signatures
-                            :int (gsampler1D :int)
-                            :ivec2 (gsampler2D :int)
-                            :ivec3 (gsampler3D :int)
-                            :ivec2 (gsamplerCube :int)
-                            :int (:sampler-1D-Shadow :int)
-                            :ivec2 (:sampler-2D-Shadow :int)
-                            :ivec2 (:sampler-Cube-Shadow :int)
-                            :ivec3 (gsamplerCubeArray :int)
-                            :ivec3 (:sampler-Cube-Array-Shadow :int)
-                            :ivec2 (gsampler2DRect)
-                            :ivec2 (:sampler-2DRect-Shadow)
-                            :ivec2 (gsampler1DArray :int)
-                            :ivec3 (gsampler2DArray :int)
-                            :ivec2 (:sampler-1D-Array-Shadow :int)
-                            :ivec3 (:sampler-2D-Array-Shadow :int)
-                            :int (gsamplerBuffer)
-                            :ivec2 (gsampler2DMS)
-                            :ivec3 (gsampler2DMSArray)))
-
-
-       (glsl::texture-query-lod (sampler p)
+       (3bgl-glsl::texture-size (sampler &optional lod)
                                 (expand-signatures
-                                 :vec2 (gsampler1D :float)
-                                 :vec2 (gsampler2D :vec2)
-                                 :vec2 (gsampler3D :vec3)
-                                 :vec2 (gsamplerCube :vec3)
-                                 :vec2 (gsampler1DArray :float)
-                                 :vec2 (gsampler2DArray :vec2)
-                                 :vec2 (gsamplerCubeArray :vec3)
-                                 :vec2 (:sampler-1D-Shadow :float)
-                                 :vec2 (:sampler-2D-Shadow :vec2)
-                                 :vec2 (:sampler-Cube-Shadow :vec3)
-                                 :vec2 (:sampler-1D-Array-Shadow :float)
-                                 :vec2 (:sampler-2D-Array-Shadow :vec2)
-                                 :vec2 (:sampler-Cube-Array-Shadow :vec3)))
-       (glsl::texture-query-levels '(sampler)
-                                   (expand-signatures
-                                    :int (gsampler1D)
-                                    :int (gsampler2D)
-                                    :int (gsampler3D)
-                                    :int (gsamplerCube)
-                                    :int (gsampler1DArray)
-                                    :int (gsampler2DArray)
-                                    :int (gsamplerCubeArray)
-                                    :int (:sampler-1D-Shadow)
-                                    :int (:sampler-2D-Shadow)
-                                    :int (:sampler-Cube-Shadow)
-                                    :int (:sampler-1D-Array-Shadow)
-                                    :int (:sampler-2D-Array-Shadow)
-                                    :int (:sampler-CubeArray-Shadow))))
+                                 :int (gsampler1D :int)
+                                 :ivec2 (gsampler2D :int)
+                                 :ivec3 (gsampler3D :int)
+                                 :ivec2 (gsamplerCube :int)
+                                 :int (:sampler-1D-Shadow :int)
+                                 :ivec2 (:sampler-2D-Shadow :int)
+                                 :ivec2 (:sampler-Cube-Shadow :int)
+                                 :ivec3 (gsamplerCubeArray :int)
+                                 :ivec3 (:sampler-Cube-Array-Shadow :int)
+                                 :ivec2 (gsampler2DRect)
+                                 :ivec2 (:sampler-2DRect-Shadow)
+                                 :ivec2 (gsampler1DArray :int)
+                                 :ivec3 (gsampler2DArray :int)
+                                 :ivec2 (:sampler-1D-Array-Shadow :int)
+                                 :ivec3 (:sampler-2D-Array-Shadow :int)
+                                 :int (gsamplerBuffer)
+                                 :ivec2 (gsampler2DMS)
+                                 :ivec3 (gsampler2DMSArray)))
 
-      (add-internal-function/s 'glsl::texture-samples '(s)
+
+       (3bgl-glsl::texture-query-lod (sampler p)
+                                     (expand-signatures
+                                      :vec2 (gsampler1D :float)
+                                      :vec2 (gsampler2D :vec2)
+                                      :vec2 (gsampler3D :vec3)
+                                      :vec2 (gsamplerCube :vec3)
+                                      :vec2 (gsampler1DArray :float)
+                                      :vec2 (gsampler2DArray :vec2)
+                                      :vec2 (gsamplerCubeArray :vec3)
+                                      :vec2 (:sampler-1D-Shadow :float)
+                                      :vec2 (:sampler-2D-Shadow :vec2)
+                                      :vec2 (:sampler-Cube-Shadow :vec3)
+                                      :vec2 (:sampler-1D-Array-Shadow :float)
+                                      :vec2 (:sampler-2D-Array-Shadow :vec2)
+                                      :vec2 (:sampler-Cube-Array-Shadow :vec3)))
+       (3bgl-glsl::texture-query-levels '(sampler)
+                                        (expand-signatures
+                                         :int (gsampler1D)
+                                         :int (gsampler2D)
+                                         :int (gsampler3D)
+                                         :int (gsamplerCube)
+                                         :int (gsampler1DArray)
+                                         :int (gsampler2DArray)
+                                         :int (gsamplerCubeArray)
+                                         :int (:sampler-1D-Shadow)
+                                         :int (:sampler-2D-Shadow)
+                                         :int (:sampler-Cube-Shadow)
+                                         :int (:sampler-1D-Array-Shadow)
+                                         :int (:sampler-2D-Array-Shadow)
+                                         :int (:sampler-CubeArray-Shadow))))
+
+      (add-internal-function/s '3bgl-glsl::texture-samples '(s)
                                `((or ,@gsampler2dms
                                      ,@gsampler2dmsarray))
                                :int)
       (add/f
-       (glsl::texture (sampler p &optional bias/compare)
-                      (expand-signatures
-                       gvec4 (gsampler1D :float :float)
-                       gvec4 (gsampler2D :vec2 :float)
-                       gvec4 (gsampler3D :vec3 :float)
-                       gvec4 (gsamplerCube :vec3 :float)
-                       :float (:sampler-1D-Shadow :vec3 :float)
-                       :float (:sampler-2D-Shadow :vec3 :float)
-                       :float (:sampler-Cube-Shadow :vec4 :float)
-                       gvec4 (gsampler1DArray :vec2 :float)
-                       gvec4 (gsampler2DArray :vec3 :float)
-                       gvec4 (gsamplerCubeArray :vec4 :float)
-                       :float (:sampler-1D-Array-Shadow :vec3 :float)
-                       :float (:sampler-2D-Array-Shadow :vec4)
-                       gvec4 (gsampler2DRect :vec2)
-                       :float (:sampler-2D-Rect-Shadow :vec3)
-                       :float (gsamplerCubeArrayShadow :vec4 :float)))
-
-       (glsl::texture-proj (sampler p &optional bias)
+       (3bgl-glsl::texture (sampler p &optional bias/compare)
                            (expand-signatures
-                            gvec4 (gsampler1D :vec2 :float)
-                            gvec4 (gsampler1D :vec4 :float)
-                            gvec4 (gsampler2D :vec3 :float)
-                            gvec4 (gsampler2D :vec4 :float)
-                            gvec4 (gsampler3D :vec4 :float)
-                            :float (:sampler-1D-Shadow :vec4 :float)
-                            :float (:sampler-2D-Shadow :vec4 :float)
-                            gvec4 (gsampler2DRect :vec3)
-                            gvec4 (gsampler2DRect :vec4)
-                            :float (:sampler-2D-Rect-Shadow :vec4)))
+                            gvec4 (gsampler1D :float :float)
+                            gvec4 (gsampler2D :vec2 :float)
+                            gvec4 (gsampler3D :vec3 :float)
+                            gvec4 (gsamplerCube :vec3 :float)
+                            :float (:sampler-1D-Shadow :vec3 :float)
+                            :float (:sampler-2D-Shadow :vec3 :float)
+                            :float (:sampler-Cube-Shadow :vec4 :float)
+                            gvec4 (gsampler1DArray :vec2 :float)
+                            gvec4 (gsampler2DArray :vec3 :float)
+                            gvec4 (gsamplerCubeArray :vec4 :float)
+                            :float (:sampler-1D-Array-Shadow :vec3 :float)
+                            :float (:sampler-2D-Array-Shadow :vec4)
+                            gvec4 (gsampler2DRect :vec2)
+                            :float (:sampler-2D-Rect-Shadow :vec3)
+                            :float (gsamplerCubeArrayShadow :vec4 :float)))
 
-       (glsl::texture-lod (sampler p lod)
-                          (expand-signatures
-                           gvec4 (gsampler1D :float :float)
-                           gvec4 (gsampler2D :vec2 :float)
-                           gvec4 (gsampler3D :vec3 :float)
-                           gvec4 (gsamplerCube :vec3 :float)
-                           :float (:sampler-1D-Shadow :vec3 :float)
-                           :float (:sampler-2D-Shadow :vec3 :float)
-                           gvec4 (gsampler1DArray :vec2 :float)
-                           gvec4 (gsampler2DArray :vec3 :float)
-                           :float (:sampler-1D-Array-Shadow
-                                   :vec3 :float)
-                           gvec4 (gsamplerCubeArray :vec4 :float)))
-       (glsl::texture-offset (sampler p offset &optional bias)
-                             (expand-signatures
-                              gvec4 (gsampler1D :float :int :float)
-                              gvec4 (gsampler2D :vec2 :ivec2 :float)
-                              gvec4 (gsampler3D :vec3 :ivec3 :float)
-                              gvec4 (gsampler2DRect :vec2 :ivec2)
-                              :float (:sampler-2D-Rect-Shadow :vec3 :ivec2)
-                              :float (:sampler-1D-Shadow :vec3 :int :float)
-                              :float (:sampler-2D-Shadow
-                                      :vec3 :ivec2 :float)
-                              gvec4 (gsampler1DArray :vec2 :int :float)
-                              gvec4 (gsampler2DArray :vec3 :ivec2 :float)
-                              :float (:sampler-1D-Array-Shadow
-                                      :vec3 :int :float)
-                              :float (:sampler-2D-Array-Shadow
-                                      :vec4 :ivec2)))
+       (3bgl-glsl::texture-proj (sampler p &optional bias)
+                                (expand-signatures
+                                 gvec4 (gsampler1D :vec2 :float)
+                                 gvec4 (gsampler1D :vec4 :float)
+                                 gvec4 (gsampler2D :vec3 :float)
+                                 gvec4 (gsampler2D :vec4 :float)
+                                 gvec4 (gsampler3D :vec4 :float)
+                                 :float (:sampler-1D-Shadow :vec4 :float)
+                                 :float (:sampler-2D-Shadow :vec4 :float)
+                                 gvec4 (gsampler2DRect :vec3)
+                                 gvec4 (gsampler2DRect :vec4)
+                                 :float (:sampler-2D-Rect-Shadow :vec4)))
 
-
-       (glsl::texel-fetch (sampler p &optional lod/sample)
-                          (expand-signatures
-                           gvec4 (gsampler1D :int :int)
-                           gvec4 (gsampler2D :ivec2 :int)
-                           gvec4 (gsampler3D :ivec3 :int)
-                           gvec4 (gsampler2DRect :ivec2)
-                           gvec4 (gsampler1DArray :ivec2 :int)
-                           gvec4 (gsampler2DArray :ivec3 :int)
-                           gvec4 (gsamplerBuffer :int)
-                           gvec4 (gsampler2DMS :ivec2 :int)
-                           gvec4 (gsampler2DMSArray :ivec3 :int)))
-
-       (glsl::texel-fetch-offset (sampler P lod offset)
-                                 (expand-signatures
-                                  gvec4 (gsampler1D :int :int :int)
-                                  gvec4 (gsampler2D :ivec2 :int :ivec2)
-                                  gvec4 (gsampler3D :ivec3 :int :ivec3)
-                                  gvec4 (gsampler2DRect :ivec2 :ivec2)
-                                  gvec4 (gsampler1DArray :ivec2 :int :int)
-                                  gvec4 (gsampler2DArray :ivec3 :int :ivec2)))
-
-       (glsl::texture-proj-offset (sampler p offset &optional bias)
-                                  (expand-signatures
-                                   gvec4 (gsampler1D :vec2 :int :float)
-                                   gvec4 (gsampler1D :vec4 :int :float)
-                                   gvec4 (gsampler2D :vec3 :ivec2 :float)
-                                   gvec4 (gsampler2D :vec4 :ivec2 :float)
-                                   gvec4 (gsampler3D :vec4 :ivec3 :float)
-                                   gvec4 (gsampler2DRect :vec3 :ivec2)
-                                   gvec4 (gsampler2DRect :vec4 :ivec2)
-                                   :float (:sampler-2D-Rect-Shadow
-                                           :vec4 :ivec2)
-                                   :float (:sampler-1D-Shadow
-                                           :vec4 :int :float)
-                                   :float (:sampler-2D-Shadow
-                                           :vec4 :ivec2 :float)))
-       (glsl::texture-lod-offset (sampler p lod offset)
-                                 (expand-signatures
-                                  gvec4 (gsampler1D :float :float :int)
-                                  gvec4 (gsampler2D :vec2 :float :ivec2)
-                                  gvec4 (gsampler3D :vec3 :float :ivec3)
-                                  :float (:sampler-1D-Shadow
-                                          :vec3 :float :int)
-                                  :float (:sampler-2D-Shadow
-                                          :vec3 :float :ivec2)
-                                  gvec4 (gsampler1DArray
-                                         :vec2 :float :int)
-                                  gvec4 (gsampler2DArray
-                                         :vec3 :float :ivec2)
-                                  :float (:sampler-1D-Array-Shadow
-                                          :vec3 :float :int)))
-       (glsl::texture-proj-lod (sampler o lod)
+       (3bgl-glsl::texture-lod (sampler p lod)
                                (expand-signatures
-                                gvec4 (gsampler1D :vec2 :float)
-                                gvec4 (gsampler1D :vec4 :float)
-                                gvec4 (gsampler2D :vec3 :float)
-                                gvec4 (gsampler2D :vec4 :float)
-                                gvec4 (gsampler3D :vec4 :float)
-                                :float (:sampler-1D-Shadow :vec4 :float)
-                                :float (:sampler-2D-Shadow
-                                        :vec4 :float)))
-       (glsl::texture-proj-lod-offset
+                                gvec4 (gsampler1D :float :float)
+                                gvec4 (gsampler2D :vec2 :float)
+                                gvec4 (gsampler3D :vec3 :float)
+                                gvec4 (gsamplerCube :vec3 :float)
+                                :float (:sampler-1D-Shadow :vec3 :float)
+                                :float (:sampler-2D-Shadow :vec3 :float)
+                                gvec4 (gsampler1DArray :vec2 :float)
+                                gvec4 (gsampler2DArray :vec3 :float)
+                                :float (:sampler-1D-Array-Shadow
+                                        :vec3 :float)
+                                gvec4 (gsamplerCubeArray :vec4 :float)))
+       (3bgl-glsl::texture-offset (sampler p offset &optional bias)
+                                  (expand-signatures
+                                   gvec4 (gsampler1D :float :int :float)
+                                   gvec4 (gsampler2D :vec2 :ivec2 :float)
+                                   gvec4 (gsampler3D :vec3 :ivec3 :float)
+                                   gvec4 (gsampler2DRect :vec2 :ivec2)
+                                   :float (:sampler-2D-Rect-Shadow :vec3 :ivec2)
+                                   :float (:sampler-1D-Shadow :vec3 :int :float)
+                                   :float (:sampler-2D-Shadow
+                                           :vec3 :ivec2 :float)
+                                   gvec4 (gsampler1DArray :vec2 :int :float)
+                                   gvec4 (gsampler2DArray :vec3 :ivec2 :float)
+                                   :float (:sampler-1D-Array-Shadow
+                                           :vec3 :int :float)
+                                   :float (:sampler-2D-Array-Shadow
+                                           :vec4 :ivec2)))
+
+
+       (3bgl-glsl::texel-fetch (sampler p &optional lod/sample)
+                               (expand-signatures
+                                gvec4 (gsampler1D :int :int)
+                                gvec4 (gsampler2D :ivec2 :int)
+                                gvec4 (gsampler3D :ivec3 :int)
+                                gvec4 (gsampler2DRect :ivec2)
+                                gvec4 (gsampler1DArray :ivec2 :int)
+                                gvec4 (gsampler2DArray :ivec3 :int)
+                                gvec4 (gsamplerBuffer :int)
+                                gvec4 (gsampler2DMS :ivec2 :int)
+                                gvec4 (gsampler2DMSArray :ivec3 :int)))
+
+       (3bgl-glsl::texel-fetch-offset (sampler P lod offset)
+                                      (expand-signatures
+                                       gvec4 (gsampler1D :int :int :int)
+                                       gvec4 (gsampler2D :ivec2 :int :ivec2)
+                                       gvec4 (gsampler3D :ivec3 :int :ivec3)
+                                       gvec4 (gsampler2DRect :ivec2 :ivec2)
+                                       gvec4 (gsampler1DArray :ivec2 :int :int)
+                                       gvec4 (gsampler2DArray :ivec3 :int :ivec2)))
+
+       (3bgl-glsl::texture-proj-offset (sampler p offset &optional bias)
+                                       (expand-signatures
+                                        gvec4 (gsampler1D :vec2 :int :float)
+                                        gvec4 (gsampler1D :vec4 :int :float)
+                                        gvec4 (gsampler2D :vec3 :ivec2 :float)
+                                        gvec4 (gsampler2D :vec4 :ivec2 :float)
+                                        gvec4 (gsampler3D :vec4 :ivec3 :float)
+                                        gvec4 (gsampler2DRect :vec3 :ivec2)
+                                        gvec4 (gsampler2DRect :vec4 :ivec2)
+                                        :float (:sampler-2D-Rect-Shadow
+                                                :vec4 :ivec2)
+                                        :float (:sampler-1D-Shadow
+                                                :vec4 :int :float)
+                                        :float (:sampler-2D-Shadow
+                                                :vec4 :ivec2 :float)))
+       (3bgl-glsl::texture-lod-offset (sampler p lod offset)
+                                      (expand-signatures
+                                       gvec4 (gsampler1D :float :float :int)
+                                       gvec4 (gsampler2D :vec2 :float :ivec2)
+                                       gvec4 (gsampler3D :vec3 :float :ivec3)
+                                       :float (:sampler-1D-Shadow
+                                               :vec3 :float :int)
+                                       :float (:sampler-2D-Shadow
+                                               :vec3 :float :ivec2)
+                                       gvec4 (gsampler1DArray
+                                              :vec2 :float :int)
+                                       gvec4 (gsampler2DArray
+                                              :vec3 :float :ivec2)
+                                       :float (:sampler-1D-Array-Shadow
+                                               :vec3 :float :int)))
+       (3bgl-glsl::texture-proj-lod (sampler o lod)
+                                    (expand-signatures
+                                     gvec4 (gsampler1D :vec2 :float)
+                                     gvec4 (gsampler1D :vec4 :float)
+                                     gvec4 (gsampler2D :vec3 :float)
+                                     gvec4 (gsampler2D :vec4 :float)
+                                     gvec4 (gsampler3D :vec4 :float)
+                                     :float (:sampler-1D-Shadow :vec4 :float)
+                                     :float (:sampler-2D-Shadow
+                                             :vec4 :float)))
+       (3bgl-glsl::texture-proj-lod-offset
         (sampler p lod offset)
         (expand-signatures
          gvec4 (gsampler1D :vec2 :float :int)
@@ -1205,26 +1220,26 @@
          gvec4 (gsampler3D :vec4 :float :ivec3)
          :float (:sampler-1D-Shadow :vec4 :float :int)
          :float (:sampler-2D-Shadow :vec4 :float :ivec2)))
-       (glsl::texture-grad (sampler p dP/dx dP/dy)
-                           (expand-signatures
-                            gvec4 (gsampler1D :float :float :float)
-                            gvec4 (gsampler2D :vec2 :vec2 :vec2)
-                            gvec4 (gsampler3D :vec3 :vec3 :vec3)
-                            gvec4 (gsamplerCube :vec3 :vec3 :vec3)
-                            gvec4 (gsampler2DRect :vec2 :vec2 :vec2)
-                            :float (:sampler-2D-Rect-Shadow
-                                    :vec3 :vec2 :vec2)
-                            :float (:sampler-1D-Shadow :vec3 :float :float)
-                            :float (:sampler-2D-Shadow :vec3 :vec2 :vec2)
-                            :float (:sampler-Cube-Shadow :vec4 :vec3 :vec3)
-                            gvec4 (gsampler1DArray :vec2 :float :float)
-                            gvec4 (gsampler2DArray :vec3 :vec2 :vec2)
-                            :float (:sampler-1D-Array-Shadow
-                                    :vec3 :float :float)
-                            :float (:sampler-2D-Array-Shadow
-                                    :vec4 :vec2 :vec2)
-                            gvec4 (gsamplerCubeArray :vec4 :vec3 :vec3)))
-       (glsl::texture-grad-offset
+       (3bgl-glsl::texture-grad (sampler p dP/dx dP/dy)
+                                (expand-signatures
+                                 gvec4 (gsampler1D :float :float :float)
+                                 gvec4 (gsampler2D :vec2 :vec2 :vec2)
+                                 gvec4 (gsampler3D :vec3 :vec3 :vec3)
+                                 gvec4 (gsamplerCube :vec3 :vec3 :vec3)
+                                 gvec4 (gsampler2DRect :vec2 :vec2 :vec2)
+                                 :float (:sampler-2D-Rect-Shadow
+                                         :vec3 :vec2 :vec2)
+                                 :float (:sampler-1D-Shadow :vec3 :float :float)
+                                 :float (:sampler-2D-Shadow :vec3 :vec2 :vec2)
+                                 :float (:sampler-Cube-Shadow :vec4 :vec3 :vec3)
+                                 gvec4 (gsampler1DArray :vec2 :float :float)
+                                 gvec4 (gsampler2DArray :vec3 :vec2 :vec2)
+                                 :float (:sampler-1D-Array-Shadow
+                                         :vec3 :float :float)
+                                 :float (:sampler-2D-Array-Shadow
+                                         :vec4 :vec2 :vec2)
+                                 gvec4 (gsamplerCubeArray :vec4 :vec3 :vec3)))
+       (3bgl-glsl::texture-grad-offset
         (sampler p dp/dx dp/dy offset)
         (expand-signatures
          gvec4 (gsampler1D :float :float :float :int)
@@ -1238,7 +1253,7 @@
          gvec4 (gsampler2DArray :vec3 :vec2 :vec2 :ivec2)
          :float (:sampler-1D-Array-Shadow :vec3 :float :float :int)
          :float (:sampler-2D-Array-Shadow :vec4 :vec2 :vec2 :ivec2)))
-       (glsl::texture-proj-grad
+       (3bgl-glsl::texture-proj-grad
         (sampler p dp/dx dp/dy)
         (expand-signatures
          gvec4 (gsampler1D :vec2 :float :float)
@@ -1251,7 +1266,7 @@
          :float (:sampler-2D-Rect-Shadow :vec4 :vec2 :vec2)
          :float (:sampler-1D-Shadow :vec4 :float :float)
          :float (:sampler-2D-Shadow :vec4 :vec2 :vec2)))
-       (glsl::texture-proj-grad-offset
+       (3bgl-glsl::texture-proj-grad-offset
         (sampler p dp/dx dp/dy offset)
         (expand-signatures
          gvec4 (gsampler1D :vec2 :float :float :int)
@@ -1266,21 +1281,21 @@
          :float (:sampler-2D-Shadow :vec4 :vec2 :vec2 :ivec2)))
 
        ;; 8.9.3 texture gather functions
-       (glsl::texture-gather (sampler p refz)
-                             (expand-signatures
-                              gvec4 (gsampler2D :vec2 :int)
-                              gvec4 (gsampler2DArray :vec3 :int)
-                              gvec4 (gsamplerCube :vec3 :int)
-                              gvec4 (gsamplerCubeArray :vec4 :int)
-                              gvec4 (gsampler2DRect :vec2 :int)
-                              :vec4 (:sampler-2D-Shadow :vec2 :float)
-                              :vec4 (:sampler-2D-Array-Shadow :vec3 :float)
-                              :vec4 (:sampler-Cube-Shadow :vec3 :float)
-                              :vec4 (:sampler-Cube-Array-Shadow
-                                     :vec4 :float)
-                              :vec4 (:sampler-2D-Rect-Shadow
-                                     :vec2 :float)))
-       (glsl::texture-gather-offset
+       (3bgl-glsl::texture-gather (sampler p refz)
+                                  (expand-signatures
+                                   gvec4 (gsampler2D :vec2 :int)
+                                   gvec4 (gsampler2DArray :vec3 :int)
+                                   gvec4 (gsamplerCube :vec3 :int)
+                                   gvec4 (gsamplerCubeArray :vec4 :int)
+                                   gvec4 (gsampler2DRect :vec2 :int)
+                                   :vec4 (:sampler-2D-Shadow :vec2 :float)
+                                   :vec4 (:sampler-2D-Array-Shadow :vec3 :float)
+                                   :vec4 (:sampler-Cube-Shadow :vec3 :float)
+                                   :vec4 (:sampler-Cube-Array-Shadow
+                                          :vec4 :float)
+                                   :vec4 (:sampler-2D-Rect-Shadow
+                                          :vec2 :float)))
+       (3bgl-glsl::texture-gather-offset
         (sampler p refz offset)
         (expand-signatures
          gvec4 (gsampler2D :vec2 :ivec2 :int)
@@ -1291,7 +1306,7 @@
          :vec4 (:sampler-2D-Rect-Shadow :vec2 :float :ivec2)))
        ;; fixme: figure out/implement syntax for array params
        #++
-       (glsl::texture-gather-offsets
+       (3bgl-glsl::texture-gather-offsets
         (sampler o offsets &optional comp)
         (expand-signatures
          gvec4 (gsampler2D :vec2 (:ivec2 4) :int)
@@ -1304,62 +1319,64 @@
       ;; 8.9.4 compatibility profile
 
       (add/s
-       (glsl::texture-1d (sampler coord &optional bias)
-                         '(:sampler-1d :float :float) :vec4)
-       (glsl::texture-1d-proj (sampler coord &optional bias)
-                              '(:sampler-1d (or :vec2 :vec4) :float) :vec4)
-       (glsl::texture-1d-lod (sampler coord lod)
-                             '(:sampler-1d :float :float) :vec4)
-       (glsl::texture-1d-proj-lod (sampler coord lod)
-                                  '(:sampler-1d (or :vec2 :vec4) :float) :vec4)
+       (3bgl-glsl::texture-1d (sampler coord &optional bias)
+                              '(:sampler-1d :float :float) :vec4)
+       (3bgl-glsl::texture-1d-proj (sampler coord &optional bias)
+                                   '(:sampler-1d (or :vec2 :vec4) :float) :vec4)
+       (3bgl-glsl::texture-1d-lod (sampler coord lod)
+                                  '(:sampler-1d :float :float) :vec4)
+       (3bgl-glsl::texture-1d-proj-lod (sampler coord lod)
+                                       '(:sampler-1d (or :vec2 :vec4) :float)
+                                       :vec4)
 
-       (glsl::texture-2d (sampler coord &optional bias)
-                         '(:sampler-2d :vec2 :float) :vec4)
-       (glsl::texture-2d-proj (sampler coord &optional bias)
-                              '(:sampler-2d (or :vec3 :vec4) :float) :vec4)
-       (glsl::texture-2d-lod (sampler coord lod)
-                             '(:sampler-2d :vec2 :float) :vec4)
-       (glsl::texture-2d-proj-lod (sampler coord lod)
-                                  '(:sampler-2d (or :vec3 :vec4) :float) :vec4)
+       (3bgl-glsl::texture-2d (sampler coord &optional bias)
+                              '(:sampler-2d :vec2 :float) :vec4)
+       (3bgl-glsl::texture-2d-proj (sampler coord &optional bias)
+                                   '(:sampler-2d (or :vec3 :vec4) :float) :vec4)
+       (3bgl-glsl::texture-2d-lod (sampler coord lod)
+                                  '(:sampler-2d :vec2 :float) :vec4)
+       (3bgl-glsl::texture-2d-proj-lod (sampler coord lod)
+                                       '(:sampler-2d (or :vec3 :vec4) :float)
+                                       :vec4)
 
-       (glsl::texture-3d (sampler coord &optional bias)
-                         '(:sampler-3d :vec3 :float) :vec4)
-       (glsl::texture-3d-proj (sampler coord &optional bias)
-                              '(:sampler-3d :vec4 :float) :vec4)
-       (glsl::texture-3d-lod (sampler coord lod)
-                             '(:sampler-3d :vec3 :float) :vec4)
-       (glsl::texture-3d-proj-lod (sampler coord lod)
-                                  '(:sampler-3d :vec4 :float) :vec4)
-
-
-       (glsl::texture-cube (sampler coord &optional bias)
-                           '(:sampler-3d :vec3 :float) :vec4)
-       (glsl::texture-cube-lod (sampler coord lod)
-                               '(:sampler-3d :vec3 :float) :vec4)
+       (3bgl-glsl::texture-3d (sampler coord &optional bias)
+                              '(:sampler-3d :vec3 :float) :vec4)
+       (3bgl-glsl::texture-3d-proj (sampler coord &optional bias)
+                                   '(:sampler-3d :vec4 :float) :vec4)
+       (3bgl-glsl::texture-3d-lod (sampler coord lod)
+                                  '(:sampler-3d :vec3 :float) :vec4)
+       (3bgl-glsl::texture-3d-proj-lod (sampler coord lod)
+                                       '(:sampler-3d :vec4 :float) :vec4)
 
 
-       (glsl::shadow-1d (sampler coord &optional bias)
-                        '(:sampler-1d-shadow :vec3 :float) :vec4)
-       (glsl::shadow-2d (sampler coord &optional bias)
-                        '(:sampler-2d-rect-shadow :vec3 :float) :vec4)
-       (glsl::shadow-1d-proj (sampler coord &optional bias)
-                             '(:sampler-1d-shadow :vec4 :float) :vec4)
-       (glsl::shadow-2d-proj (sampler coord &optional bias)
-                             '(:sampler-1d-shadow :vec4 :float) :vec4)
-       (glsl::shadow-1d-lod (sampler coord lod)
-                            '(:sampler-1d-shadow :vec3 :float) :vec4)
-       (glsl::shadow-2d-lod (sampler coord lod)
-                            '(:sampler-1d-shadow :vec3 :float) :vec4)
-       (glsl::shadow-1d-proj-lod (sampler coord lod)
-                                 '(:sampler-1d-shadow :vec4 :float) :vec4)
-       (glsl::shadow-2d-proj-lod (sampler coord lod)
-                                 '(:sampler-1d-shadow :vec4 :float) :vec4))
+       (3bgl-glsl::texture-cube (sampler coord &optional bias)
+                                '(:sampler-3d :vec3 :float) :vec4)
+       (3bgl-glsl::texture-cube-lod (sampler coord lod)
+                                    '(:sampler-3d :vec3 :float) :vec4)
+
+
+       (3bgl-glsl::shadow-1d (sampler coord &optional bias)
+                             '(:sampler-1d-shadow :vec3 :float) :vec4)
+       (3bgl-glsl::shadow-2d (sampler coord &optional bias)
+                             '(:sampler-2d-rect-shadow :vec3 :float) :vec4)
+       (3bgl-glsl::shadow-1d-proj (sampler coord &optional bias)
+                                  '(:sampler-1d-shadow :vec4 :float) :vec4)
+       (3bgl-glsl::shadow-2d-proj (sampler coord &optional bias)
+                                  '(:sampler-1d-shadow :vec4 :float) :vec4)
+       (3bgl-glsl::shadow-1d-lod (sampler coord lod)
+                                 '(:sampler-1d-shadow :vec3 :float) :vec4)
+       (3bgl-glsl::shadow-2d-lod (sampler coord lod)
+                                 '(:sampler-1d-shadow :vec3 :float) :vec4)
+       (3bgl-glsl::shadow-1d-proj-lod (sampler coord lod)
+                                      '(:sampler-1d-shadow :vec4 :float) :vec4)
+       (3bgl-glsl::shadow-2d-proj-lod (sampler coord lod)
+                                      '(:sampler-1d-shadow :vec4 :float) :vec4))
 
       ;; 8.10 atomic-counter functions
       (add/s
-       (glsl::atomic-counter-increment (c) '(:atomic-uint) :uint)
-       (glsl::atomic-counter-decrement (c) '(:atomic-uint) :uint)
-       (glsl::atomic-counter (c) '(:atomic-uint) :uint))
+       (3bgl-glsl::atomic-counter-increment (c) '(:atomic-uint) :uint)
+       (3bgl-glsl::atomic-counter-decrement (c) '(:atomic-uint) :uint)
+       (3bgl-glsl::atomic-counter (c) '(:atomic-uint) :uint))
 
       ;; 8.11 atomic memory functions
       (add/s
@@ -1367,15 +1384,15 @@
        ;; ("coherent inout" in spec, should at least reject casts on first arg
        ;;   probably also restrict to components of buffers/shared variables
        ;;   as described in spec)
-       (glsl::atomic-add (mem data) '((or :uint :int) (= 0)) '(= 0))
-       (glsl::atomic-min (mem data) '((or :uint :int) (= 0)) '(= 0))
-       (glsl::atomic-max (mem data) '((or :uint :int) (= 0)) '(= 0))
-       (glsl::atomic-and (mem data) '((or :uint :int) (= 0)) '(= 0))
-       (glsl::atomic-or (mem data) '((or :uint :int) (= 0)) '(= 0))
-       (glsl::atomic-xor (mem data) '((or :uint :int) (= 0)) '(= 0))
-       (glsl::atomic-exchange (mem data) '((or :uint :int) (= 0)) '(= 0))
-       (glsl::atomic-comp-swap (mem compare data)
-                               '((or :uint :int) (= 0) (= 0)) '(= 0)))
+       (3bgl-glsl::atomic-add (mem data) '((or :uint :int) (= 0)) '(= 0))
+       (3bgl-glsl::atomic-min (mem data) '((or :uint :int) (= 0)) '(= 0))
+       (3bgl-glsl::atomic-max (mem data) '((or :uint :int) (= 0)) '(= 0))
+       (3bgl-glsl::atomic-and (mem data) '((or :uint :int) (= 0)) '(= 0))
+       (3bgl-glsl::atomic-or (mem data) '((or :uint :int) (= 0)) '(= 0))
+       (3bgl-glsl::atomic-xor (mem data) '((or :uint :int) (= 0)) '(= 0))
+       (3bgl-glsl::atomic-exchange (mem data) '((or :uint :int) (= 0)) '(= 0))
+       (3bgl-glsl::atomic-comp-swap (mem compare data)
+                                    '((or :uint :int) (= 0) (= 0)) '(= 0)))
 
       ;; 8.12 Image functions
       (let ((gimage1d '(:image-1d :iimage-1d :uimage-1d))
@@ -1429,102 +1446,102 @@
                                           ,ret (list gimage2dmsarray :ivec3 :int
                                                      ,@args))))))))
           (add/f
-           (glsl::image-size (image)
-                             (expand-signatures
-                              :int (gimage1D)
-                              :ivec2 (gimage2D)
-                              :ivec3 (gimage3D)
-                              :ivec2 (gimageCube)
-                              :ivec3 (gimageCubeArray)
-                              :ivec2 (gimage2DRect)
-                              :ivec2 (gimage1DArray)
-                              :ivec3 (gimage2DArray)
-                              :int (gimageBuffer)
-                              :ivec2 (gimage2DMS)
-                              :ivec3 (gimage2DMSArray)))
-           (glsl::image-samples (image)
-                                (expand-signatures
-                                 :int (gimage2DMS)
-                                 :int (gimage2DMSArray)))
-           (glsl::image-load (image p &optional sample)
-                             (image-params () gvec4 ()))
+           (3bgl-glsl::image-size (image)
+                                  (expand-signatures
+                                   :int (gimage1D)
+                                   :ivec2 (gimage2D)
+                                   :ivec3 (gimage3D)
+                                   :ivec2 (gimageCube)
+                                   :ivec3 (gimageCubeArray)
+                                   :ivec2 (gimage2DRect)
+                                   :ivec2 (gimage1DArray)
+                                   :ivec3 (gimage2DArray)
+                                   :int (gimageBuffer)
+                                   :ivec2 (gimage2DMS)
+                                   :ivec3 (gimage2DMSArray)))
+           (3bgl-glsl::image-samples (image)
+                                     (expand-signatures
+                                      :int (gimage2DMS)
+                                      :int (gimage2DMSArray)))
+           (3bgl-glsl::image-load (image p &optional sample)
+                                  (image-params () gvec4 ()))
            ;; fixme: figure out some better way to specify args for overloads?
            ;; (image p data) or (image2dms* p sample data)
-           (glsl::image-store (image p data/sample &optional data)
-                              (image-params () :void (gvec4)))
+           (3bgl-glsl::image-store (image p data/sample &optional data)
+                                   (image-params () :void (gvec4)))
            ;; 6 = int/uint, 7=all ;; fixme: make that more obvious
-           (glsl::image-atomic-add (image p data/sample &optional data)
-                                   (image-params (6) gscalar (gscalar)))
-           (glsl::image-atomic-min (image p data/sample &optional data)
-                                   (image-params (6) gscalar (gscalar)))
-           (glsl::image-atomic-max (image p data/sample &optional data)
-                                   (image-params (6) gscalar (gscalar)))
-           (glsl::image-atomic-and (image p data/sample &optional data)
-                                   (image-params (6) gscalar (gscalar)))
-           (glsl::image-atomic-or (image p data/sample &optional data)
-                                  (image-params (6) gscalar (gscalar)))
-           (glsl::image-atomic-xor (image p data/sample &optional data)
-                                   (image-params (6) gscalar (gscalar)))
+           (3bgl-glsl::image-atomic-add (image p data/sample &optional data)
+                                        (image-params (6) gscalar (gscalar)))
+           (3bgl-glsl::image-atomic-min (image p data/sample &optional data)
+                                        (image-params (6) gscalar (gscalar)))
+           (3bgl-glsl::image-atomic-max (image p data/sample &optional data)
+                                        (image-params (6) gscalar (gscalar)))
+           (3bgl-glsl::image-atomic-and (image p data/sample &optional data)
+                                        (image-params (6) gscalar (gscalar)))
+           (3bgl-glsl::image-atomic-or (image p data/sample &optional data)
+                                       (image-params (6) gscalar (gscalar)))
+           (3bgl-glsl::image-atomic-xor (image p data/sample &optional data)
+                                        (image-params (6) gscalar (gscalar)))
            ;; allowing float is new in 4.5 (spec claims it returns :int though?)
-           (glsl::image-atomic-exchange (image p data/sample &optional data)
-                                        (image-params (7) gscalar (gscalar)))
+           (3bgl-glsl::image-atomic-exchange (image p data/sample &optional data)
+                                             (image-params (7) gscalar (gscalar)))
            ;;(image p compare data) or (image2dms* p sample compare data)
-           (glsl::image-atomic-comp-swap (image p data/compare compare/data
-                                                &optional data)
-                                         (image-params (6) gscalar
-                                                       (gscalar gscalar))))))
+           (3bgl-glsl::image-atomic-comp-swap (image p data/compare compare/data
+                                                     &optional data)
+                                              (image-params (6) gscalar
+                                                            (gscalar gscalar))))))
 
       ;; 8.13 fragment processing functions
       (add/s
        ;; 8.13.1 derivative functions
-       (glsl::dfdx (p) `((or ,gen-type)) '(= 0))
-       (glsl::dfdy (p) `((or ,gen-type)) '(= 0))
-       (glsl::dfdx-fine (p) `((or ,gen-type)) '(= 0))
-       (glsl::dfdy-fine (p) `((or ,gen-type)) '(= 0))
-       (glsl::dfdx-coarse (p) `((or ,gen-type)) '(= 0))
-       (glsl::dfdy-coarse (p) `((or ,gen-type)) '(= 0))
-       (glsl::fwidth (p) `((or ,gen-type)) '(= 0))
-       (glsl::fwidth-fine (p) `((or ,gen-type)) '(= 0))
-       (glsl::fwidth-coarse (p) `((or ,gen-type)) '(= 0))
+       (3bgl-glsl::dfdx (p) `((or ,gen-type)) '(= 0))
+       (3bgl-glsl::dfdy (p) `((or ,gen-type)) '(= 0))
+       (3bgl-glsl::dfdx-fine (p) `((or ,gen-type)) '(= 0))
+       (3bgl-glsl::dfdy-fine (p) `((or ,gen-type)) '(= 0))
+       (3bgl-glsl::dfdx-coarse (p) `((or ,gen-type)) '(= 0))
+       (3bgl-glsl::dfdy-coarse (p) `((or ,gen-type)) '(= 0))
+       (3bgl-glsl::fwidth (p) `((or ,gen-type)) '(= 0))
+       (3bgl-glsl::fwidth-fine (p) `((or ,gen-type)) '(= 0))
+       (3bgl-glsl::fwidth-coarse (p) `((or ,gen-type)) '(= 0))
 
        ;; 8.13.2 interpolation functions
        ;; these specify float/vec2/vec3/vec4 explicitly instead of gentype?
-       (glsl::interpolate-at-centroid (interpolant) `((or ,@gen-type)) '(= 0))
-       (glsl::interpolate-at-sample (interpolant sample)
-                                    `((or ,@gen-type) :int) '(= 0))
-       (glsl::interpolate-at-centroid (interpolant offset)
-                                      `((or ,@gen-type) :vec2) '(= 0)))
+       (3bgl-glsl::interpolate-at-centroid (interpolant) `((or ,@gen-type)) '(= 0))
+       (3bgl-glsl::interpolate-at-sample (interpolant sample)
+                                         `((or ,@gen-type) :int) '(= 0))
+       (3bgl-glsl::interpolate-at-centroid (interpolant offset)
+                                           `((or ,@gen-type) :vec2) '(= 0)))
 
 
       ;; 8.14 noise functions
       (add/s
-       (glsl::noise1 (x) `((or ,@gen-type)) :float)
-       (glsl::noise2 (x) `((or ,@gen-type)) :vec2)
-       (glsl::noise3 (x) `((or ,@gen-type)) :vec3)
-       (glsl::noise4 (x) `((or ,@gen-type)) :vec4))
+       (3bgl-glsl::noise1 (x) `((or ,@gen-type)) :float)
+       (3bgl-glsl::noise2 (x) `((or ,@gen-type)) :vec2)
+       (3bgl-glsl::noise3 (x) `((or ,@gen-type)) :vec3)
+       (3bgl-glsl::noise4 (x) `((or ,@gen-type)) :vec4))
 
       ;; 8.15 geometry shader functions
       ;; todo: restrict these to geometry shaders
       (add/s
-       (glsl::emit-stream-vertex (stream) '(:int) :void)
-       (glsl::end-stream-primitive (stream) '(:int) :void)
-       (glsl::emit-vertex () '() :void)
-       (glsl::end-primitive () '() :void))
+       (3bgl-glsl::emit-stream-vertex (stream) '(:int) :void)
+       (3bgl-glsl::end-stream-primitive (stream) '(:int) :void)
+       (3bgl-glsl::emit-vertex () '() :void)
+       (3bgl-glsl::end-primitive () '() :void))
 
       ;; 8.16 shader invocation control functions
       ;; todo: restrict to tessellation control and compute shaders
       (add/s
-       (glsl::barrier () () :void))
+       (3bgl-glsl::barrier () () :void))
 
       ;; 8.17 Shader memory control functions
       ;; all shader types
       (add/s
-       (glsl::memory-barrier () () :void)
-       (glsl::memory-barrier-atomic-counter () () :void)
-       (glsl::memory-barrier-buffer () () :void)
-       (glsl::memory-barrier-shared () () :void)
-       (glsl::memory-barrier-image () () :void)
-       (glsl::group-memory-barrier () () :void))
+       (3bgl-glsl::memory-barrier () () :void)
+       (3bgl-glsl::memory-barrier-atomic-counter () () :void)
+       (3bgl-glsl::memory-barrier-buffer () () :void)
+       (3bgl-glsl::memory-barrier-shared () () :void)
+       (3bgl-glsl::memory-barrier-image () () :void)
+       (3bgl-glsl::group-memory-barrier () () :void))
 
 
       ;; vector/matrix constructors
@@ -1560,35 +1577,35 @@
                                                                    base))))))))
 
       (add/m
-       (glsl::bvec2 (a &optional b) 2 :bvec2)
-       (glsl::bvec3 (a &optional b c) 3 :bvec3)
-       (glsl::bvec4 (a &optional b c d) 4 :bvec4)
+       (3bgl-glsl::bvec2 (a &optional b) 2 :bvec2)
+       (3bgl-glsl::bvec3 (a &optional b c) 3 :bvec3)
+       (3bgl-glsl::bvec4 (a &optional b c d) 4 :bvec4)
 
-       (glsl::ivec2 (a &optional b) 2 :ivec2)
-       (glsl::ivec3 (a &optional b c) 3 :ivec3)
-       (glsl::ivec4 (a &optional b c d) 4 :ivec4)
+       (3bgl-glsl::ivec2 (a &optional b) 2 :ivec2)
+       (3bgl-glsl::ivec3 (a &optional b c) 3 :ivec3)
+       (3bgl-glsl::ivec4 (a &optional b c d) 4 :ivec4)
 
-       (glsl::uvec2 (a &optional b) 2 :uvec2)
-       (glsl::uvec3 (a &optional b c) 3 :uvec3)
-       (glsl::uvec4 (a &optional b c d) 4 :uvec4)
+       (3bgl-glsl::uvec2 (a &optional b) 2 :uvec2)
+       (3bgl-glsl::uvec3 (a &optional b c) 3 :uvec3)
+       (3bgl-glsl::uvec4 (a &optional b c d) 4 :uvec4)
 
-       (glsl::vec2 (a &optional b) 2 :vec2)
-       (glsl::vec3 (a &optional b c) 3 :vec3)
-       (glsl::vec4 (a &optional b c d) 4 :vec4)
+       (3bgl-glsl::vec2 (a &optional b) 2 :vec2)
+       (3bgl-glsl::vec3 (a &optional b c) 3 :vec3)
+       (3bgl-glsl::vec4 (a &optional b c d) 4 :vec4)
 
-       (glsl::dvec2 (a &optional b) 2 :dvec2)
-       (glsl::dvec3 (a &optional b c) 3 :dvec3)
-       (glsl::dvec4 (a &optional b c d) 4 :dvec4)
+       (3bgl-glsl::dvec2 (a &optional b) 2 :dvec2)
+       (3bgl-glsl::dvec3 (a &optional b c) 3 :dvec3)
+       (3bgl-glsl::dvec4 (a &optional b c d) 4 :dvec4)
 
-       (glsl::mat2 (a &optional b c d) 4 :mat2)
-       (glsl::mat2x3 (a &optional b c d e f) 6 :mat2x3)
-       (glsl::mat2x4 (a &optional b c d e f g h) 8 :mat2x4)
-       (glsl::mat3x2 (a &optional b c d e f) 6 :mat3x2)
-       (glsl::mat3 (a &optional b c d e f g h i) 9  :mat3)
-       (glsl::mat3x4 (a &optional b c d e f g h i j k l) 12  :mat3x4)
-       (glsl::mat4x2 (a &optional b c d e f g h) 8  :mat4x2)
-       (glsl::mat4x3 (a &optional b c d e f g h i j k l) 12 :mat4x3)
-       (glsl::mat4 (a &optional b c d e f g h i j k l m n o p) 16 :mat4))
+       (3bgl-glsl::mat2 (a &optional b c d) 4 :mat2)
+       (3bgl-glsl::mat2x3 (a &optional b c d e f) 6 :mat2x3)
+       (3bgl-glsl::mat2x4 (a &optional b c d e f g h) 8 :mat2x4)
+       (3bgl-glsl::mat3x2 (a &optional b c d e f) 6 :mat3x2)
+       (3bgl-glsl::mat3 (a &optional b c d e f g h i) 9  :mat3)
+       (3bgl-glsl::mat3x4 (a &optional b c d e f g h i j k l) 12  :mat3x4)
+       (3bgl-glsl::mat4x2 (a &optional b c d e f g h) 8  :mat4x2)
+       (3bgl-glsl::mat4x3 (a &optional b c d e f g h i j k l) 12 :mat4x3)
+       (3bgl-glsl::mat4 (a &optional b c d e f g h i j k l m n o p) 16 :mat4))
       ;; todo :dmat*
 
       (add/s

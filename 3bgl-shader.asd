@@ -8,7 +8,7 @@
                (:file "infer")
                (:file "glsl-base")
                (:file "cl-functions")
-               (:file "glsl420")
+               (:file "glsl")
                (:file "finalize-inference")
                (:file "printer")
                (:file "compiler")

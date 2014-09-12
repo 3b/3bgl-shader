@@ -34,7 +34,7 @@
 
 ;;; first pass: expand macros, extract function definitions into environments
 ;;; (should basically just leave variable definitions/initialization?)
-(defclass extract-functions (glsl::glsl-walker)
+(defclass extract-functions (3bgl-glsl::glsl-walker)
   ())
 
 ;;; list of new functions (used to tell which functions were just
@@ -48,21 +48,21 @@
 (defwalker extract-functions (defun name lambda-list &body body+d)
   (multiple-value-bind (body declare doc)
       (alexandria:parse-body body+d :documentation t)
-    (let ((glsl::*current-function*
+    (let ((3bgl-glsl::*current-function*
             (process-type-declarations-for-scope
              (add-function name lambda-list
                            nil
                            :declarations declare :docs doc)))
           (*function-stages* t))
-      (clrhash (bindings-used-by glsl::*current-function*))
+      (clrhash (bindings-used-by 3bgl-glsl::*current-function*))
       (when (boundp '*new-function-definitions*)
-        (pushnew glsl::*current-function* *new-function-definitions*))
-      (setf (body glsl::*current-function*)
-            (with-lambda-list-vars (glsl::*current-function*) (@@ body)))
+        (pushnew 3bgl-glsl::*current-function* *new-function-definitions*))
+      (setf (body 3bgl-glsl::*current-function*)
+            (with-lambda-list-vars (3bgl-glsl::*current-function*) (@@ body)))
       ;; if *function-stages* is NIL, we got bindings that only exist
       ;; in disjoint sets of stages...
       (assert *function-stages*)
-      (setf (valid-stages glsl::*current-function*)
+      (setf (valid-stages 3bgl-glsl::*current-function*)
             (alexandria:ensure-list *function-stages*)))
     nil))
 
@@ -80,10 +80,10 @@
                                 (pushnew (list name (get-variable-binding name))
                                          *new-global-definitions*)))))))))
   (track-globals defconstant defparameter
-                 glsl:defconstant glsl::%defconstant
-                 glsl:attribute glsl:uniform
-                 glsl:input glsl:output
-                 glsl:bind-interface))
+                 3bgl-glsl:defconstant 3bgl-glsl::%defconstant
+                 3bgl-glsl:attribute 3bgl-glsl:uniform
+                 3bgl-glsl:input 3bgl-glsl:output
+                 3bgl-glsl:bind-interface))
 
 (macrolet ((track-types (&rest forms)
              `(progn
@@ -168,7 +168,7 @@
 (defparameter *tree-shaker-hook* (lambda (&rest r) (declare (ignore r))))
 (defparameter *tree-shaker-type-hook* (lambda (&rest r) (declare (ignore r))))
 ;; fixme: rename this stuff, since tree-shaker doesn't use it anymore
-(defclass tree-shaker (glsl::glsl-walker)
+(defclass tree-shaker (3bgl-glsl::glsl-walker)
   ())
 
 (defmethod walk ((form function-call) (walker tree-shaker))
@@ -240,7 +240,7 @@
                      current-object)))))
     (walk current-object (make-instance 'tree-shaker))))
 
-(defclass update-calls (glsl::glsl-walker)
+(defclass update-calls (3bgl-glsl::glsl-walker)
   ((modified :initarg :modified :reader modified)))
 
 (defmethod walk ((form function-call) (walker update-calls))
@@ -296,7 +296,7 @@
                         (bar 2 3))
                       (if e
                           (calls-foo (foo e 1) (bar f 9))
-                          (complicated (if f (glsl::<< f 1) (glsl::>> e 1)) (glsl::<< 4 +hoge-piyo+)
+                          (complicated (if f (3bgl-glsl::<< f 1) (3bgl-glsl::>> e 1)) (3bgl-glsl::<< 4 +hoge-piyo+)
                                        :d 4)))))
                 'main
                 :vertex))
@@ -319,9 +319,9 @@
 
 
 #++
-(glsl::generate-stage :fragment 'skybox-shaders::fragment)
+(3bgl-glsl::generate-stage :fragment 'skybox-shaders::fragment)
 #++
-(print (glsl::generate-stage :fragment '3bgl-mesh-shaders::fragment))
+(print (3bgl-glsl::generate-stage :fragment '3bgl-mesh-shaders::fragment))
 #++
-(print (glsl::generate-stage :geometry '3bgl-mesh-shaders::tsd-geometry))
+(print (3bgl-glsl::generate-stage :geometry '3bgl-mesh-shaders::tsd-geometry))
 

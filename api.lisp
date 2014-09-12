@@ -13,7 +13,7 @@
   "list of functions to call when shader functions are
 modified. Passed a list of names of functions that have been
 modified.  May be called multiple times for same function if a whole
-file using the glsl:defun macro is recompiled, so probably should
+file using the 3bgl-glsl:defun macro is recompiled, so probably should
 store names and only update shader programs at next frame rather
 than updating programs directly from hook function.")
 
@@ -30,7 +30,7 @@ call a function defined/updated by FORM, and the (re)defined function
 itself). "
   (let ((modified-function-names nil))
     (bordeaux-threads:with-lock-held (*compiler-lock*)
-        (glsl::with-package-environment ()
+        (3bgl-glsl::with-package-environment ()
        (let ((*new-function-definitions* nil)
              (*new-type-definitions* nil)
              (*new-global-definitions* nil))
@@ -101,7 +101,7 @@ COMPILE-FORM. STAGE is :VERTEX, :FRAGMENT, :GEOMETRY, :TESS-EVAL,
 pragma in generated shader, but doesn't otherwise affect generated
 code currently. "
   (bordeaux-threads:with-lock-held (*compiler-lock*)
-   (glsl::with-package-environment (main)
+   (3bgl-glsl::with-package-environment (main)
      (let* ((*print-as-main* (get-function-binding main))
             (*current-shader-stage* stage))
        (let ((shaken (tree-shaker main)))

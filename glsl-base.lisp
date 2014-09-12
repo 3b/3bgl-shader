@@ -1,4 +1,4 @@
-(in-package #:glsl)
+(in-package #:3bgl-glsl)
 
 ;;; definitions for CL macros supported by the shader DSL
 ;;;   (and maybe some extra utilities)

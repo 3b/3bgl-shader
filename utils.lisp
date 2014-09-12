@@ -77,7 +77,7 @@ program OLD and return new program, otherwise return OLD"
            (try-shader vs (3bgl-shaders::generate-stage :vertex v))
            (try-shader fs (3bgl-shaders::generate-stage :fragment f))
            (when gs
-             (try-shader gs (glsl::generate-stage :geometry geometry)))
+             (try-shader gs (3bgl-glsl::generate-stage :geometry geometry)))
            (gl:link-program program)
            (cond
              ((gl:get-program program :link-status)

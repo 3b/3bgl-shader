@@ -64,8 +64,8 @@
    lock might be enough to avoid errors, but still get some redundant compiles
 ** DONE handle dependencies between initialization of globals
    ex (defconstant +foo+ (* +bar+ 2))
-** split out into separate repo
-** rename 'glsl' package to longer name
+** DONE split out into separate repo
+** DONE rename 'glsl' package to longer name
 ** check exports
 ** name stages :VERTEX-SHADER etc instead of :VERTEX, to match gl:create-shader?
 ** handle return type of IF better
@@ -87,6 +87,7 @@
 *** status/notes/warnings
 **** branches of IF have to unify?
 **** bad errors
+** cleanup/remove/update examples, add new examples
 * 'beta'
 ** assign priorities to constraints, process worklist in priority order?
    priority of type = 1+ highest priority of constraint with that type as 'output' or 0

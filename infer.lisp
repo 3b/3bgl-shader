@@ -366,7 +366,7 @@
 
 
 
-(defclass infer-build-constraints (glsl::glsl-walker)
+(defclass infer-build-constraints (3bgl-glsl::glsl-walker)
   ())
 
 (defun set-type (types &key constraint)
@@ -741,7 +741,7 @@
     ;; (may have already been copied if it depends on arguments)
     (if (eq (called-function form)
             (get-function-binding 'return
-                                  :env glsl::*glsl-base-environment*))
+                                  :env 3bgl-glsl::*glsl-base-environment*))
         ;; if we are calling RETURN, unify return type with function
         ;; return as well
         (let* ((r (copy-constraints (value-type called))))
@@ -1598,7 +1598,7 @@
 (multiple-value-list
  (compile-block '((defun h (a b)
                     (declare (:float b))
-                    (glsl::vec3 a b)))
+                    (3bgl-glsl::vec3 a b)))
                    'h
                    :vertex))
 
@@ -1606,7 +1606,7 @@
 (multiple-value-list
  (compile-block '((defun h (a b)
                     (declare (:float b))
-                    (+ (glsl::vec3 a b) 2.0)))
+                    (+ (3bgl-glsl::vec3 a b) 2.0)))
                    'h
                    :vertex))
 
@@ -1614,7 +1614,7 @@
 (multiple-value-list
  (compile-block '((defun h (a b)
                     (declare (:float b))
-                    (+ (glsl::mat3 a b) 2)))
+                    (+ (3bgl-glsl::mat3 a b) 2)))
                 'h
                 :vertex))
 
@@ -1648,7 +1648,7 @@
 (multiple-value-list
  (compile-block '((defun h (a b c)
                     (declare (:vec2 c) (:float a b))
-                    (glsl::smooth-step a b c)))
+                    (3bgl-glsl::smooth-step a b c)))
                    'h
                    :vertex))
 
@@ -1692,7 +1692,7 @@
 (multiple-value-list
  (compile-block '((defun h ()
                     (let ((a))
-                      (setf a (1+ (glsl::vec4 1 2 3 4))))))
+                      (setf a (1+ (3bgl-glsl::vec4 1 2 3 4))))))
                 'h
                 :vertex))
 
@@ -1700,7 +1700,7 @@
 (multiple-value-list
  (compile-block '((defun h ()
                     (let ((a))
-                      (setf (.rb a) (1+ (glsl::vec2 1 2))))))
+                      (setf (.rb a) (1+ (3bgl-glsl::vec2 1 2))))))
                 'h
                 :vertex))
 
@@ -1713,7 +1713,7 @@
                        (setf (.b a) 1
                              (.r a) 2)
                        (if (>= (.b a) 1)
-                           (return (glsl:vec4 1 2 3 4))
+                           (return (3bgl-glsl:vec4 1 2 3 4))
                            (return a)))))
                  'h
                  :vertex)))
@@ -1723,8 +1723,8 @@
 (print
  (multiple-value-list
   (compile-block '((defun h ()
-                     (return (glsl:vec2 1))
-                     (return (glsl:ivec2 1))))
+                     (return (3bgl-glsl:vec2 1))
+                     (return (3bgl-glsl:ivec2 1))))
                  'h
                  :vertex)))
 
@@ -1745,8 +1745,8 @@
  (multiple-value-list
   (compile-block '((defun p1 (g)
                      (if g
-                         (return (glsl::ivec2 1 2))
-                         (return (glsl::vec2 1 2))))
+                         (return (3bgl-glsl::ivec2 1 2))
+                         (return (3bgl-glsl::vec2 1 2))))
                    (defun h ()
                      (let ((a (p1 (> 1 2))))
                        ;(return a)
@@ -1791,8 +1791,8 @@
                      (let ((a))
                        (declare (:float a))
                       (if g
-                          (return (glsl::ivec2 1 2))
-                          (return (glsl::vec2 1 2)))))
+                          (return (3bgl-glsl::ivec2 1 2))
+                          (return (3bgl-glsl::vec2 1 2)))))
                    (defun h ()
                      (let ((a (a (> 1 2))))
                        (return (values))
@@ -1801,19 +1801,19 @@
                  :vertex)))
 
 #++
-(gethash *package* glsl::*package-environments*)
+(gethash *package* 3bgl-glsl::*package-environments*)
 #++
-(remhash *package* glsl::*package-environments*)
+(remhash *package* 3bgl-glsl::*package-environments*)
 
 #++
 (progn
-  (glsl:defconstant +foo+ 1 :float)
+  (3bgl-glsl:defconstant +foo+ 1 :float)
 
-  (glsl:defun a (a1)
+  (3bgl-glsl:defun a (a1)
     +foo+
     (return a1))
 
-  (glsl:defun b ()
+  (3bgl-glsl:defun b ()
     (a 1))
 
-  (glsl:defconstant +foo+ 1 :float))
+  (3bgl-glsl:defconstant +foo+ 1 :float))

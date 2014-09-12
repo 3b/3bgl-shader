@@ -4,7 +4,7 @@
   (:export
    :layout))
 
-(defpackage #:glsl
+(defpackage #:3bgl-glsl
   (:use :cl)
   (:shadow #:defun
            #:defconstant)
