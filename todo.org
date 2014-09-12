@@ -89,6 +89,10 @@
 *** if return value is used, return a type with casts from both branches
     instead of unifying branches directly
 ** cleanup/remove/update examples, add new examples
+** not getting dependencies right inside swizzle?
+   ex uniform named UV, only accessed as (.xy uv)
+** fix names of glsl functions with 1D, 2D, 3D
+   proofread names in general, emit-stream-vertex etc
 * 'beta'
 ** assign priorities to constraints, process worklist in priority order?
    priority of type = 1+ highest priority of constraint with that type as 'output' or 0
