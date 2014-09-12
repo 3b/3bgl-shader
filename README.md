@@ -300,8 +300,7 @@ named `out` in the vertex shader, as an input array named `ins` in the
 geometry shader, and as an input named `ins` in the fragment shader.
 
 
-
-`name` and `slot-name` in most cases can either be a symbol which will
-be automatically converted from `lisp-style` to `glslStyle`, or it can
-be a list of `(lisp-name "glslName")` to provide an explicit
-translation.
+`name` and `slot-name` in uniform/input/output/interface can either be
+a symbol which will be automatically converted from `lisp-style` to
+`glslStyle`, or it can be a list of `(lisp-name "glslName")` to
+provide an explicit translation.
