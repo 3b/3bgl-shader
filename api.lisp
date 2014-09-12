@@ -137,7 +137,7 @@ code currently. "
 
 
 
-(in-package #:glsl)
+(in-package #:3bgl-glsl)
 ;;; CL macros for the glsl API (for use with slime when working on files
 ;;;  to be loaded as glsl code)
 
