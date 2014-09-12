@@ -159,7 +159,7 @@ uniforms, inputs, outputs, etc.
 Currently no way to translate line/column numbers from glsl error
 messages back to source.
 
-Performance is acceptable for shaders i've tested it on, but not sure
+Performance is acceptable for shaders I've tested it on, but not sure
 how it scales. It currently `WARN`s if it takes more than 2000 passes
 for type inference, which may need adjusted or disabled for larger shaders.
 
@@ -168,9 +168,14 @@ recompiled when things they depend on are recompiled, which can make
 changing function signatures or types difficult if they aren't
 compatible with the uses.
 
+Recompilation may be more aggressive than it needs to be, for
+example if the value of a constant is changed, it shouldn't need to
+re-run type inference of functions that use that constant if the type
+didn't change.
+
 ### Misc notes
 
-#### concrete types
+#### Concrete types
 
 GLSL types are currently named with keywords (though that may change
 in the future), like `:vec2`, `:vec3`, `:vec4`, `:mat2x4`,
@@ -178,26 +183,26 @@ in the future), like `:vec2`, `:vec3`, `:vec4`, `:mat2x4`,
 source](https://github.com/3b/3bgl-shader/blob/master/types.lisp#L356-L476)
 for details for now, though most are fairly obvious.
 
-#### component swizzles
+#### Component swizzles
 
 Components of GLSL vector types like `:vec4` can be accessed with
 'swizzle' functions like `.xyz`, so for example glsl `someVec.rraa`
 would be `(.rraa some-vec)`. Type inference should correctly use the
 swizzle to determine minimum size of the vector if not specified.
 
-#### structure/interface slots
+#### Structure/interface slots
 
 `(@ var slot-name)` is a shortcut for `(slot-value var 'slot-name)`,
 and either will compile to `var.slot`. GLSL doesn't allow specifying a
 slot through a variable, so slot name must be a quoted compile-time
 literal.
 
-#### `RETURN`
+#### RETURN
 
 Functions are required to use `RETURN` to return values, the will not
 return the value of the last form as in CL.  A function without a
 `RETURN` will have a `void` return type.  `(return (values))` can also
-be used to force a `void` return type, for for early exit from a
+be used to force a `void` return type, and for early exit from a
 `void` function.
 
 #### Overloaded functions
@@ -267,3 +272,36 @@ implicitly restricts `Y` to also be something that casts to `vec2`.
 
 `(declare (values))` can be used to explicitly specify `void` return
 type for a function.
+
+
+#### Uniforms, input, output, interface
+
+Uniforms are specified with `(UNIFORM name type &key stage)` where
+`stage` specifies in which shader stages (`:vertex`,`:fragment` etc)
+the uniform is visible (by default the uniform is visible in all
+stages, though will only be included in generated GLSL for stages in
+which it is referenced).
+
+Inputs and outputs are specified with `(INPUT name type &key stage location)`
+and `(OUTPUT name type &key stage location)`
+where `stage` specifies in which shader stages (`:vertex`,`:fragment`
+etc) the input is visible, and `location` is an integer which will be
+output as `layout(location = 1)` in GLSL.
+
+Interfaces between stages are specified as `(INTERFACE name (&key in
+out uniform) &body slots)`. `slots` is a list of `(slot-name
+type)`. `in`, `out` and `uniform` specify how the interface will be
+visible, and are either `T` to make it visible to all stages as
+`name`, or a plist of stage names and names to use for the interface in that stage.
+
+For example `(interface varyings (:out (:vertex outs) :in (:fragment
+ins :geometry (ins "ins" :*))) ...)` will be visible as an output
+named `out` in the vertex shader, as an input array named `ins` in the
+geometry shader, and as an input named `ins` in the fragment shader.
+
+
+
+`name` and `slot-name` in most cases can either be a symbol which will
+be automatically converted from `lisp-style` to `glslStyle`, or it can
+be a list of `(lisp-name "glslName")` to provide an explicit
+translation.
