@@ -68,7 +68,6 @@
 ** rename 'glsl' package to longer name
 ** check exports
 ** name stages :VERTEX-SHADER etc instead of :VERTEX, to match gl:create-shader?
-** documentation
 ** handle return type of IF better
 *** don't try to unify types if return type isn't used
     probably add an ':ignored' or ':unused-return' keyword to WALK and
@@ -76,6 +75,18 @@
     function, all forms in progn with that flag set)
 *** if return value is used, return a type with casts from both branches
     instead of unifying branches directly
+** documentation
+*** usage (host)
+**** updating programs/modified hook
+*** usage (glsl)
+**** defining package using glsl
+**** input/uniform/interface/output
+**** optional type declarations
+*** stuff that might change
+**** type names :vec3 etc to glsl:vec3?
+*** status/notes/warnings
+**** branches of IF have to unify?
+**** bad errors
 * 'beta'
 ** assign priorities to constraints, process worklist in priority order?
    priority of type = 1+ highest priority of constraint with that type as 'output' or 0
