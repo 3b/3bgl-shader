@@ -1,0 +1,16 @@
+(defsystem :3bgl-shader
+  :depends-on (alexandria bordeaux-threads)
+  :serial t
+  :components ((:file "package")
+               (:file "ir")
+               (:file "walker")
+               (:file "types")
+               (:file "infer")
+               (:file "glsl-base")
+               (:file "cl-functions")
+               (:file "glsl420")
+               (:file "finalize-inference")
+               (:file "printer")
+               (:file "compiler")
+               (:file "api")
+               (:file "utils")))
