@@ -10,7 +10,7 @@
 ### Minimal Example shader program
 
 Just transform the vertex, and send color to be interpolated.
-(A longer (if inefficient) example can be found [here](https://github.com/3b/3bgl-misc/blob/master/skybox/shaders.lisp).)
+(More examples can be found [here](https://github.com/3b/3bgl-shader/blob/master/example-shaders.lisp).)
 
 ```Lisp
 ;; define a package for the shader functions, :USEing :3bgl-glsl and :cl
@@ -304,3 +304,17 @@ geometry shader, and as an input named `ins` in the fragment shader.
 a symbol which will be automatically converted from `lisp-style` to
 `glslStyle`, or it can be a list of `(lisp-name "glslName")` to
 provide an explicit translation.
+
+
+#### Running the example programs
+
+Example program uses GLUT and GLU, and expects GLSL version 330.
+Most lisp lisp dependencies should be available in quicklisp, aside from possibly [mathkit](https://github.com/lispgames/mathkit).
+
+Load `3bgl-shader-example.asd` through ASDF or Quicklisp, then run
+`(3bgl-shader-example:run-example)`. That should create a window with
+a spinning teapot, hit `0`-`5` keys to try the various example
+shaders.
+
+If that is working, you can open example-shaders.lisp in emacs and
+edit them and recompile as usual from slime (C-c C-c etc).
