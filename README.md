@@ -199,7 +199,7 @@ literal.
 
 #### RETURN
 
-Functions are required to use `RETURN` to return values, the will not
+Functions are required to use `RETURN` to return values, they will not
 return the value of the last form as in CL.  A function without a
 `RETURN` will have a `void` return type.  `(return (values))` can also
 be used to force a `void` return type, and for early exit from a
@@ -309,7 +309,7 @@ provide an explicit translation.
 #### Running the example programs
 
 Example program uses GLUT and GLU, and expects GLSL version 330.
-Most lisp lisp dependencies should be available in quicklisp, aside from possibly [mathkit](https://github.com/lispgames/mathkit).
+Most lisp dependencies should be available in quicklisp, aside from possibly [mathkit](https://github.com/lispgames/mathkit).
 
 Load `3bgl-shader-example.asd` through ASDF or Quicklisp, then run
 `(3bgl-shader-example:run-example)`. That should create a window with
