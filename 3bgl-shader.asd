@@ -1,5 +1,5 @@
 (defsystem :3bgl-shader
-  :depends-on (alexandria bordeaux-threads)
+  :depends-on (alexandria bordeaux-threads cl-opengl)
   :serial t
   :components ((:file "package")
                (:file "ir")
