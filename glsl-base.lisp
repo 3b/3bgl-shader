@@ -445,7 +445,7 @@
              3bgl-shaders::explicit-progn 3bgl-shaders::for-loop
              3bgl-shaders::interface-type 3bgl-shaders::concrete-type)
          form)
-        (t (break "unknown binding " binding))))))
+        (t (break "unknown binding ~s / ~s" form binding))))))
 
 
 

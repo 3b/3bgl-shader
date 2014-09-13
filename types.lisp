@@ -243,7 +243,11 @@
                                              :internal internal
                                              :glsl-name glsl-name
                                              :name name)))
-    (assert (equal (glsl-name (gethash name vb)) glsl-name))
+    ;(assert (equal (glsl-name (gethash name vb)) glsl-name))
+    (unless (equal (glsl-name (gethash name vb)) glsl-name)
+      (warn "renaming binding ~s from ~s to ~s~%"
+            name (glsl-name (gethash name vb)) glsl-name)
+      (setf (glsl-name (gethash name vb)) glsl-name))
     ;; possibly should just pass the layout qualifiers directly as a plist
     ;; rather than enumerating options here?
     (when location

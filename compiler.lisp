@@ -76,6 +76,8 @@
                             (prog1
                                 (call-next-method)
                               (when (boundp '*new-global-definitions*)
+                                (when (consp name)
+                                  (setf name (car name)))
                                 (assert (get-variable-binding name))
                                 (pushnew (list name (get-variable-binding name))
                                          *new-global-definitions*)))))))))
