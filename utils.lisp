@@ -52,7 +52,7 @@
 
 
 
-(defun reload-program (old v f &key errorp (verbose t) geometry)
+(defun reload-program (old v f &key errorp (verbose t) geometry (version 450))
   "compile program from shaders named by V and F, on success, delete
 program OLD and return new program, otherwise return OLD"
   ;; intended to be used like
@@ -74,10 +74,13 @@ program OLD and return new program, otherwise return OLD"
                     (t
                      (format (or verbose t) "shader compile failed: ~s" (gl:get-shader-info-log shader))
                      (return-from reload-program old)))))
-           (try-shader vs (3bgl-shaders::generate-stage :vertex v))
-           (try-shader fs (3bgl-shaders::generate-stage :fragment f))
+           (try-shader vs (3bgl-shaders::generate-stage :vertex v
+                                                        :version version))
+           (try-shader fs (3bgl-shaders::generate-stage :fragment f
+                                                        :version version))
            (when gs
-             (try-shader gs (3bgl-shaders::generate-stage :geometry geometry)))
+             (try-shader gs (3bgl-shaders::generate-stage :geometry geometry
+                                                          :version version)))
            (gl:link-program program)
            (cond
              ((gl:get-program program :link-status)
