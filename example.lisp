@@ -1,5 +1,7 @@
 (defpackage #:3bgl-shader-example
-  (:use #:cl))
+  (:use #:cl)
+  (:export
+   #:run-example))
 
 (in-package #:3bgl-shader-example-shaders)
 ;; combinations of shaders we will be using
@@ -185,4 +187,6 @@
      (#\Esc
       (glut:destroy-current-window)))))
 
-;;  (glut:display-window (make-instance '3bgl-shader-example-window))
+
+(defun run-example ()
+  (glut:display-window (make-instance '3bgl-shader-example-window)))
