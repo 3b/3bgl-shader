@@ -784,8 +784,8 @@
                            collect `(expand-signature ,r ,(cons 'list a))))))
       (add/s
        ;; 8.1 angle and trigonometry functions
-       (3bgl-glsl::radians (degrees) `((or ,@gen-type)) `(= 0))
-       (3bgl-glsl::degrees (radians) `((or ,@gen-type)) `(= 0))
+       (3bgl-glsl:radians (degrees) `((or ,@gen-type)) `(= 0))
+       (3bgl-glsl:degrees (radians) `((or ,@gen-type)) `(= 0))
        (sin (radians) `((or ,@gen-type)) `(= 0))
        (cos (radians) `((or ,@gen-type)) `(= 0))
        (tan (radians) `((or ,@gen-type)) `(= 0))
@@ -803,31 +803,31 @@
        (3bgl-glsl::pow (x y) `((or ,@gen-type) (= 0)) `(= 0))
        (exp (x) `((or ,@gen-type)) `(= 0))
        (log (x) `((or ,@gen-type)) `(= 0))
-       (3bgl-glsl::exp2 (x) `((or ,@gen-type)) `(= 0))
-       (3bgl-glsl::log2 (x) `((or ,@gen-type)) `(= 0))
+       (3bgl-glsl:exp2 (x) `((or ,@gen-type)) `(= 0))
+       (3bgl-glsl:log2 (x) `((or ,@gen-type)) `(= 0))
        (sqrt (x) `((or ,@gen-type ,@gen-dtype)) `(= 0))
-       ((3bgl-glsl::inverse-sqrt "inversesqrt") (x)
+       ((3bgl-glsl:inverse-sqrt "inversesqrt") (x)
         `((or ,@gen-type ,@gen-dtype)) `(= 0))
 
        ;; 8.3 common functions
        (abs (x) `((or ,@gen-type ,@gen-itype ,@gen-dtype)) `(= 0))
        ;; cl:signum -> 3bgl-glsl:sign
        (signum (x) `((or ,@gen-type ,@gen-itype ,@gen-dtype)) `(= 0))
-       (3bgl-glsl::sign (x) `((or ,@gen-type ,@gen-itype ,@gen-dtype)) `(= 0))
+       (3bgl-glsl:sign (x) `((or ,@gen-type ,@gen-itype ,@gen-dtype)) `(= 0))
        ;; todo: compiler macro to expand (floor number divisor) to
        ;; (floor (/ number divisor))?
        ;; (and same for truncate, round, ceiling, etc)
        (floor (x) `((or ,@gen-type ,@gen-dtype)) `(= 0))
        ;; cl:truncate -> 3bgl-glsl::trunc
        (truncate (x) `((or ,@gen-type ,@gen-dtype)) `(= 0))
-       (3bgl-glsl::trunc (x) `((or ,@gen-type ,@gen-dtype)) `(= 0))
+       (3bgl-glsl:trunc (x) `((or ,@gen-type ,@gen-dtype)) `(= 0))
        (round (x) `((or ,@gen-type ,@gen-dtype)) `(= 0))
-       (3bgl-glsl::round-even (x) `((or ,@gen-type ,@gen-dtype)) `(= 0))
+       (3bgl-glsl:round-even (x) `((or ,@gen-type ,@gen-dtype)) `(= 0))
        (ceiling (x) `((or ,@gen-type ,@gen-dtype)) `(= 0))
-       (3bgl-glsl::ceil (x) `((or ,@gen-type ,@gen-dtype)) `(= 0))
-       (3bgl-glsl::fract (x) `((or ,@gen-type ,@gen-dtype)) `(= 0))
+       (3bgl-glsl:ceil (x) `((or ,@gen-type ,@gen-dtype)) `(= 0))
+       (3bgl-glsl:fract (x) `((or ,@gen-type ,@gen-dtype)) `(= 0))
        (mod (x y) `((or ,@gen-type ,@gen-dtype) (=s 0)) `(= 0))
-       (3bgl-glsl::modf (x y) `((or ,@gen-type ,@gen-dtype) (:out (=s 0)))
+       (3bgl-glsl:modf (x y) `((or ,@gen-type ,@gen-dtype) (:out (=s 0)))
                         `(= 0))
 
 
@@ -836,11 +836,11 @@
        (max (x y) `((or ,@gen-type ,@gen-dtype ,@gen-itype ,@gen-utype) (=s 0))
             `(= 0))
 
-       (3bgl-glsl::clamp (x min max)
+       (3bgl-glsl:clamp (x min max)
                          `((or ,@gen-type ,@gen-dtype ,@gen-itype ,@gen-utype)
                            (=s 0) (=s 0)) '(= 0)))
 
-      (add-internal-function/full '3bgl-glsl::mix '(x y a)
+      (add-internal-function/full '3bgl-glsl:mix '(x y a)
                                   (make-ftype
                                    ` (:float
                                       ,@vec ,@vec
@@ -859,63 +859,63 @@
                                      ,@gen-btype ,@gen-btype ,@gen-btype)))
 
       (add/s
-       (3bgl-glsl::step (edge x) `((=s 1) (or ,@gen-type ,@gen-dtype)) '(= 1))
-       ((3bgl-glsl::smooth-step "smoothstep") (edge0 edge1 x) `((=s 2)
+       (3bgl-glsl:step (edge x) `((=s 1) (or ,@gen-type ,@gen-dtype)) '(= 1))
+       ((3bgl-glsl:smooth-step "smoothstep") (edge0 edge1 x) `((=s 2)
                                                                 (=s 0)
                                                                 (or ,@gen-type
                                                                     ,@gen-dtype))
         '(= 2))
-       ((3bgl-glsl::is-nan "isnan") (x) `((or ,@gen-type ,@gen-dtype))
+       ((3bgl-glsl:is-nan "isnan") (x) `((or ,@gen-type ,@gen-dtype))
         `(=# 0 :bool))
-       ((3bgl-glsl::is-inf "isinf") (x) `((or ,@gen-type ,@gen-dtype))
+       ((3bgl-glsl:is-inf "isinf") (x) `((or ,@gen-type ,@gen-dtype))
         `(=# 0 :bool))
-       (3bgl-glsl::float-bits-to-int (value) `((or ,@gen-type))
+       (3bgl-glsl:float-bits-to-int (value) `((or ,@gen-type))
                                      `(=# 0 :int))
-       (3bgl-glsl::float-bits-to-uint (value) `((or ,@gen-type))
+       (3bgl-glsl:float-bits-to-uint (value) `((or ,@gen-type))
                                       `(=# 0 :uint))
-       (3bgl-glsl::int-bits-to-float (value) `((or ,@gen-itype))
+       (3bgl-glsl:int-bits-to-float (value) `((or ,@gen-itype))
                                      `(=# 0 :float))
-       (3bgl-glsl::uint-bits-to-float (value) `((or ,@gen-utype))
+       (3bgl-glsl:uint-bits-to-float (value) `((or ,@gen-utype))
                                       `(=# 0 :float))
-       (3bgl-glsl::fma (a b c) `((or ,@gen-type ,@gen-dtype) (= 0) (= 0)) '(= 0))
-       (3bgl-glsl::frexp (x exp) `((or ,@gen-type ,@gen-dtype) (:out (=# 0 :int)))
+       (3bgl-glsl:fma (a b c) `((or ,@gen-type ,@gen-dtype) (= 0) (= 0)) '(= 0))
+       (3bgl-glsl:frexp (x exp) `((or ,@gen-type ,@gen-dtype) (:out (=# 0 :int)))
                          '(= 0))
-       (3bgl-glsl::ldexp (x exp) `((or ,@gen-type ,@gen-dtype) (=# 0 :int))
+       (3bgl-glsl:ldexp (x exp) `((or ,@gen-type ,@gen-dtype) (=# 0 :int))
                          '(= 0))
 
        ;; 8.4 floating-point pack and unpack functions
-       (3bgl-glsl::pack-unorm-2x16 (v) `(:vec2) :uint)
-       (3bgl-glsl::pack-snorm-2x16 (v) `(:vec2) :uint)
-       (3bgl-glsl::pack-unorm-4x8 (v) `(:vec2) :uint)
-       (3bgl-glsl::pack-snorm-4x8 (v) `(:vec2) :uint)
+       (3bgl-glsl:pack-unorm-2x16 (v) `(:vec2) :uint)
+       (3bgl-glsl:pack-snorm-2x16 (v) `(:vec2) :uint)
+       (3bgl-glsl:pack-unorm-4x8 (v) `(:vec2) :uint)
+       (3bgl-glsl:pack-snorm-4x8 (v) `(:vec2) :uint)
 
-       (3bgl-glsl::unpack-unorm-2x16 (v) `(:uint) :vec2)
-       (3bgl-glsl::unpack-snorm-2x16 (v) `(:uint) :vec2)
-       (3bgl-glsl::unpack-unorm-4x8 (v) `(:uint) :vec2)
-       (3bgl-glsl::unpack-snorm-4x8 (v) `(:uint) :vec2)
+       (3bgl-glsl:unpack-unorm-2x16 (v) `(:uint) :vec2)
+       (3bgl-glsl:unpack-snorm-2x16 (v) `(:uint) :vec2)
+       (3bgl-glsl:unpack-unorm-4x8 (v) `(:uint) :vec2)
+       (3bgl-glsl:unpack-snorm-4x8 (v) `(:uint) :vec2)
 
-       (3bgl-glsl::pack-double-2x32 (v) `(:uvec2) :double)
-       (3bgl-glsl::unpack-double-2x32 (v) `(:double) :uvec2)
+       (3bgl-glsl:pack-double-2x32 (v) `(:uvec2) :double)
+       (3bgl-glsl:unpack-double-2x32 (v) `(:double) :uvec2)
 
-       (3bgl-glsl::pack-half-2x16 (v) `(:vec2) :uint)
-       (3bgl-glsl::unpack-half-2x16 (v) `(:uint) :vec2)
+       (3bgl-glsl:pack-half-2x16 (v) `(:vec2) :uint)
+       (3bgl-glsl:unpack-half-2x16 (v) `(:uint) :vec2)
 
        ;; 8.5 geometric functions
        ;; geometric length, not count of elements in sequence
-       (3bgl-glsl::length (x) `((or ,@gen-type ,@gen-dtype)) '(s 0))
-       (3bgl-glsl::distance (p0 p1) `((or ,@gen-type ,@gen-dtype) (= 0)) '(s 0))
-       (3bgl-glsl::dot (x y) `((or ,@gen-type ,@gen-dtype) (= 0)) '(s 0))
-       (3bgl-glsl::cross (x y) `((or :vec3 :dvec3) (= 0)) '(= 0))
-       (3bgl-glsl::normalize (x) `((or ,@gen-type ,@gen-dtype)) '(= 0))
+       (3bgl-glsl:length (x) `((or ,@gen-type ,@gen-dtype)) '(s 0))
+       (3bgl-glsl:distance (p0 p1) `((or ,@gen-type ,@gen-dtype) (= 0)) '(s 0))
+       (3bgl-glsl:dot (x y) `((or ,@gen-type ,@gen-dtype) (= 0)) '(s 0))
+       (3bgl-glsl:cross (x y) `((or :vec3 :dvec3) (= 0)) '(= 0))
+       (3bgl-glsl:normalize (x) `((or ,@gen-type ,@gen-dtype)) '(= 0))
        ;; compat/vertex shader only
-       (3bgl-glsl::ftransform () () :vec4)
-       ((3bgl-glsl::face-forward "faceforward") (n i n-ref)
+       (3bgl-glsl:ftransform () () :vec4)
+       ((3bgl-glsl:face-forward "faceforward") (n i n-ref)
         `((or ,@gen-type ,@gen-dtype)
           (= 0)
           (= 0))
         '(= 0))
-       (3bgl-glsl::reflect (i n) `((or ,@gen-type ,@gen-dtype) (= 0)) '(= 0))
-       (3bgl-glsl::refract (i n eta) `((or ,@gen-type ,@gen-dtype) (= 0) :float)
+       (3bgl-glsl:reflect (i n) `((or ,@gen-type ,@gen-dtype) (= 0)) '(= 0))
+       (3bgl-glsl:refract (i n eta) `((or ,@gen-type ,@gen-dtype) (= 0) :float)
                            '(= 0))
 
 
@@ -1501,15 +1501,15 @@
       ;; 8.13 fragment processing functions
       (add/s
        ;; 8.13.1 derivative functions
-       ((3bgl-glsl::dfdx "dFdx") (p) `((or ,gen-type)) '(= 0))
-       ((3bgl-glsl::dfdy "dFdy") (p) `((or ,gen-type)) '(= 0))
-       ((3bgl-glsl::dfdx-fine "dFdxFine") (p) `((or ,gen-type)) '(= 0))
-       ((3bgl-glsl::dfdy-fine "dFdyFine") (p) `((or ,gen-type)) '(= 0))
-       ((3bgl-glsl::dfdx-coarse "dFdxCoarse") (p) `((or ,gen-type)) '(= 0))
-       ((3bgl-glsl::dfdy-coarse "dFdyCoarse") (p) `((or ,gen-type)) '(= 0))
-       (3bgl-glsl::fwidth (p) `((or ,gen-type)) '(= 0))
-       (3bgl-glsl::fwidth-fine (p) `((or ,gen-type)) '(= 0))
-       (3bgl-glsl::fwidth-coarse (p) `((or ,gen-type)) '(= 0))
+       ((3bgl-glsl:dfdx "dFdx") (p) `((or ,@gen-type)) '(= 0))
+       ((3bgl-glsl:dfdy "dFdy") (p) `((or ,@gen-type)) '(= 0))
+       ((3bgl-glsl:dfdx-fine "dFdxFine") (p) `((or ,gen-type)) '(= 0))
+       ((3bgl-glsl:dfdy-fine "dFdyFine") (p) `((or ,gen-type)) '(= 0))
+       ((3bgl-glsl:dfdx-coarse "dFdxCoarse") (p) `((or ,gen-type)) '(= 0))
+       ((3bgl-glsl:dfdy-coarse "dFdyCoarse") (p) `((or ,gen-type)) '(= 0))
+       (3bgl-glsl:fwidth (p) `((or ,gen-type)) '(= 0))
+       (3bgl-glsl:fwidth-fine (p) `((or ,gen-type)) '(= 0))
+       (3bgl-glsl:fwidth-coarse (p) `((or ,gen-type)) '(= 0))
 
        ;; 8.13.2 interpolation functions
        ;; these specify float/vec2/vec3/vec4 explicitly instead of gentype?

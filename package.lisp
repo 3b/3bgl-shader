@@ -14,18 +14,6 @@
                 #:layout
                 #:%glsl-macro)
   (:export
-   :<<
-   :>>
-   :^^
-   :texture-2d
-   :mat3
-   :vec3
-   :normalize
-   :length
-   :max
-   :dot
-   :sqrt
-   :pow
    :defun
    :interface
    :attribute
@@ -37,15 +25,10 @@
    :glsl-output
    :@
    :glsl-defconstant
-   :vec4
-   :step
-   :less-than
-   :fract
-   :floor
-   :vec2
-   :clamp
-   :min
-   :abs
+   :<<
+   :>>
+   :^^
+   :layout
    :generate-stage
    :glsl-input
    :gl-vertex-id
@@ -83,25 +66,258 @@
    :input
    :uniform
    :bind-interface
-   :cross
-   :layout
-   :emit-vertex
-   :end-primitive
    :gl-in
-   :reflect
-   :transpose
+
+
+   ;; bulit-in functions
+   ;; many of these are just reexported from CL:
+   :radians
+   :degrees
+   :sin
+   :cos
+   :tan
+   :asin
+   :acos
+   :atan
+   :sinh
+   :cosh
+   :tanh
+   :asinh
+   :acosh
+   :atanh
+   :pow
+   :exp
+   :log
+   :exp2
+   :log2
+   :sqrt
+   :inverse-sqrt
+   :abs
+   :signum
+   :sign
+   :floor
+   :truncate
+   :trunc
+   :round
+   :round-even
+   :ceiling
+   :ceil
+   :fract
+   :mod
+   :modf
+   :min
+   :max
+   :clamp
+   :mix
+   :step
    :smooth-step
-   :texel-fetch
-   :any
-   :all
-   :equal
-   :not-equal
+   :is-nan
+   :is-inf
+   :float-bits-to-int
+   :float-bits-to-uint
+   :int-bits-to-float
+   :uint-bits-to-float
+   :fma
+   :frexp
+   :ldexp
+   ;; 8.4 floating-point pack and unpack functions
+   :pack-unorm-2x16
+   :pack-snorm-2x16
+   :pack-unorm-4x8
+   :pack-snorm-4x8
+   :unpack-unorm-2x16
+   :unpack-snorm-2x16
+   :unpack-unorm-4x8
+   :unpack-snorm-4x8
+   :pack-double-2x32
+   :unpack-double-2x32
+   :pack-half-2x16
+   :unpack-half-2x16
+   ;; 8.5 geometric functions
+   :length
+   :distance
+   :dot
+   :cross
+   :normalize
+   ;; compat/vertex shader only
+   :ftransform
+   :face-forward
+   :reflect
+   :refract
+   ;; 8.6 matrix functions
+   :matrix-comp-mult
+   :outer-product
+   :transpose
+   :determinant
+   :inverse
+   ;; 8.7 vector relational functions
+   :less-than
    :less-than-equal
    :greater-than
    :greater-than-equal
-   :ivec4
-   :ivec3
+   :equal
+   :not-equal
+   :any
+   :all
+   ;; 8.8 integer functions
+   :uadd-carry
+   :usub-borrow
+   :umul-extended
+   :imul-extended
+   :bitfield-extract
+   :bitfield-insert
+   :bitfield-reverse
+   :bit-count
+   :find-lsb
+   :find-msb
+   ;; 8.9 Texture Functions
+   :texture-size
+   :texture-query-lod
+   :texture-query-levels
+   :texture-samples
+   :texture
+   :texture-proj
+   :texture-lod
+   :texture-offset
+   :texel-fetch
+   :texel-fetch-offset
+   :texture-proj-offset
+   :texture-lod-offset
+   :texture-proj-lod
+   :texture-proj-lod-offset
+   :texture-grad
+   :texture-grad-offset
+   :texture-proj-grad
+   :texture-proj-grad-offset
+   ;; 8.9.3 texture gather functions
+   :texture-gather
+   :texture-gather-offset
+   :texture-gather-offsets
+
+
+   ;; 8.9.4 compatibility profile
+   :texture-1d
+   :texture-1d-proj
+   :texture-1d-lod
+   :texture-1d-proj-lod
+   :texture-2d
+   :texture-2d-proj
+   :texture-2d-lod
+   :texture-2d-proj-lod
+   :texture-3d
+   :texture-3d-proj
+   :texture-3d-lod
+   :texture-3d-proj-lod
+   :texture-cube
+   :texture-cube-lod
+   :shadow-1d
+   :shadow-2d
+   :shadow-1d-proj
+   :shadow-2d-proj
+   :shadow-1d-lod
+   :shadow-2d-lod
+   :shadow-1d-proj-lod
+   :shadow-2d-proj-lod
+   ;; 8.10 atomic-counter functions
+   :atomic-counter-increment
+   :atomic-counter-decrement
+   :atomic-counter
+   ;; 8.11 atomic memory functions
+   :atomic-add
+   :atomic-min
+   :atomic-max
+   :atomic-and
+   :atomic-or
+   :atomic-xor
+   :atomic-exchange
+   :atomic-comp-swap
+   ;; 8.12 Image functions
+   :image-size
+   :image-samples
+   :image-load
+   :image-store
+   :image-atomic-add
+   :image-atomic-min
+   :image-atomic-max
+   :image-atomic-and
+   :image-atomic-or
+   :image-atomic-xor
+   :image-atomic-exchange
+   :image-atomic-comp-swap
+   ;; 8.13 fragment processing functions
+   ;; 8.13.1 derivative functions
+   :dfdx
+   :dfdy
+   :dfdx-fine
+   :dfdy-fine
+   :dfdx-coarse
+   :dfdy-coarse
+   :fwidth
+   :fwidth-fine
+   :fwidth-coarse
+   ;; 8.13.2 interpolation functions
+   ;; these specify float/vec2/vec3/vec4 explicitly instead of gentype?
+   :interpolate-at-centroid
+   :interpolate-at-sample
+   :interpolate-at-centroid
+   ;; 8.14 noise functions
+   :noise1
+   :noise2
+   :noise3
+   :noise4
+   ;; 8.15 geometry shader functions
+   :emit-stream-vertex
+   :end-stream-primitive
+   :emit-vertex
+   :end-primitive
+   ;; 8.16 shader invocation control functions
+   :barrier
+   ;; 8.17 Shader memory control functions
+   :memory-barrier
+   :memory-barrier-atomic-counter
+   :memory-barrier-buffer
+   :memory-barrier-shared
+   :memory-barrier-image
+   :group-memory-barrier
+   ;; vector/matrix constructors
+   :int
+   :uint
+   :bool
+   :float
+   :double
+   :bvec2
+   :bvec3
+   :bvec4
    :ivec2
-   :sign
-   :exp
-   :exp2))
+   :ivec3
+   :ivec4
+   :uvec2
+   :uvec3
+   :uvec4
+   :vec2
+   :vec3
+   :vec4
+   :dvec2
+   :dvec3
+   :dvec4
+   :mat2
+   :mat2x3
+   :mat2x4
+   :mat3x2
+   :mat3
+   :mat3x4
+   :mat4x2
+   :mat4x3
+   :mat4
+   :dmat2
+   :dmat2x3
+   :dmat2x4
+   :dmat3x2
+   :dmat3
+   :dmat3x4
+   :dmat4x2
+   :dmat4x3
+   :dmat4
+
+
+))
