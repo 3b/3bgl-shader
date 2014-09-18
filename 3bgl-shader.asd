@@ -13,4 +13,5 @@
                (:file "printer")
                (:file "compiler")
                (:file "api")
+               (:file "old-utils")
                (:file "utils")))
