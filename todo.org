@@ -92,7 +92,8 @@
     function, all forms in progn with that flag set)
 *** if return value is used, return a type with casts from both branches
     instead of unifying branches directly
-** cleanup/remove/update examples, add new examples
+** DONE cleanup/remove/update examples, add new examples
+   CLOSED: [2014-09-13 Sat 08:13]
 ** not getting dependencies right inside swizzle?
    ex uniform named UV, only accessed as (.xy uv)
 * 'beta'
