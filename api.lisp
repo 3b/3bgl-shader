@@ -99,40 +99,66 @@ depends on should already have been successfully compiled with
 COMPILE-FORM. STAGE is :VERTEX, :FRAGMENT, :GEOMETRY, :TESS-EVAL,
 :TESS-CONTROL, or :COMPUTE. VERSION specifies the value of the version
 pragma in generated shader, but doesn't otherwise affect generated
-code currently. "
+code currently. Returns a list of active uniforms in the
+form (LISP-NAME \"glslName\" type) as second value, and a list of
+active attributes in same format as third value."
   (bordeaux-threads:with-lock-held (*compiler-lock*)
-   (3bgl-glsl::with-package-environment (main)
-     (let* ((*print-as-main* (get-function-binding main))
-            (*current-shader-stage* stage))
-       (let ((shaken (tree-shaker main)))
-         (let ((inferred-types
-                 (finalize-inference (get-function-binding main))))
-           (format t "~%~&~&generate-stage: main = ~s~%" main)
-           (format t "shaken = ~s~%" shaken)
-           (with-output-to-string (*standard-output*)
-             (format t "#version ~a~%" version)
-             (loop with dumped = (make-hash-table)
-                   for object in shaken
-                   for stage-binding = (stage-binding object)
-                   for interface-block = (when stage-binding
-                                           (interface-block stage-binding))
-                   unless (and interface-block (gethash interface-block dumped))
-                     do (typecase object
-                          ((or generic-type interface-binding constant-binding)
-                           (unless (internal object)
-                             (pprint-glsl object)
-                             (when interface-block
-                               (setf (gethash interface-block dumped) t))))
-                          (global-function
-                           (let ((overloads (gethash object inferred-types)))
-                             (assert overloads)
-                             (loop for overload in overloads
-                                   for *binding-types*
-                                     = (gethash overload
-                                                (final-binding-type-cache
-                                                 object))
-                                   do (assert *binding-types*)
-                                      (pprint-glsl object)))))))))))))
+    (3bgl-glsl::with-package-environment (main)
+      (let* ((*print-as-main* (get-function-binding main))
+             (*current-shader-stage* stage)
+             (uniforms)
+             (attributes))
+        (let ((shaken (tree-shaker main)))
+          (let ((inferred-types
+                  (finalize-inference (get-function-binding main))))
+            (format t "~%~&~&generate-stage: main = ~s~%" main)
+            (format t "shaken = ~s~%" shaken)
+            (loop for s in shaken
+                  for i = (when (typep s 'interface-binding)
+                            (stage-binding s))
+                  when i
+                    do (format t " ~s binding ~s / ~s = ~s~%"
+                               (interface-qualifier i)
+                                  (name s) (translate-name s)
+                                  (name (binding i)))
+                       (case (interface-qualifier i)
+                         (:uniform
+                          (pushnew (list (name s) (translate-name s)
+                                         (name (binding i)))
+                                   uniforms :test 'equal))
+                         (:in
+                          (when (eq stage :vertex)
+                            (pushnew (list (name s) (translate-name s)
+                                           (name (binding i)))
+                                     attributes :test 'equal)))))
+            ;(break "shaken" shaken)
+            (values
+             (with-output-to-string (*standard-output*)
+               (format t "#version ~a~%" version)
+               (loop with dumped = (make-hash-table)
+                     for object in shaken
+                     for stage-binding = (stage-binding object)
+                     for interface-block = (when stage-binding
+                                             (interface-block stage-binding))
+                     unless (and interface-block (gethash interface-block dumped))
+                       do (typecase object
+                            ((or generic-type interface-binding constant-binding)
+                             (unless (internal object)
+                               (pprint-glsl object)
+                               (when interface-block
+                                 (setf (gethash interface-block dumped) t))))
+                            (global-function
+                             (let ((overloads (gethash object inferred-types)))
+                               (assert overloads)
+                               (loop for overload in overloads
+                                     for *binding-types*
+                                       = (gethash overload
+                                                  (final-binding-type-cache
+                                                   object))
+                                     do (assert *binding-types*)
+                                        (pprint-glsl object)))))))
+             uniforms
+             attributes)))))))
 
 
 

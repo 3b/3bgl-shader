@@ -318,3 +318,12 @@ shaders.
 
 If that is working, you can open example-shaders.lisp in emacs and
 edit them and recompile as usual from slime (C-c C-c etc).
+
+
+#### Getting names of uniforms/vertex attributes
+
+In addition to generated GLSL source, `GENERATE-STAGE` returns a list
+of uniforms as 2nd value, and attributes in 3rd value. Both are in
+form `(lisp-name "glslName" TYPE)` for each entry. There isn't
+currently any dead-code elimination, so listed names may not actually
+be active in the final shader program.
