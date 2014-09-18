@@ -111,13 +111,13 @@ active attributes in same format as third value."
         (let ((shaken (tree-shaker main)))
           (let ((inferred-types
                   (finalize-inference (get-function-binding main))))
-            (format t "~%~&~&generate-stage: main = ~s~%" main)
-            (format t "shaken = ~s~%" shaken)
+            #++(format t "~%~&~&generate-stage: main = ~s~%" main)
+            #++(format t "shaken = ~s~%" shaken)
             (loop for s in shaken
                   for i = (when (typep s 'interface-binding)
                             (stage-binding s))
                   when i
-                    do (format t " ~s binding ~s / ~s = ~s~%"
+                    do #++(format t " ~s binding ~s / ~s = ~s~%"
                                (interface-qualifier i)
                                   (name s) (translate-name s)
                                   (name (binding i)))
