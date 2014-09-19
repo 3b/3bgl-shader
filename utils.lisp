@@ -95,6 +95,63 @@
 (defun (setf uniform) (new-value program &rest names-and-indices)
   (apply #'(setf %uniform) new-value program names-and-indices))
 
+;; duplicated from cl-opengl so we can change default of TRANSPOSE arg :/
+(macrolet ((def (n % comp)
+             `(defun ,n (location matrices &optional (transpose nil))
+                (assert (or (typep (aref matrices 0) 'number)
+                            (typep (aref matrices 0) 'array)))
+                #+sbcl
+                (when (typep matrices '(simple-array single-float (,comp)))
+                  (sb-sys:with-pinned-objects (matrices)
+                    (return-from ,n
+                      (,% location 1 transpose
+                          (sb-sys:vector-sap matrices)))))
+                #+ccl
+                (when (typep matrices '(simple-array single-float (,comp)))
+                  ;; we need to be a bit more careful with CCL, since
+                  ;; CCL:WITH-POINTER-TO-IVECTOR inhibits GC,  so we
+                  ;; try to avoid signalling an error inside it
+                  (handler-case
+                      (ccl:with-pointer-to-ivector (p matrices)
+                        (return-from ,n
+                          (,% location 1 transpose p)))
+                    ;; resignal any errors outside the 'no GC' scope
+                    (error (e) (error e))))
+                (let* ((matrices (if (typep (aref matrices 0) 'vector)
+                                     matrices
+                                     (vector matrices)))
+                       (matrix-count (length matrices)))
+                  (cffi:with-foreign-object (array '%gl:float
+                                             (* matrix-count ,comp))
+                    (loop for matrix across matrices
+                          for i from 0
+                          do (when (typep matrix '(simple-array single-float
+                                                   (,comp)))
+                               (loop for j below ,comp
+                                     do (setf (cffi:mem-aref array '%gl:float
+                                                             (+ j (* i ,comp)))
+                                              (row-major-aref matrix j)))
+                               (loop for j below ,comp
+                                     do (setf (cffi:mem-aref array '%gl:float
+                                                             (+ j (* i ,comp)))
+                                              (float (row-major-aref matrix j)
+                                                     1.0)))))
+                    (,% location matrix-count transpose array)))))
+           (d (&rest defs)
+             `(progn
+                ,@(loop for def in defs collect `(def ,@def)))))
+  (d (uniform-matrix-2fv %gl:uniform-matrix-2fv 4)
+     (uniform-matrix-2x3-fv %gl:uniform-matrix-2x3-fv 6)
+     (uniform-matrix-2x4-fv %gl:uniform-matrix-2x4-fv 8)
+
+     (uniform-matrix-3x2-fv %gl:uniform-matrix-3x2-fv 6)
+     (uniform-matrix-3fv %gl:uniform-matrix-3fv 9)
+     (uniform-matrix-3x4-fv %gl:uniform-matrix-3x4-fv 12)
+
+     (uniform-matrix-4x2-fv %gl:uniform-matrix-4x2-fv 8)
+     (uniform-matrix-4x3-fv %gl:uniform-matrix-4x3-fv 12)
+     (uniform-matrix-4fv %gl:uniform-matrix-4fv 16)
+     ))
 (defun %reload-program (shader-program)
   (let ((source nil)
         (shaders nil)
@@ -122,23 +179,23 @@
                                (getf (gethash l (uniforms shader-program))
                                      :function)
                                (ecase type
-                                 (:float #'%gl:uniform-1f)
+                                 (:float '%gl:uniform-1f)
                                  (:vec2 #'gl:uniformfv)
                                  (:vec3 #'gl:uniformfv)
                                  (:vec4 #'gl:uniformfv)
-                                 (:int #'%gl:uniform-1i)
+                                 (:int '%gl:uniform-1i)
                                  (:ivec2 #'gl:uniformiv)
                                  (:ivec3 #'gl:uniformiv)
                                  (:ivec4 #'gl:uniformiv)
-                                 (:mat2 #'gl:uniform-matrix-2fv)
-                                 (:mat2x3 #'gl:uniform-matrix-2x3-fv)
-                                 (:mat2x4 #'gl:uniform-matrix-2x4-fv)
-                                 (:mat3x2 #'gl:uniform-matrix-3x2-fv)
-                                 (:mat3 #'gl:uniform-matrix-3fv)
-                                 (:mat3x4 #'gl:uniform-matrix-3x4-fv)
-                                 (:mat4x2 #'gl:uniform-matrix-4x2-fv)
-                                 (:mat4x3 #'gl:uniform-matrix-4x3-fv)
-                                 (:mat4 #'gl:uniform-matrix-4fv)
+                                 (:mat2 #'uniform-matrix-2fv)
+                                 (:mat2x3 #'uniform-matrix-2x3-fv)
+                                 (:mat2x4 #'uniform-matrix-2x4-fv)
+                                 (:mat3x2 #'uniform-matrix-3x2-fv)
+                                 (:mat3 #'uniform-matrix-3fv)
+                                 (:mat3x4 #'uniform-matrix-3x4-fv)
+                                 (:mat4x2 #'uniform-matrix-4x2-fv)
+                                 (:mat4x3 #'uniform-matrix-4x3-fv)
+                                 (:mat4 #'uniform-matrix-4fv)
                                  (:sampler-1d #'gl:uniformi)
                                  (:sampler-2d #'gl:uniformi)
                                  (:sampler-3d #'gl:uniformi)))))
@@ -157,6 +214,7 @@
                        (gl:attach-shader program shader))
                       (t
                        ;; fixme: make error printing and stream configurable
+                       (format t "~s~%" source)
                        (format t "~s shader compile failed: ~s"
                                stage (gl:get-shader-info-log shader))
                        (return-from %reload-program nil))))
@@ -171,6 +229,7 @@
                       (gl:get-program-info-log program))
               (return-from %reload-program nil)))
            ;; update uniforms in program
+           (setf (live-uniforms shader-program) nil)
            (loop for (name glsl-name) in all-uniforms
                  for index = (gl:get-uniform-location (program shader-program)
                                                       glsl-name)
@@ -199,6 +258,9 @@
     (alexandria:maphash-values (lambda (k) (setf dirty (or dirty k)))
                                (dirty program))
     (when dirty
+      (alexandria:maphash-keys (lambda (k)
+                                 (setf (gethash k (dirty program)) nil))
+                               (dirty program))
       (%reload-program program))
 
     (when (program program)
