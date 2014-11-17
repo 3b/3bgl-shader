@@ -316,16 +316,39 @@
           (%print ,object ,stream))
         1 *pprint-glsl*))))
 
+(defun vector->{} (x)
+  (if  (typep x 'array-initialization)
+       (with-output-to-string (s)
+         (with-standard-io-syntax (break "foo" x))
+         (format s "a{")
+         (loop for (a more) on (arguments x)
+               do (%print a s)
+               when more do (format s ", "))
+         (format s "}"))
+      x))
+
+(defmethod %print ((o array-initialization) s)
+  (format s "{~{~a~^, ~}}" (arguments o)))
+
 (defprint initialized-binding (o)
   (assert-statement)
   (let ((*in-expression* t))
-    (format t "~{~(~a ~)~}~@[~a ~]~a~@[ = ~a~]"
-            (qualifiers o)
-            (translate-type (or  (and (boundp '*binding-types*)
-                                     (gethash o *binding-types*))
-                                (value-type o)))
-            (translate-name o)
-            (initial-value-form o))))
+    (if (typep (value-type o) 'array-type)
+        (format t "~{~(~a ~)~}~@[~a ~]~a[~a]~@[ = ~a~]"
+                (qualifiers o)
+                (translate-type (or  (and (boundp '*binding-types*)
+                                          (gethash o *binding-types*))
+                                     (base-type (value-type o))))
+                (translate-name o)
+                (array-size (value-type o))
+                (initial-value-form o))
+        (format t "~{~(~a ~)~}~@[~a ~]~a~@[ = ~a~]"
+                (qualifiers o)
+                (translate-type (or  (and (boundp '*binding-types*)
+                                          (gethash o *binding-types*))
+                                     (value-type o)))
+                (translate-name o)
+                (initial-value-form o)))))
 
 (defprint binding (o)
   (assert-statement)
@@ -352,10 +375,12 @@
   ;; if function is "main", check for extra layout qualifiers
   (when (and (string= (translate-name o) "main") (layout-qualifiers o))
     (maphash (lambda (k v)
-               (format t "layout(~a~{~^,~a=~a~}) ~a;~%"
-                       (%translate-name (car v) :lc-underscore t)
-                       (loop for (a b) on (cdr v) by #'cddr
-                             collect (%translate-name a :lc-underscore t)
+               (format t "layout(~{~@[~a=~]~@[~a~^,~]~}) ~a;~%"
+                       (loop for (a b) on v by #'cddr
+                             ;; allow nil -> X or X -> X
+                             ;; to mean single element without =
+                             collect (and a (not (eq a b))
+                                          (%translate-name a :lc-underscore t))
                              collect b)
                        (translate-name k)))
              (layout-qualifiers o)))
@@ -486,15 +511,23 @@
     (cond
       ((or (interface-block b) (typep (binding b) 'bindings))
        (format t "~a ~a {~%~<  ~@;~@{~a;~^~%~}~:>~%}~@[ ~a~]~@[~a~];~%"
-               (translate-name (interface-qualifier b))
+               (mapcar ' translate-name (interface-qualifier b))
                (translate-name b)
                (bindings (or (interface-block b) (binding b)))
                (unless (interface-block b) (translate-name o))
                (array-suffix  b)))
       (t
-       (format t "~@[layout(~(~{~a = ~a~^,~}~)) ~]~a ~a ~a~@[~a~];~%"
-               (layout-qualifier b)
-               (translate-name (interface-qualifier b))
+       (format t "~@[layout(~(~{~@[~a = ~]~a~^,~}~)) ~]~{~a~^ ~} ~a ~a~@[~a~];~%"
+               (loop for (a b) on (layout-qualifier b) by #'cddr
+                     when b
+                       append (if (eq b t)
+                                  ;; :X t -> x
+                                  (list nil a)
+                                  ;; NIL :X -> x
+                                  ;; :x y -> x=y
+                                  (list (and (not (eq a b))  a)
+                                        b)))
+               (mapcar #'translate-name (interface-qualifier b))
                (translate-name (value-type b))
                (translate-name o)
                (array-suffix (value-type b)))))))

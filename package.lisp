@@ -9,12 +9,14 @@
 (defpackage #:3bgl-glsl
   (:use :cl)
   (:shadow #:defun
-           #:defconstant)
+           #:defconstant
+           #:defmacro)
   (:import-from #:3bgl-shaders
                 #:layout
                 #:%glsl-macro)
   (:export
    :defun
+   :defmacro
    :interface
    :attribute
    :output
@@ -65,6 +67,7 @@
    :gl-local-invocation-index
    :input
    :uniform
+   :shared
    :bind-interface
    :gl-in
 
@@ -317,7 +320,4 @@
    :dmat3x4
    :dmat4x2
    :dmat4x3
-   :dmat4
-
-
-))
+   :dmat4))

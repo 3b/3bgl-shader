@@ -121,7 +121,9 @@ active attributes in same format as third value."
                                (interface-qualifier i)
                                   (name s) (translate-name s)
                                   (name (binding i)))
-                       (case (interface-qualifier i)
+                       (case (if (consp (interface-qualifier i))
+                              (car (interface-qualifier i))
+                              (interface-qualifier i))
                          (:uniform
                           (pushnew (list (name s) (translate-name s)
                                          (name (binding i)))
@@ -170,6 +172,9 @@ active attributes in same format as third value."
 (cl:defmacro defun (name args &body body)
   `(3bgl-shaders::compile-form '(cl:defun ,name ,args ,@body)))
 
+(cl:defmacro defmacro (name args &body body)
+  `(3bgl-shaders::compile-form '(cl:defmacro ,name ,args ,@body)))
+
 (cl:defmacro defconstant (name value type)
   `(3bgl-shaders::compile-form '(%defconstant ,name ,value ,type)))
 
@@ -189,9 +194,17 @@ active attributes in same format as third value."
   (declare (ignore location stage))
   `(3bgl-shaders::compile-form '(output ,name ,type ,@args)))
 
-(cl:defmacro uniform (name type &rest args &key  stage location)
-  (declare (ignore location stage))
+(cl:defmacro uniform (name type &rest args &key  stage location internal layout
+                                             qualifiers
+                      &allow-other-keys)
+
+  (declare (ignore location stage internal layout qualifiers))
   `(3bgl-shaders::compile-form '(uniform ,name ,type ,@args)))
+
+(cl:defmacro shared (name type &rest args &key  stage layout qualifiers
+                     &allow-other-keys)
+  (declare (ignore stage layout qualifiers))
+  `(3bgl-shaders::compile-form '(shared ,name ,type ,@args)))
 
 (cl:defmacro bind-interface (stage block-name interface-qualifier instance-name)
   `(3bgl-shaders::compile-form '(bind-interface ,stage ,block-name

@@ -354,6 +354,12 @@
 (defmethod name ((o function-call))
   (name (called-function o)))
 
+;; hack for array initialization, (vector a b c ...) prints as {a,b,c,...}
+(defclass array-initialization (array-type)
+  ((arguments :accessor arguments :initarg :arguments)
+   (raw-arguments :accessor raw-arguments :initarg :raw-arguments)
+   (argument-environment :accessor argument-environment
+                         :initarg :argument-environment)))
 (defclass if-form ()
   ((test-form :accessor test-form :initarg :test)
    (then-form :accessor then-form :initarg :then)
@@ -367,6 +373,12 @@
 
 (defmethod walk ((form initialized-binding) walker)
   (walk (initial-value-form form) walker)
+  (when (next-method-p)
+    (call-next-method)))
+
+(defmethod walk ((form array-initialization) walker)
+  (loop for i in (arguments form)
+        do (walk i walker))
   (when (next-method-p)
     (call-next-method)))
 

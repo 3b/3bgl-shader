@@ -683,7 +683,9 @@
   (let ((binding-type (walk (binding form) walker)))
     ;; just returning array type for now...
     ;; fixme: add constraints on size
-    (value-type binding-type)))
+    (if (typep binding-type 'any-type)
+        binding-type
+        (value-type binding-type))))
 
 
 (defmethod walk ((form slot-access) (walker infer-build-constraints))
@@ -775,6 +777,9 @@
 
 (defmethod walk ((form local-variable) (walker infer-build-constraints))
   (value-type form))
+
+(defmethod walk ((form array-type) (walker infer-build-constraints))
+  (base-type form))
 
 (defmethod walk ((form binding) (walker infer-build-constraints))
   (value-type form))
@@ -1110,6 +1115,8 @@
                  (null)
                  (concrete-type
                   (funcall fun type))
+                 (array-type
+                  (funcall fun (base-type type)))
                  (constrained-type
                   (maphash (lambda (k v) (when v (map-concrete-types k fun)))
                            (types type)))
@@ -1487,8 +1494,10 @@
         for constraint = (pop *inference-worklist*)
         while constraint
         for i from 1
-        when (zerop (mod i 2000))
+        when (zerop (mod i 100000))
           do (break "~a loops in inference?" i)
+        when (zerop (mod i 2000))
+          do (format t "~a loops in inference?" i)
         do (assert (modified constraint))
         when *verbose*
           do (format t "~&~%~s: updating constraint ~s (~s left)~%"

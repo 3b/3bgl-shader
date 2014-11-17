@@ -38,7 +38,10 @@
      ;; types. also need to handle unused arguments)
      (get-type-binding :void))
     (concrete-type
-     (assert (eq type force-type)))
+     #++(assert (eq type force-type))
+     #++(break "foo" force-type)
+     (change-class type 'ref-type :equiv force-type)
+     t)
     (constrained-type
      (flatten-type force-type))))
 
@@ -136,14 +139,17 @@
       ;; loop over keys instead of maphash because inference update
       ;; might modify other parts of hash table
       (loop for k in (alexandria:hash-table-keys local-types)
-            for v = (gethash k local-types)
-            do (if (typep k '(or local-variable))
-                   (progn
-                     (when *verbose*
-                       (format t "update local variable ~s (~s)~%" (name k)
-                               (debug-type-names v)))
-                     (when (flatten-type v)
-                       (run-type-inference)))))
+            for .v = (gethash k local-types)
+            for v = (get-equiv-type .v)
+            do (unless (eq v .v)
+                 (setf (gethash k local-types) v))
+               (if (typep k '(or local-variable))
+                      (progn
+                        (when *verbose*
+                          (format t "update local variable ~s (~s)~%" (name k)
+                                  (debug-type-names v)))
+                        (when (flatten-type v)
+                          (run-type-inference)))))
 
       ;; flatten return type of function
       (flatten-type (gethash :return local-types))

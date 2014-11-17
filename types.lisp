@@ -2,7 +2,7 @@
 
 ;; fixme: rearrange stuff so this doesn't need eval-when
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (defparameter 3bgl-glsl::*glsl-base-environment*
+  (defvar 3bgl-glsl::*glsl-base-environment*
     (make-instance 'environment
                    :parent *cl-environment*)))
 
@@ -232,12 +232,16 @@
     nil))
 
 (defun in/out/uniform/attrib (qualifier %name type
-                              &key location internal stage index)
+                              &key location internal stage index layout
+                                qualifiers)
+  (format t "in/out/uniform/attrib: ~@{ ~s~}~%"  qualifier %name type
+           location internal stage index layout
+          qualifiers)
   ;; possibly should have generic '&rest args' instead of enumerating options?
   (let ((vb (variable-bindings *environment*))
         (name (if (consp %name) (car %name) %name))
         (glsl-name (if (consp %name) (cadr %name)))
-        (layout-qualifier nil))
+        (layout-qualifier (copy-list layout)))
     (unless (typep (gethash name vb) 'interface-binding)
       (setf (gethash name vb) (make-instance 'interface-binding
                                              :internal internal
@@ -259,7 +263,7 @@
     (setf (getf (stage-bindings (gethash name vb)) stage)
           (make-instance 'interface-stage-binding
                          :stage stage
-                         :interface-qualifier qualifier
+                         :interface-qualifier (cons qualifier qualifiers)
                          :layout-qualifier layout-qualifier
                          :binding (or (get-type-binding type) type)))))
 
@@ -280,9 +284,19 @@
   nil)
 
 (%glsl-macro 3bgl-glsl::uniform (%name type &key location (stage t)
-                                       internal)
+                                       internal layout qualifiers)
   (in/out/uniform/attrib :uniform %name type
-                         :location location :internal internal :stage stage)
+                         :location location :internal internal :stage stage
+                         :layout layout
+                         :qualifiers qualifiers)
+  nil)
+
+(%glsl-macro 3bgl-glsl::shared (%name type &key (stage t) layout
+                                      qualifiers)
+  (in/out/uniform/attrib :shared %name type
+                         :stage stage
+                         :layout layout
+                         :qualifiers qualifiers)
   nil)
 
 
@@ -334,10 +348,13 @@
                     (setf (declared-type scope) type)))
                  ;; 'layout' declarations (for geometry shaders, etc)
                  ;; (layout (:in primitive &rest) (:out prim &rest args) ...)
+                 ;; for compute: (:in nil &key local-size-x local-size-y loccal-size-z ...)
                  ((eql decl 'layout)
                   (loop for (car . cdr) in args
                         do (setf (gethash car (layout-qualifiers scope))
-                                 cdr)))
+                                 ;; store first entry twice so we can treat
+                                 ;; whole list relatively uniformly
+                                 (cons (car cdr) cdr))))
                  ;; ignore any other known declarations for now
                  ((member decl *known-declarations*)
                   )

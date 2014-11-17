@@ -122,6 +122,16 @@
 *** reorganize code
 ** add somewhere to mark functions as vertex/fragment/etc only
    (declare (glsl:stage :vertex ...))?
+** better handling for qualifiers for images (readonly, writeonly, etc)
+   need to include in type so they can propagate from uniforms
+   to function arguments, probably should veryify read/writeability
+   in load/store
+** add qualifiers to function arglists (declarations?)
+   ex readonly/writeonly/etc for images
+** figure out if optional arguments are working properly
+   particularly during recompilation of existing shaders
+** handle unused arguments better during type inference
+** make sure -1 derives type in instead of uint?
 * 'done'
 ** cache glsl from compiled shaders, add option to remove intermediate data
    for use in final release, don't need to retain all the type
@@ -160,6 +170,8 @@
      a. be an error
      b. force A to be a float
      c. add a constraint that a can implicit-cast to float
+** don't use reserved words as identifiers
+   at a minimum, error, preferably rename
 * would be nice
 ** remove unused variables
 ** detect/remove dead code (after RETURN, etc)

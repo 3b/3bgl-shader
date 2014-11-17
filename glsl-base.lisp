@@ -103,7 +103,7 @@
   (3bgl-shaders::add-symbol-macro name expansion)
   nil)
 
-(%glsl-macro defmacro (name lambda-list &body body)
+(%glsl-macro cl:defmacro (name lambda-list &body body)
   ;; fixme: extract docstrings/declarations from body
   #++(format t "define macro ~s~%" name)
   (3bgl-shaders::add-macro name
@@ -374,6 +374,17 @@
          (make-instance '3bgl-shaders::array-access
                         :binding (3bgl-shaders::walk (first cdr) walker)
                         :index (3bgl-shaders::walk (second cdr) walker)))
+        ((eq car 'vector)
+         ;; todo: fix type inference/dependency tracking so we can get
+         ;; rid of this
+         (unless (every 'atom cdr)
+           (error "can't handle function calls in array initialization yet"))
+         (make-instance '3bgl-shaders::array-initialization
+                        :raw-arguments cdr
+                        :argument-environment 3bgl-shaders::*environment*
+                        :arguments (mapcar (lambda (x)
+                                             (3bgl-shaders::walk x walker))
+                                           cdr)))
         ;; not sure about syntax for slot/swizzle, for now
         ;; using (@ struct slot) or (slot-value struct 'slot) for slot access
         ;; and (.xyz vec) for swizzle
@@ -443,7 +454,8 @@
              3bgl-shaders::array-access
              3bgl-shaders::function-call 3bgl-shaders::global-function
              3bgl-shaders::explicit-progn 3bgl-shaders::for-loop
-             3bgl-shaders::interface-type 3bgl-shaders::concrete-type)
+             3bgl-shaders::interface-type 3bgl-shaders::concrete-type
+             3bgl-shaders::array-initialization)
          form)
         (t (break "unknown binding ~s / ~s" form binding))))))
 

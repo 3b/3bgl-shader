@@ -2,6 +2,9 @@
 
 ;;; newer attempt at 'nicer' interface, + helper for updating shaders
 
+;; print shaders as compiled for debugging
+(defparameter *print-shaders* nil)
+
 (defclass shader-program ()
   ((program :reader program :initform nil)
    ;; shader stage (as in gl:create-shader) -> name of function
@@ -162,7 +165,8 @@
           (loop for (%stage . name) in stages
                 for stage = (gethash %stage *stage-name-map* %stage)
                 for source = nil
-                do #++(format t "generating shader ~s @ ~s~%" name stage)
+                do (when *print-shaders*
+                     (format t "generating shader ~s @ ~s~%" name stage))
                    (multiple-value-bind (.source uniforms attributes)
                        (3bgl-shaders::generate-stage
                         stage name :version (version shader-program))
@@ -198,7 +202,11 @@
                                  (:mat4 #'uniform-matrix-4fv)
                                  (:sampler-1d #'gl:uniformi)
                                  (:sampler-2d #'gl:uniformi)
-                                 (:sampler-3d #'gl:uniformi)))))
+                                 (:sampler-3d #'gl:uniformi)
+                                 (:image-1d #'gl:uniformi)
+                                 (:image-2d #'gl:uniformi)
+                                 (:image-3d #'gl:uniformi)
+                                 ))))
                 collect (list %stage source)))
     ;; assuming failed compile signalled an error so won't get here
     (unwind-protect
@@ -211,6 +219,8 @@
                     (gl:compile-shader shader)
                     (cond
                       ((gl:get-shader shader :compile-status)
+                       (when *print-shaders*
+                         (format t "~s~%" source))
                        (gl:attach-shader program shader))
                       (t
                        ;; fixme: make error printing and stream configurable
@@ -230,6 +240,8 @@
               (return-from %reload-program nil)))
            ;; update uniforms in program
            (setf (live-uniforms shader-program) nil)
+           (when *print-shaders*
+             (format t "  uniforms = ~s~%" all-uniforms))
            (loop for (name glsl-name) in all-uniforms
                  for index = (gl:get-uniform-location (program shader-program)
                                                       glsl-name)
@@ -241,7 +253,6 @@
                       (declare (ignore v))
                       (setf (gethash k (dirty shader-program)) nil))
                     (dirty shader-program))
-           (format t "compile succeeded~%")
            ;; recompile succeeded, return T
            t)
       ;; unwind-protect cleanup: delete any created shaders, delete
