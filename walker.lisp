@@ -31,8 +31,8 @@
 (defmethod walk-cons (car cdr walker)
   (list* car (mapcar (lambda (f) (walk f walker)) cdr)))
 
-(defparameter *environment* nil "current local environment")
-(defparameter *global-environment* nil "current global environment")
+(defvar *environment* nil "current local environment")
+(defvar *global-environment* nil "current global environment")
 
 ;; todo: store declarations somewhere in env, and parse them when walking code?
 (defclass environment ()
@@ -45,7 +45,7 @@
    (variable-bindings :reader variable-bindings :initform (make-hash-table))
    (types :reader types :initform (make-hash-table))))
 
-(defparameter *cl-environment* (make-instance 'environment))
+(defvar *cl-environment* (make-instance 'environment))
 
 (defun get-variable-binding (name &key (env *environment*))
   (when (and *check-conflict-vars*

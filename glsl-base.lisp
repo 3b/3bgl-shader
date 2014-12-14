@@ -484,7 +484,7 @@
 
 
 ;; fixme: this should probably use a weak hash table
-(cl:defparameter *package-environments* (make-hash-table))
+(cl:defvar *package-environments* (make-hash-table))
 
 (cl:defun ensure-package-environment (package)
   (or (gethash package *package-environments*)
