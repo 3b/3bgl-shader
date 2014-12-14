@@ -1558,15 +1558,15 @@
       (add/s
        ;; not completely sure if mat is allowed here?
        ;; might also allow arrays?
-       (int (x) `((or :int :uint :bool :float
+       (3bgl-glsl::int (x) `((or :int :uint :bool :float
                       :double ,@ivec ,@uvec ,@vec ,@dvec ,@mat)) :int)
-       (uint (x) `((or :int :uint :bool :float
+       (3bgl-glsl::uint (x) `((or :int :uint :bool :float
                        :double  ,@ivec ,@uvec ,@vec ,@dvec ,@mat)) :uint)
-       (bool (x) `((or :int :uint :bool :float
+       (3bgl-glsl::bool (x) `((or :int :uint :bool :float
                        :double ,@ivec ,@uvec ,@vec ,@dvec ,@mat)) :bool)
        (float (x) `((or :int :uint :bool :float
                         :double ,@ivec ,@uvec ,@vec ,@dvec ,@mat)) :float)
-       (double (x) `((or :int :uint :bool :float
+       (3bgl-glsl::double (x) `((or :int :uint :bool :float
                          :double ,@ivec ,@uvec ,@vec ,@dvec ,@mat)) :double))
 
       (labels ((vec/mat-constructor (n &optional (base :float))
