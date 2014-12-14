@@ -122,7 +122,7 @@
             while i
             do (setf (modified i) nil))
 
-      ;; assign types to function arguments, rtun type inference if
+      ;; assign types to function arguments, run type inference if
       ;; any changed
       (assert (= (length argument-types) (length (bindings function))))
       (when (plusp (loop for arg in argument-types
