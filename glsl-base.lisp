@@ -384,7 +384,11 @@
                         :argument-environment 3bgl-shaders::*environment*
                         :arguments (mapcar (lambda (x)
                                              (3bgl-shaders::walk x walker))
-                                           cdr)))
+                                           cdr)
+                        :base-type t
+                        :name (if (< (length cdr) 16)
+                                  (cons car cdr)
+                                  'vector)))
         ;; not sure about syntax for slot/swizzle, for now
         ;; using (@ struct slot) or (slot-value struct 'slot) for slot access
         ;; and (.xyz vec) for swizzle

@@ -77,7 +77,8 @@
   (if (consp name)
       (make-instance 'array-type :base-type (get-type-binding (car name)
                                                              :env env)
-                     :array-size (second name))
+                     :array-size (second name)
+                     :name name)
       (and env
            (or (gethash name (types env))
                (get-type-binding name :env (parent-scope env))))))
