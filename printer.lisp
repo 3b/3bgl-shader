@@ -545,8 +545,9 @@
   (let ((b (stage-binding o)))
     (cond
       ((or (interface-block b) (typep (binding b) 'bindings))
-       (format t "~a ~a {~%~<  ~@;~@{~a;~^~%~}~:>~%}~@[ ~a~]~@[~a~];~%"
-               (mapcar ' translate-name (interface-qualifier b))
+       (format t "~{~a ~}~a {~%~<  ~@;~@{~a;~^~%~}~:>~%}~@[ ~a~]~@[~a~];~%"
+               (mapcar ' translate-name (alexandria:ensure-list
+                                         (interface-qualifier b)))
                (translate-name b)
                (bindings (or (interface-block b) (binding b)))
                (unless (interface-block b) (translate-name o))
@@ -562,7 +563,8 @@
                                   ;; :x y -> x=y
                                   (list (and (not (eq a b))  a)
                                         b)))
-               (mapcar #'translate-name (interface-qualifier b))
+               (mapcar #'translate-name (alexandria:ensure-list
+                                         (interface-qualifier b)))
                (translate-name (value-type b))
                (translate-name o)
                (array-suffix (value-type b)))))))
