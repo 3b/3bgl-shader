@@ -84,6 +84,20 @@
          ;; return t since we modified it
          t)))))
 
+(defmethod flatten-type ((type array-type) &optional force-type)
+  (assert (not force-type)) ;; todo...
+  (etypecase (base-type type)
+    (concrete-type
+     nil)
+    ;; todo: figure out what other types need handled
+    ))
+
+(defmethod flatten-type ((type ref-type) &optional force-type)
+  (flatten-type (equiv type) force-type))
+
+(defmethod get-concrete-type ((type ref-type))
+  (get-concrete-type (equiv type)))
+
 (defmethod get-concrete-type ((type concrete-type))
   type)
 
@@ -167,8 +181,9 @@
                                    (name (called-function k))
                                    (debug-type-names v)))
                          (pushnew (mapcar (lambda (a)
-                                            (flatten-type a)
-                                            (get-concrete-type a))
+                                            (when a
+                                              (flatten-type a)
+                                              (get-concrete-type a)))
                                           (cdr v))
                                   (gethash k cache nil) :test 'equal)
                          (when *verbose*
@@ -188,7 +203,8 @@
 
   ;; add any used function signatures to the hash table for printing
   (maphash (lambda (k v)
-             (when (typep k 'inference-call-site)
+             (when (and (typep k 'inference-call-site)
+                        (typep (called-function k) 'global-function))
                (flatten-function (called-function k) (car v))))
            (gethash argument-types (final-binding-type-cache function)))
   (unless (gethash function *instantiated-overloads*)

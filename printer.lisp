@@ -185,10 +185,11 @@
 ;;; printers for calls to "internal-function" variants
 (defparameter *internal-function-printers* (make-hash-table))
 
-(defmacro defprinti ((form &rest args) () &body body)
+(defmacro defprinti ((form &rest args) (&optional (call (gensym))) &body body)
   (alexandria:with-gensyms (stream object)
     `(setf (gethash ',form *internal-function-printers*)
-           (lambda (,stream ,object)
+           (lambda (,stream ,object &key ((:call ,call) nil))
+             (declare (ignorable ,call))
              ;; OBJECT is a FUNCTION-CALL instance, (called-function object)
              ;; should be a INTERNAL-FUNCTION, with NAME eq FORM
              (let ((*standard-output* ,stream))
@@ -259,6 +260,23 @@
   (let ((*in-expression* t))
     (format t "(--~a)" x)))
 
+(defmethod integral-type ((type concrete-type))
+  (and (scalar/vector-set type)
+       (member (name (aref (scalar/vector-set type) 1))
+               '(:int :uint))))
+
+(defmethod integral-type ((type constrained-type))
+  (some #'integral-type (alexandria:hash-table-keys (types type))))
+
+(defprinti (mod a b) (call)
+  (let ((*in-expression* t)
+        (type (gethash call *binding-types*)))
+    #++(with-standard-io-syntax
+      (break "mod" a b call *binding-types*))
+    (assert type)
+    (if (integral-type (first type))
+        (format t "(~a % ~a)" a b)
+        (format t "mod(~a, ~a)" a b))))
 
 
 ;; only handling binary versions of compare ops for now,
@@ -276,7 +294,6 @@
             (> ">")
             (<= "<=")
             (>= ">=")))
-
 
 (defprinti (ash i c) ()
   (cond
@@ -317,28 +334,43 @@
         1 *pprint-glsl*))))
 
 (defun vector->{} (x)
-  (if  (typep x 'array-initialization)
-       (with-output-to-string (s)
-         (with-standard-io-syntax (break "foo" x))
-         (format s "a{")
-         (loop for (a more) on (arguments x)
-               do (%print a s)
-               when more do (format s ", "))
-         (format s "}"))
-      x))
+  (typecase x
+    (array-initialization
+     (with-output-to-string (s)
+       (with-standard-io-syntax (break "foo1" x))
+       (format s "{")
+       (loop for (a more) on (arguments x)
+             do (%print a s)
+             when more do (format s ", "))
+       (format s "}")))
+    (vector
+     (with-output-to-string (s)
+       (with-standard-io-syntax (break "foo2" x))
+       (format s "{")
+       (loop for a across x
+             for i from 0
+             do (%print a s)
+             while (< i (length x))
+             do (format s ", "))
+       (format s "}"))
+     )
+    (t x)))
 
-(defmethod %print ((o array-initialization) s)
-  (format s "{~{~a~^, ~}}" (arguments o)))
+(defprint array-initialization (o)
+  #++(format t "{~{~a~^, ~}}" (arguments o))
+  (format t "(~{~a~^, ~})" (arguments o)))
 
 (defprint initialized-binding (o)
   (assert-statement)
   (let ((*in-expression* t))
     (if (typep (value-type o) 'array-type)
-        (format t "~{~(~a ~)~}~@[~a ~]~a[~a]~@[ = ~a~]"
+        (format t #++"~{~(~a ~)~}~@[~a ~]~a[~a]~@[ = ~a~]"
+                "~{~(~a ~)~}~@[~a ~]~a[~a]~@[ = ~3:*~a[]~2*~a~]"
                 (qualifiers o)
-                (translate-type (or  (and (boundp '*binding-types*)
+                (translate-type (base-type
+                                 (or (and (boundp '*binding-types*)
                                           (gethash o *binding-types*))
-                                     (base-type (value-type o))))
+                                     (value-type o))))
                 (translate-name o)
                 (array-size (value-type o))
                 (initial-value-form o))
@@ -349,6 +381,9 @@
                                      (value-type o)))
                 (translate-name o)
                 (initial-value-form o)))))
+(format nil "~{~(~a ~)~}~@[~a ~]~a[~a]~@[ = ~2:*~a[]~1*~a~]"
+        '(1) 2 3 4 5)
+
 
 (defprint binding (o)
   (assert-statement)
@@ -400,12 +435,12 @@
     (typecase f
       (internal-function
        (funcall (gethash (name f) *internal-function-printers*
-                         (lambda (s args)
+                         (lambda (s args &key &allow-other-keys)
                            (let ((*in-expression* t))
                              (format s "~a~<(~;~@{~:_~a~#[~:;, ~]~}~;)~:>"
                                      (or (translate-name f) (name f))
                                      args))))
-                *standard-output* args))
+                *standard-output* args :call o))
       (t
        (let ((*in-expression* t))
          (format t "~a~<(~;~@{~:_~a~#[~:;, ~]~}~;)~:>"

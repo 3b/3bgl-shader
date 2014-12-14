@@ -451,6 +451,8 @@
                         :binding binding))
         (number
          form)
+        (vector
+         form)
 
         ((or 3bgl-shaders::variable-read 3bgl-shaders::variable-write
              3bgl-shaders::binding-scope

@@ -371,6 +371,8 @@
 
 (defun set-type (types &key constraint)
   (etypecase types
+    (array-type
+     types)
     ((eql t)
      (make-instance 'any-type
                     :constraints (alexandria:plist-hash-table
@@ -635,7 +637,7 @@
   (loop for a in (body form) do (walk a walker)))
 
 (defmethod walk ((form swizzle-access) (walker infer-build-constraints))
-  (let* ((binding-type (walk (binding form) walker))
+  (let* ((binding-type (get-equiv-type (walk (binding form) walker)))
          (n (length (field form)))
          ;; fixme: don't hard code this?
          (vector-types #(()
@@ -658,6 +660,10 @@
             ((and (typep binding-type 'constrained-type)
                   (= 1 (hash-table-count (types binding-type))))
              (error "shouldn't happen anymore?"))
+            ((typep binding-type 'array-type)
+             (assert (typep (base-type binding-type)
+                            'concrete-type))
+             (aref (scalar/vector-set (base-type binding-type)) n))
             (t
              (let ((c (make-instance 'same-base-type-different-size-constraint
                                      :out-size n
@@ -681,6 +687,8 @@
 
 (defmethod walk ((form array-access) (walker infer-build-constraints))
   (let ((binding-type (walk (binding form) walker)))
+    ;; walk index calculation
+    (walk (index form) walker)
     ;; just returning array type for now...
     ;; fixme: add constraints on size
     (if (typep binding-type 'any-type)
@@ -737,8 +745,12 @@
                                 nil)
                             :cast (and arg (allow-casts binding))
                             :name (name binding)))))
-      (when call-site
-        (setf (gethash call-site *current-function-local-types*) a)))
+      (if call-site
+          (setf (gethash call-site *current-function-local-types*) a)
+          ;; add calls to internal functions as well so we can
+          ;; print them specially depending on types
+          ;; (ex MOD -> mod() for floats, % for ints)
+          (setf (gethash form *current-function-local-types*) a)))
     ;; copy return type and any linked constraints
     ;; (may have already been copied if it depends on arguments)
     (if (eq (called-function form)
@@ -1121,7 +1133,8 @@
                   (maphash (lambda (k v) (when v (map-concrete-types k fun)))
                            (types type)))
                  (optional-arg-type
-                  (map-concrete-types (arg-type type) fun))))
+                  (map-concrete-types (arg-type type) fun))
+                 ((eql t) t)))
              (handle-fixed-constraint ()
                (when (or (and (not any-in)
                               (zerop (hash-table-count in-casts)))

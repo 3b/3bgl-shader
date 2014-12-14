@@ -600,6 +600,8 @@
                                                 (append vec mat ivec
                                                         fxv fxm ixv))))
     ;; glsl % operator (no 2nd value from CL operator for now)
+    ;; combined with glsl 'mod' function below
+    #++
     (add-internal-function/full 'mod '(a b) (make-ftype
                                              (append gen-itype gen-utype
                                                      ivec uvec ivec uvec)
@@ -826,7 +828,11 @@
        (ceiling (x) `((or ,@gen-type ,@gen-dtype)) `(= 0))
        (3bgl-glsl:ceil (x) `((or ,@gen-type ,@gen-dtype)) `(= 0))
        (3bgl-glsl:fract (x) `((or ,@gen-type ,@gen-dtype)) `(= 0))
-       (mod (x y) `((or ,@gen-type ,@gen-dtype) (=s 0)) `(= 0))
+       ;; handled specially, expands to % for integral types,
+       ;; mod() for float types, operates componentwise in both cases
+       ;; if first argument is a vector type
+       (mod (x y) `((or ,@gen-itype ,@gen-utype
+                        ,@gen-type ,@gen-dtype) (=s 0)) `(= 0))
        (3bgl-glsl:modf (x y) `((or ,@gen-type ,@gen-dtype) (:out (=s 0)))
                         `(= 0))
 
