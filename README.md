@@ -373,7 +373,7 @@ style array/vector types may be supported at some point in the future)
 #### Compute Shaders
 
 Compute shaders work pretty much like other stages, except you can't
-specify `input`s/`output`s, and must specify the `workgroup` size for
+specify `input`s/`output`s, and must specify the workgroup size for
 kernel invocations. The workgroup sizes are specified with the
 `layout` declaration on the main kernel entrypoint. Compute shaders
 also expose a number of constants describing an individual
@@ -392,7 +392,7 @@ invocation's relationship to the entire run: `gl-local-invocation-id`, `gl-globa
 #### Shared variables in compute shaders
 
 Compute shader `shared` variables are defined with `SHARED`, which
-tahes a name and type (including array types) as arguments
+takes a name and type (including array types) as arguments
 
 ```Lisp
 ;; define a shared array with 256 :float elements
