@@ -218,16 +218,17 @@
            (loop for (stage source) in source
                  for shader = (gl:create-shader stage)
                  do (push shader shaders)
+                    (when *print-shaders*
+                      (format t "~s~%" source))
                     (gl:shader-source shader source)
                     (gl:compile-shader shader)
                     (cond
                       ((gl:get-shader shader :compile-status)
-                       (when *print-shaders*
-                         (format t "~s~%" source))
                        (gl:attach-shader program shader))
                       (t
                        ;; fixme: make error printing and stream configurable
-                       (format t "~s~%" source)
+                       (unless *print-shaders* ;; already printed it
+                         (format t "~s~%" source))
                        (format t "~s shader compile failed: ~s"
                                stage (gl:get-shader-info-log shader))
                        (return-from %reload-program nil))))
