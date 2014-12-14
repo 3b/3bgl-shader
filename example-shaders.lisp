@@ -1,7 +1,5 @@
 (defpackage #:3bgl-shader-example-shaders
-  (:use #:cl #:3bgl-glsl)
-  ;; shadow defun and defconstant with shader versions
-  (:shadowing-import-from #:3bgl-glsl #:defun #:defconstant)
+  (:use #:cl #:3bgl-glsl/cl)
   (:export
    #:minimal-vertex
    #:minimal-fragment))
