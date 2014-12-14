@@ -1,5 +1,5 @@
 (defpackage #:3bgl-shader-example-shaders
-  (:use #:cl #:3bgl-glsl/cl)
+  (:use #:3bgl-glsl/cl)
   (:export
    #:minimal-vertex
    #:minimal-fragment))
