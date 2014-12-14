@@ -13,11 +13,9 @@ Just transform the vertex, and send color to be interpolated.
 (More examples can be found [here](https://github.com/3b/3bgl-shader/blob/master/example-shaders.lisp).)
 
 ```Lisp
-;; define a package for the shader functions, :USEing :3bgl-glsl and :cl
+;; define a package for the shader functions, :USEing :3BGL-GLSL/CL
 (cl:defpackage #:shader
-  (:use :cl :3bgl-glsl)
-  ;; we want DEFUN and DEFCONSTANT from #:3bgl-glsl rather than CL though
-  (:shadowing-import-from #:3bgl-glsl #:defun #:defconstant))
+  (:use :3bgl-glsl/cl)
 (cl:in-package #:shader)
 
 ;; vertex attributes, need to specify types for all 'external'
@@ -173,6 +171,9 @@ example if the value of a constant is changed, it shouldn't need to
 re-run type inference of functions that use that constant if the type
 didn't change.
 
+Dependencies on uniforms are sometimes missed, dumping a bare
+reference to it in main function is a simple workaround.
+
 ### Misc notes
 
 #### Concrete types
@@ -276,11 +277,29 @@ type for a function.
 
 #### Uniforms, input, output, interface
 
-Uniforms are specified with `(UNIFORM name type &key stage)` where
-`stage` specifies in which shader stages (`:vertex`,`:fragment` etc)
+Uniforms are specified with `(UNIFORM name type &key stage location layout qualifiers)`.  
+`:stage` specifies in which shader stages (`:vertex`,`:fragment` etc)
 the uniform is visible (by default the uniform is visible in all
 stages, though will only be included in generated GLSL for stages in
-which it is referenced).
+which it is referenced).  
+`:location N` is a shortcut for specifying the `location` layout qualifier.  
+`:layout (...)` allows specifying arbitrary layout qualifiers, argument is a plist containing qualifier and value (specify value = `t` for qualifiers that don't take arguments)
+`:qualifiers (...)` allows specifying other qualifiers like `restrict`, argument is a list of qualifiers.
+
+```Lisp
+;; a simple 'int' uniform, location chosen by driver or GL side of API
+(uniform flag :int)
+;; -> uniform int flag;
+
+;; an image2D uniform, with format, location and `restrict` specified
+(uniform tex :image-2d :location 1 :layout (:rg32f t) :qualifiers (:restrict))
+;; -> layout(location = 1,rg32f) uniform restrict image2D tex;
+
+;; an atomic counter, with binding and offset specified
+(uniform counter :atomic-uint :layout (:binding 0 :offset 0))
+;; -> layout(binding = 0,offset = 0) uniform atomic_uint counter;
+
+```
 
 Inputs and outputs are specified with `(INPUT name type &key stage location)`
 and `(OUTPUT name type &key stage location)`
@@ -327,3 +346,59 @@ of uniforms as 2nd value, and attributes in 3rd value. Both are in
 form `(lisp-name "glslName" TYPE)` for each entry. There isn't
 currently any dead-code elimination, so listed names may not actually
 be active in the final shader program.
+
+
+#### Macros
+
+`DEFMACRO` and `MACROLET` work as in CL code, and expansion runs on
+host so can use arbitrary CL.
+
+#### Array variables
+
+There is partial support for arrays, though type inference doesn't
+work completely correctly on them and local array variables can't be
+initialized when bound.
+
+Currently, array types are specified as `(<base-type> <size>)`. (CL
+style array/vector types may be supported at some point in the future)
+
+```Lisp
+(defun foo ()
+  (let ((a)) ;; can't currently initialize local array variables
+    (declare ((:float 8) a)) ;; specify size/base type
+    (setf (aref a 1) 1.23) ;; access as in CL
+    (return (aref a 1)))
+```
+
+#### Compute Shaders
+
+Compute shaders work pretty much like other stages, except you can't
+specify `input`s/`output`s, and must specify the `workgroup` size for
+kernel invocations. The workgroup sizes are specified with the
+`layout` declaration on the main kernel entrypoint. Compute shaders
+also expose a number of constants describing an individual
+invocation's relationship to the entire run: `gl-local-invocation-id`, `gl-global-invocation-id`, `gl-work-group-id`, `gl-num-work-groups`, and `gl-work-group-size`, all `:uvec3`, and `gl-local-invocation-index`, an `:int`.
+
+```Lisp
+;; define a kernel that runs in units of 8x8x8 blocks
+(defun some-kernel ()
+  (declare (layout (:in nil :local-size-x 8 :local-size-y 8 :local-size-z 8)))
+  ;; xyz takes values from (uvec3 0 0 0) to (uvec3 7 7 7)
+  (let ((xyz (.xyz gl-local-invocation-id)))
+    ...))
+```
+
+
+#### Shared variables in compute shaders
+
+Compute shader `shared` variables are defined with `SHARED`, which
+tahes a name and type (including array types) as arguments
+
+```Lisp
+;; define a shared array with 256 :float elements
+;; can be accessed with (aref temp x) or (setf (aref temp x) ...) as in CL
+(shared temp (:float 256))
+;; a shared uint
+(shared foo :uint)
+```
+

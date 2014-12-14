@@ -94,7 +94,7 @@
     instead of unifying branches directly
 ** DONE cleanup/remove/update examples, add new examples
    CLOSED: [2014-09-13 Sat 08:13]
-** not getting dependencies right inside swizzle?
+** not getting dependencies right inside swizzle, possibly other places?
    ex uniform named UV, only accessed as (.xy uv)
 * 'beta'
 ** assign priorities to constraints, process worklist in priority order?
@@ -132,6 +132,8 @@
    particularly during recompilation of existing shaders
 ** handle unused arguments better during type inference
 ** make sure -1 derives type in instead of uint?
+** support some subset of CL array/vector types for declarations
+   currently expects something like (:float 32)
 * 'done'
 ** cache glsl from compiled shaders, add option to remove intermediate data
    for use in final release, don't need to retain all the type
