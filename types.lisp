@@ -494,7 +494,10 @@
   (add-concrete-type :usampler-2d-ms-array "usampler2DMSArray")
   (add-concrete-type :uimage-2d-ms-array "uimage2DMSArray")
   (add-concrete-type :usampler-cube-array "usamplerCubeArray")
-  (add-concrete-type :uimage-cube-array "uimageCubeArray"))
+  (add-concrete-type :uimage-cube-array "uimageCubeArray")
+
+  (add-concrete-type :usampler-cube-array-shadow "usamplerCubeArrayShadow")
+  (add-concrete-type :isampler-cube-array-shadow "isamplerCubeArrayShadow"))
 
 
 ;; add implicit casts to types
