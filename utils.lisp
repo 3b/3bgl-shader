@@ -206,7 +206,10 @@
                                  (:image-1d #'gl:uniformi)
                                  (:image-2d #'gl:uniformi)
                                  (:image-3d #'gl:uniformi)
-                                 ))))
+                                 (:atomic-uint
+                                  ;; ignore atomic counter buffers for
+                                  ;; now, since they behave differently...
+                                  (lambda (&rest r) (declare (ignore r))))))))
                 collect (list %stage source)))
     ;; assuming failed compile signalled an error so won't get here
     (unwind-protect
