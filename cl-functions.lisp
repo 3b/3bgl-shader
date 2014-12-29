@@ -387,13 +387,16 @@
          (binop-args (make-ftype
                       (append gen-type gen-itype gen-utype gen-dtype
                               vec mat vec mat dvec dmat dvec dmat
-                              ivec ivec uvec uvec)
+                              ivec ivec uvec uvec
+                              mat dmat)
                       (append gen-type gen-itype gen-utype gen-dtype
                               vec mat fxv fxm dvec dmat dxv dxm
-                              ivec ixv uxv uvec)
+                              ivec ixv uxv uvec
+                              mat dmat)
                       (append gen-type gen-itype gen-utype gen-dtype
                               fxv fxm vec mat dxv dxm dvec dmat
-                              ixv ivec uvec uxv)))
+                              ixv ivec uvec uxv
+                              mat dmat)))
          (unary-gentypes+mats (make-ftype
                                (append gen-type gen-itype gen-utype gen-dtype
                                        mat dmat)
