@@ -341,6 +341,13 @@
   (change-class a 'ref-type :equiv b)
   b)
 
+(defmethod2 unify ((a any-type) (b array-type))
+  (loop for c being the hash-keys of (constraints a) using (hash-value v)
+        when v
+          do (flag-modified-constraint c))
+  (change-class a 'ref-type :equiv b)
+  b)
+
 (defmethod2 unify ((a constrained-type) (b any-type))
   ;; add B's constraints to A, flag them modified, make B a ref to A
   (loop for c being the hash-keys of (constraints b) using (hash-value v)
