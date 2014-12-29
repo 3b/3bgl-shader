@@ -151,7 +151,8 @@
 
 
 
-(defun bind-interface (stage type interface-qualifier name &key internal glsl-name array)
+(defun bind-interface (stage type interface-qualifier name
+                       &key internal glsl-name array layout-qualifier)
   (let ((type (or (get-type-binding type) type)))
     (cond
       ((eq name t)
@@ -172,7 +173,8 @@
                                      :stage stage
                                      :interface-qualifier interface-qualifier
                                      :binding slot
-                                     :interface-block type))))
+                                     :interface-block type
+                                     :layout-qualifier layout-qualifier))))
       (name
        ;; otherwise if we bind it with a name, make that name visible
        (let ((vb (variable-bindings *environment*)))
@@ -187,9 +189,11 @@
                               :stage stage
                               :interface-qualifier interface-qualifier
                               :binding type
-                              :array-size array)))))))
+                              :array-size array
+                              :layout-qualifier layout-qualifier)))))))
 
-(%glsl-macro 3bgl-glsl::interface (%name (&key in out uniform internal)
+(%glsl-macro 3bgl-glsl::interface (%name (&key in out uniform buffer internal
+                                               layout)
                                     &body slots)
   ;; in/out/uniform are either T,NAME,or (&key :vertex :fragment ...)
   ;; where T means make slots directly visible in all stages,
@@ -197,7 +201,8 @@
   ;; and VERTEX/FRAGMENT/ETC means make aggregate visible with specified name(s)
   ;;   in specified stage(s)
   (let ((name (if (consp %name) (car %name) %name))
-        (glsl-name (if (consp %name) (cadr %name))))
+        (glsl-name (if (consp %name) (cadr %name)))
+        (layout-qualifier (copy-list layout)))
     (setf (gethash name (types *environment*))
           (make-instance 'interface-type
                          :name name
@@ -216,9 +221,11 @@
                                                       :glsl-name glsl-sname
                                                       :value-type (get-type-binding type)))))
     (loop
-      for (k x) on (list :in in :out out :uniform uniform) by #'cddr
+      for (k x) on (list :in in :out out :uniform uniform
+                         :buffer buffer) by #'cddr
       when (and x (eq x t))
-        do (bind-interface t name k t :internal internal)
+        do (bind-interface t name k t :internal internal
+                                      :layout-qualifier layout-qualifier)
       else
         when x
           do (loop for (stage %bind) on x by #'cddr
@@ -228,7 +235,9 @@
                    do (format t "bind ~s -> ~s (~s) int ~s~%" %bind bind name internal)
                    do (bind-interface stage name k bind :internal internal
                                                         :glsl-name glsl-bind
-                                                        :array array)))
+                                                        :array array
+                                                        :layout-qualifier
+                                                        layout-qualifier)))
     nil))
 
 (defun in/out/uniform/attrib (qualifier %name type

@@ -402,3 +402,14 @@ takes a name and type (including array types) as arguments
 (shared foo :uint)
 ```
 
+#### Shader Storage Buffer Objects
+
+Limited support for SSBO, use `(interface <name> (:buffer t) ...)`
+
+```List
+;; makes FOO and BAR available in shaders for read/write
+;; BAR is an array of mat4, size depends on size of bound buffer
+(interface ssbo (:buffer t :layout (:binding 0 :std430 t))
+  (foo :vec4)
+  (bar (:mat4 :*)))
+```

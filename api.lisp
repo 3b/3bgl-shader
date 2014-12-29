@@ -178,8 +178,10 @@ active attributes in same format as third value."
 (cl:defmacro defconstant (name value type)
   `(3bgl-shaders::compile-form '(%defconstant ,name ,value ,type)))
 
-(cl:defmacro interface (name (&rest args &key in out uniform) &body slots)
-  (declare (ignore in out uniform))
+(cl:defmacro interface (name (&rest args &key in out uniform buffer
+                                           layout)
+                        &body slots)
+  (declare (ignore in out uniform layout))
   `(3bgl-shaders::compile-form '(interface ,name ,args ,@slots)))
 
 (cl:defmacro attribute (name type &rest args &key location)

@@ -151,6 +151,13 @@
         (string type) ;;?
         (translate-type e))))
 
+(defmethod translate-type ((type array-type))
+  (translate-type (base-type
+                   (or (and (boundp '*binding-types*)
+                            (gethash type *binding-types*))
+                       (value-type type)))))
+
+
 
 (defmacro assert-statement ()
   `(when *in-expression*
@@ -388,12 +395,15 @@
 (defprint binding (o)
   (assert-statement)
   (let ((*in-expression* t))
-    (format t "~{~a ~}~@[~a ~]~a"
+    (format t "~{~a ~}~@[~a ~]~a~@[~a~]"
             (qualifiers o)
             (translate-type (or (and (boundp '*binding-types*)
                                      (gethash o *binding-types*))
                                 (value-type o)))
-            (translate-name o))))
+            (translate-name o)
+            (array-suffix (or (and (boundp '*binding-types*)
+                                   (gethash o *binding-types*))
+                              (value-type o))))))
 
 (defprint slot-access (o)
   (format t "~a" (translate-name o)))
@@ -543,6 +553,16 @@
 
 (defprint interface-binding (o)
   (let ((b (stage-binding o)))
+    (format t "~@[layout(~(~{~@[~a = ~]~a~^,~}~)) ~]"
+            (loop for (a b) on (layout-qualifier b) by #'cddr
+                  when b
+                    append (if (eq b t)
+                               ;; :X t -> x
+                               (list nil a)
+                               ;; NIL :X -> x
+                               ;; :x y -> x=y
+                               (list (and (not (eq a b))  a)
+                                     b))))
     (cond
       ((or (interface-block b) (typep (binding b) 'bindings))
        (format t "~{~a ~}~a {~%~<  ~@;~@{~a;~^~%~}~:>~%}~@[ ~a~]~@[~a~];~%"
@@ -553,16 +573,7 @@
                (unless (interface-block b) (translate-name o))
                (array-suffix  b)))
       (t
-       (format t "~@[layout(~(~{~@[~a = ~]~a~^,~}~)) ~]~{~a~^ ~} ~a ~a~@[~a~];~%"
-               (loop for (a b) on (layout-qualifier b) by #'cddr
-                     when b
-                       append (if (eq b t)
-                                  ;; :X t -> x
-                                  (list nil a)
-                                  ;; NIL :X -> x
-                                  ;; :x y -> x=y
-                                  (list (and (not (eq a b))  a)
-                                        b)))
+       (format t "~{~a~^ ~} ~a ~a~@[~a~];~%"
                (mapcar #'translate-name (alexandria:ensure-list
                                          (interface-qualifier b)))
                (translate-name (value-type b))
