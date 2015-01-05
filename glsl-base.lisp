@@ -114,10 +114,6 @@
                                 ,@body)))
   nil)
 
-#++
-(%glsl-macro defstruct (&body body)
-  (declare (ignore body))
-  `(error "DEFSTRUCT not implemented yet for GLSL"))
 
 ;;; no 'unbound' variables in GLSL, so requiring value arg, and
 ;;; not sure there is any distinction between DEFVAR and DEFPARAMETER
@@ -461,7 +457,8 @@
              3bgl-shaders::function-call 3bgl-shaders::global-function
              3bgl-shaders::explicit-progn 3bgl-shaders::for-loop
              3bgl-shaders::interface-type 3bgl-shaders::concrete-type
-             3bgl-shaders::array-initialization)
+             3bgl-shaders::array-initialization
+             3bgl-shaders::interface-stage-binding)
          form)
         (t (break "unknown binding ~s / ~s" form binding))))))
 

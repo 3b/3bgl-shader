@@ -380,6 +380,8 @@
   (etypecase types
     (array-type
      types)
+    (struct-type
+     types)
     ((eql t)
      (make-instance 'any-type
                     :constraints (alexandria:plist-hash-table
@@ -801,7 +803,7 @@
   (base-type form))
 
 (defmethod walk ((form binding) (walker infer-build-constraints))
-  (value-type form))
+  (walk (value-type form) walker))
 
 (defmethod walk ((form interface-binding) (walker infer-build-constraints))
   (let ((stage-binding (stage-binding form)))

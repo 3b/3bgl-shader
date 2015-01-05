@@ -169,6 +169,7 @@
 ;(defparameter *tree-shaker-roots* nil)
 (defparameter *tree-shaker-hook* (lambda (&rest r) (declare (ignore r))))
 (defparameter *tree-shaker-type-hook* (lambda (&rest r) (declare (ignore r))))
+(defparameter *tree-shaker-current-object* nil)
 ;; fixme: rename this stuff, since tree-shaker doesn't use it anymore
 (defclass tree-shaker (3bgl-glsl::glsl-walker)
   ())
@@ -179,34 +180,60 @@
     (funcall *tree-shaker-hook* (called-function form)))
   (call-next-method))
 
-(defun walk-type (x)
-  (when (typep x 'struct-type)
-    (funcall *tree-shaker-type-hook* x)))
+(defmethod walk ((form (eql t)) (walker tree-shaker))
+  ;; for unspecified declared types
+  form)
+(defmethod walk ((form (eql :*)) (walker tree-shaker))
+  ;; for unspeified array size
+  form)
 
 (defmethod walk ((form slot-access) (walker tree-shaker))
-  (walk-type (binding form))
+  (walk (binding form) walker)
   (call-next-method))
 
 (defmethod walk ((form variable-read) (walker tree-shaker))
-  (walk-type (binding form))
+  (walk (binding form) walker)
   (call-next-method))
 
 (defmethod walk ((form variable-write) (walker tree-shaker))
-  (walk-type (binding form))
+  (walk (binding form) walker)
+  (call-next-method))
+
+(defmethod walk ((form swizzle-access) (walker tree-shaker))
+  (walk (binding form) walker)
+  (call-next-method))
+
+(defmethod walk ((form local-variable) (walker tree-shaker))
+  (walk (value-type form) walker)
+  (walk (declared-type form) walker)
   (call-next-method))
 
 (defmethod walk ((form binding) (walker tree-shaker))
-  (walk-type (value-type form))
+  (walk (value-type form) walker)
   (call-next-method))
 
 (defmethod walk ((form constant-binding) (walker tree-shaker))
   (funcall *tree-shaker-type-hook* form)
   (call-next-method))
 
-
 (defmethod walk ((form interface-binding) (walker tree-shaker))
   (funcall *tree-shaker-type-hook* form)
+  (let ((*tree-shaker-current-object* form))
+    (walk (stage-binding form) walker))
   (call-next-method))
+
+(defmethod walk ((form interface-stage-binding) (walker tree-shaker))
+  (walk (binding form) walker)
+  (call-next-method))
+
+(defmethod walk ((form struct-type) (walker tree-shaker))
+  (funcall *tree-shaker-type-hook* form)
+  (let ((*tree-shaker-current-object* form))
+    (walk (bindings form) walker)))
+
+(defmethod walk ((form array-type) (walker tree-shaker))
+  (walk (base-type form) walker)
+  (walk (array-size form) walker))
 
 ;; todo: rewrite this to use pregenerated dependencies?
 (defun tree-shaker (root)
@@ -223,24 +250,25 @@
   ;; reuse tree-shaker walker, find all functions called and add to list
   ;;
   (assert (not (symbolp form)))
-  (let* ((current-object form)
+  (let* ((*tree-shaker-current-object* form)
          (*tree-shaker-hook*
            (lambda (f)
-             (when (and (not (eq f current-object))
+             (when (and (not (eq f *tree-shaker-current-object*))
                         (typep f 'binding-with-dependencies))
-               (setf (gethash f (bindings-used-by current-object))
+               (setf (gethash f (bindings-used-by *tree-shaker-current-object*))
                      f)
-               (setf (gethash current-object (bindings-using f))
-                     current-object))))
+               (setf (gethash *tree-shaker-current-object* (bindings-using f))
+                     *tree-shaker-current-object*))))
          (*tree-shaker-type-hook*
            (lambda (f)
-             (when (and (not (eq f current-object))
+             (when (and (not (eq f *tree-shaker-current-object*))
                         (typep f 'binding-with-dependencies))
-               (setf (gethash f (bindings-used-by current-object))
+               (format t "add ~s ~s~%" f *tree-shaker-current-object*)
+               (setf (gethash f (bindings-used-by *tree-shaker-current-object*))
                      f)
-               (setf (gethash current-object (bindings-using f))
-                     current-object)))))
-    (walk current-object (make-instance 'tree-shaker))))
+               (setf (gethash *tree-shaker-current-object* (bindings-using f))
+                     *tree-shaker-current-object*)))))
+    (walk *tree-shaker-current-object* (make-instance 'tree-shaker))))
 
 (defclass update-calls (3bgl-glsl::glsl-walker)
   ((modified :initarg :modified :reader modified)))

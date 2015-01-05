@@ -143,7 +143,7 @@ active attributes in same format as third value."
                      for interface-block = (when stage-binding
                                              (interface-block stage-binding))
                      unless (and interface-block (gethash interface-block dumped))
-                       do (typecase object
+                       do (etypecase object
                             ((or generic-type interface-binding constant-binding)
                              (unless (internal object)
                                (pprint-glsl object)
@@ -177,6 +177,9 @@ active attributes in same format as third value."
 
 (cl:defmacro defconstant (name value type)
   `(3bgl-shaders::compile-form '(%defconstant ,name ,value ,type)))
+
+(cl:defmacro defstruct (name &rest slots)
+  `(3bgl-shaders::compile-form '(cl:defstruct ,name ,@slots)))
 
 (cl:defmacro interface (name (&rest args &key in out uniform buffer
                                            layout)

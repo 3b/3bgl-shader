@@ -157,6 +157,9 @@
                             (gethash type *binding-types*))
                        (value-type type)))))
 
+(defmethod translate-type ((type struct-type))
+  (or (glsl-name type) (%translate-name (name type))))
+
 
 
 (defmacro assert-statement ()
@@ -529,6 +532,11 @@
           (call-next-method)
           (format t "~&}")))))
 
+(defprint struct-type (o)
+  (format t "struct ~a {" (translate-name o))
+  (format t "~%~<  ~@;~@{~a;~^~%~}~:>~%" (bindings o))
+  (format t "};~%"))
+
 
 (defmethod array-suffix (x)
   nil)
@@ -536,6 +544,7 @@
 (defmethod array-suffix ((x array-type))
   (typecase (array-size x)
     (number (format nil "[~a]" (array-size x)))
+    (symbol (format nil "[~a]" (translate-name (array-size x))))
     (null nil)
     (t "[]")))
 

@@ -10,7 +10,8 @@
   (:use :cl)
   (:shadow #:defun
            #:defconstant
-           #:defmacro)
+           #:defmacro
+           #:defstruct)
   (:import-from #:3bgl-shaders
                 #:layout
                 #:%glsl-macro)
@@ -19,6 +20,7 @@
    #:defun
    #:defmacro
    #:defconstant
+   #:defstruct
 
    ;; ??
    #:generate-stage
@@ -335,7 +337,8 @@
 ;;; FIXME: probably should rename this one 3BGL-GLSL, and give the internal package the longer name?
 (defpackage #:3bgl-glsl/cl
   (:use #:cl #:3bgl-glsl)
-  (:shadowing-import-from #:3bgl-glsl #:defun #:defconstant #:defmacro)
+  (:shadowing-import-from #:3bgl-glsl #:defun #:defconstant
+                          #:defmacro #:defstruct)
   #. (cons :export
            (print (flet ((externals (x)
                            (let ((a))

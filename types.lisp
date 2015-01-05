@@ -95,16 +95,27 @@
   (destructuring-bind (name &rest ignore)
       (alexandria:ensure-list name-and-options)
     (declare (ignore ignore))
-    (setf (gethash name (types *environment*))
-          (make-instance 'struct-type
-                         :name name
-                         :bindings
-                         (print
-                          (loop for (sname type . args) in slots
-                                ;; should these be some 'slot-binding' type?
-                                collect (make-instance 'binding
-                                                       :name sname
-                                                       :value-type (get-type-binding type)))))))
+    (let ((old (gethash name (types *environment*))))
+      (if old
+          (reinitialize-instance
+           old
+           :name name
+           :bindings
+           (loop for (sname type . args) in slots
+                 ;; should these be some 'slot-binding' type?
+                 collect (make-instance 'binding
+                                        :name sname
+                                        :value-type (get-type-binding type))))
+          (setf (gethash name (types *environment*))
+                (make-instance
+                 'struct-type
+                 :name name
+                 :bindings
+                 (loop for (sname type . args) in slots
+                       ;; should these be some 'slot-binding' type?
+                       collect (make-instance 'binding
+                                              :name sname
+                                              :value-type (get-type-binding type))))))))
   nil)
 
 (defclass interface-stage-binding (place)
@@ -223,8 +234,8 @@
     (loop
       for (k x) on (list :in in :out out :uniform uniform
                          :buffer buffer) by #'cddr
-      when (and x (eq x t))
-        do (bind-interface t name k t :internal internal
+      when x
+        do (bind-interface t name k x :internal internal
                                       :layout-qualifier layout-qualifier)
       else
         when x

@@ -92,6 +92,10 @@
     ;; todo: figure out what other types need handled
     ))
 
+(defmethod flatten-type ((type struct-type) &optional force-type)
+  (assert (not force-type)) ;; todo...
+  nil)
+
 (defmethod flatten-type ((type ref-type) &optional force-type)
   (flatten-type (equiv type) force-type))
 
