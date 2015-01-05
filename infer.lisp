@@ -1138,6 +1138,8 @@
                   (funcall fun type))
                  (array-type
                   (funcall fun (base-type type)))
+                 (struct-type
+                  (funcall fun type))
                  (constrained-type
                   (maphash (lambda (k v) (when v (map-concrete-types k fun)))
                            (types type)))

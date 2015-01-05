@@ -142,8 +142,8 @@
   (let ((types))
     (maphash (lambda (k v) (when v (push k types))) (types type))
     (if (= 1 (length types))
-        (glsl-name (car types))
-     (mapcar #'glsl-name types))))
+        (translate-name (car types))
+        (mapcar #'translate-name types))))
 
 (defmethod translate-type ((type generic-type))
   (let ((e (get-equiv-type type)))

@@ -48,6 +48,9 @@
 (defclass struct-type (aggregate-type binding-with-dependencies)
   ())
 
+(defmethod implicit-casts-to ((s struct-type))
+  nil)
+
 (defclass interface-type (aggregate-type)
   ())
 
