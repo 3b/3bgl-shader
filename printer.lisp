@@ -386,9 +386,9 @@
                 (initial-value-form o))
         (format t "~{~(~a ~)~}~@[~a ~]~a~@[ = ~a~]"
                 (qualifiers o)
-                (translate-type (or  (and (boundp '*binding-types*)
-                                          (gethash o *binding-types*))
-                                     (value-type o)))
+                (translate-type (or (and (boundp '*binding-types*)
+                                         (gethash o *binding-types*))
+                                    (value-type o)))
                 (translate-name o)
                 (initial-value-form o)))))
 (format nil "~{~(~a ~)~}~@[~a ~]~a[~a]~@[ = ~2:*~a[]~1*~a~]"
