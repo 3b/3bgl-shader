@@ -94,8 +94,19 @@
     instead of unifying branches directly
 ** DONE cleanup/remove/update examples, add new examples
    CLOSED: [2014-09-13 Sat 08:13]
-** not getting dependencies right inside swizzle, possibly other places?
+** DONE not getting dependencies right inside swizzle, possibly other places?
+   CLOSED: [2015-01-04 Sun 19:59]
    ex uniform named UV, only accessed as (.xy uv)
+** DONE handle dependencies between types better
+   CLOSED: [2015-01-04 Sun 20:43]
+   ex SSBO using a struct type
+** handle dependencies between types and constants
+   ex constant used as length of array in a struct
+** document struct stuff
+** recopmile functions when a type changes?
+** DONE use reinitialize-instance when redefining structs
+   CLOSED: [2015-01-04 Sun 20:43]
+** clear bindings-used-by of interface-binding on redefinition
 * 'beta'
 ** assign priorities to constraints, process worklist in priority order?
    priority of type = 1+ highest priority of constraint with that type as 'output' or 0
@@ -187,3 +198,4 @@
 ** check for more places where :cast nil can be set for built-in functions
    also make sure the existing ones are right
    (either no cast allowed, or all types fully specified already)
+
