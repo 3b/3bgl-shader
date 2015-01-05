@@ -348,6 +348,13 @@
   (change-class a 'ref-type :equiv b)
   b)
 
+(defmethod2 unify ((a any-type) (b struct-type))
+  (loop for c being the hash-keys of (constraints a) using (hash-value v)
+        when v
+          do (flag-modified-constraint c))
+  (change-class a 'ref-type :equiv b)
+  b)
+
 (defmethod2 unify ((a constrained-type) (b any-type))
   ;; add B's constraints to A, flag them modified, make B a ref to A
   (loop for c being the hash-keys of (constraints b) using (hash-value v)
@@ -839,17 +846,21 @@
                                 (set-type (declared-type binding)))
         for initial-value-type = (walk (initial-value-form binding) walker)
         when initial-value-type
-          do (let ((cast (make-instance 'cast-constraint
-                                        :name (name
-                                               (initial-value-form
-                                                binding))
-                                        :cast-type :implicit
-                                        :in initial-value-type
-                                        :out declared-type)))
-               (add-constraint declared-type cast)
-               (add-constraint initial-value-type cast)
-               (flag-modified-constraint cast))
-        collect (setf (value-type binding) declared-type)
+          do (if (implicit-casts-to initial-value-type)
+                 (let ((cast (make-instance 'cast-constraint
+                                            :name (name
+                                                   (initial-value-form
+                                                    binding))
+                                            :cast-type :implicit
+                                            :in initial-value-type
+                                            :out declared-type)))
+                   (add-constraint declared-type cast)
+                   (add-constraint initial-value-type cast)
+                   (flag-modified-constraint cast)
+                   (setf (value-type binding) declared-type))
+                 (let ((u (unify declared-type initial-value-type)))
+                   (setf (value-type binding) u)))
+        collect (value-type binding)
         do (setf (gethash binding *current-function-local-types*)
                  (value-type binding)))
   (loop for a in (body form)

@@ -121,7 +121,9 @@
                ((or slot-access variable-read variable-write array-access)
                 (get-interface-bindings (binding x)))
                (interface-binding
-                x))))
+                x)
+               (local-variable
+                (return-from check-slot-stages t)))))
     (let* ((interface-bindings (get-interface-bindings slot-access))
            (types
              (loop for (nil sb) on (stage-bindings interface-bindings) by #'cddr
