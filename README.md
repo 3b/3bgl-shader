@@ -406,10 +406,28 @@ takes a name and type (including array types) as arguments
 
 Limited support for SSBO, use `(interface <name> (:buffer t) ...)`
 
-```List
+```Lisp
 ;; makes FOO and BAR available in shaders for read/write
 ;; BAR is an array of mat4, size depends on size of bound buffer
 (interface ssbo (:buffer t :layout (:binding 0 :std430 t))
   (foo :vec4)
   (bar (:mat4 :*)))
+```
+
+
+#### Structures
+
+Preliminary support for defining structures with |defstruct|, doesn't
+currently accept any of the extra options from |cl:defstruct|, and
+slot syntax is |(slot-name type)|.
+
+Can't currently infer type of structs, so need to |declare| them by hand.
+
+```Lisp
+;; define a struct with a float, array of 8 int, and arbitrary
+;; length array of vec4
+(defstruct foo
+  (a :float)
+  (b (:int 8))
+  (c (:vec4 :*)))
 ```
