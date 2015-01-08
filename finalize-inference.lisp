@@ -93,7 +93,8 @@
     ))
 
 (defmethod flatten-type ((type struct-type) &optional force-type)
-  (assert (not force-type)) ;; todo...
+  (assert (or (not force-type)
+              (eql type (get-equiv-type force-type)))) ;; todo...
   nil)
 
 (defmethod flatten-type ((type ref-type) &optional force-type)
@@ -103,6 +104,9 @@
   (get-concrete-type (equiv type)))
 
 (defmethod get-concrete-type ((type concrete-type))
+  type)
+
+(defmethod get-concrete-type ((type struct-type))
   type)
 
 (defmethod get-concrete-type ((type constrained-type))

@@ -135,6 +135,9 @@
   ;; fixme: just for debugging, should be an error once things are working properly
   "T")
 
+(defmethod translate-type ((type ref-type))
+  (translate-type (get-equiv-type type)))
+
 (defmethod translate-type ((type concrete-type))
   (glsl-name type))
 
@@ -374,8 +377,10 @@
   (assert-statement)
   (let ((*in-expression* t))
     (if (typep (value-type o) 'array-type)
-        (format t #++"~{~(~a ~)~}~@[~a ~]~a[~a]~@[ = ~a~]"
-                "~{~(~a ~)~}~@[~a ~]~a[~a]~@[ = ~3:*~a[]~2*~a~]"
+        (format t "~{~(~a ~)~}~@[~a ~]~a[~a]~@[ = ~a~]"
+                ;; might need type for literal initializers? if so, figure
+                ;; out how to distinguish them...
+                #++"~{~(~a ~)~}~@[~a ~]~a[~a]~@[ = ~3:*~a[]~2*~a~]"
                 (qualifiers o)
                 (translate-type (base-type
                                  (or (and (boundp '*binding-types*)

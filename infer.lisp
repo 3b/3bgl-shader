@@ -707,9 +707,14 @@
     (walk (index form) walker)
     ;; just returning array type for now...
     ;; fixme: add constraints on size
-    (if (typep binding-type 'any-type)
-        binding-type
-        (value-type binding-type))))
+    (typecase binding-type
+      (any-type
+       binding-type)
+      (array-type
+       (base-type binding-type))
+      (t ;; not sure this should happen?
+       (value-type binding-type)))
+    ))
 
 
 (defmethod walk ((form slot-access) (walker infer-build-constraints))
@@ -726,7 +731,8 @@
                    ;; of doing string compare?
                    (equal (string (name binding)) (field form)))
             do (return-from walk (value-type binding)))
-    (break "slot-access" (list form struct-type))))
+    (break "slot-access: slot ~s not found in struct ~s"
+           (field form) (name struct-type))))
 
 (defmethod walk ((form function-call) (walker infer-build-constraints))
   (let* ((called (called-function form))
@@ -807,7 +813,7 @@
   (value-type form))
 
 (defmethod walk ((form array-type) (walker infer-build-constraints))
-  (base-type form))
+  form)
 
 (defmethod walk ((form binding) (walker infer-build-constraints))
   (walk (value-type form) walker))
