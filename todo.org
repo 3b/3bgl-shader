@@ -107,6 +107,8 @@
 ** DONE use reinitialize-instance when redefining structs
    CLOSED: [2015-01-04 Sun 20:43]
 ** clear bindings-used-by of interface-binding on redefinition
+** fix type inference of optional args?
+   ex (return)
 * 'beta'
 ** assign priorities to constraints, process worklist in priority order?
    priority of type = 1+ highest priority of constraint with that type as 'output' or 0
