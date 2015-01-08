@@ -51,6 +51,9 @@
 (defmethod implicit-casts-to ((s t))
   nil)
 
+(defmethod implicit-casts-from ((s t))
+  nil)
+
 (defclass interface-type (aggregate-type)
   ())
 
@@ -237,7 +240,9 @@
     (loop
       for (k x) on (list :in in :out out :uniform uniform
                          :buffer buffer) by #'cddr
-      when x
+      when (and x (symbolp x))
+        ;; possibly should also accept (lisp-name "gl_name") lists?
+        ;; don't want (:vertex t ;geometry foo ...) lists here though
         do (bind-interface t name k x :internal internal
                                       :layout-qualifier layout-qualifier)
       else
