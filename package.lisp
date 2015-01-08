@@ -340,16 +340,16 @@
   (:shadowing-import-from #:3bgl-glsl #:defun #:defconstant
                           #:defmacro #:defstruct)
   #. (cons :export
-           (print (flet ((externals (x)
-                           (let ((a))
-                             (do-external-symbols (s x)
-                               (push s a))
-                             a)))
-                    (append (externals '#:3bgl-glsl)
-                            (loop for s in (externals '#:cl)
-                                  unless
-                                  (eq :external
-                                      (nth-value 1 (find-symbol (symbol-name s)
-                                                                '#:3bgl-glsl)))
-                                    collect s))))))
+           (flet ((externals (x)
+                    (let ((a))
+                      (do-external-symbols (s x)
+                        (push s a))
+                      a)))
+             (append (externals '#:3bgl-glsl)
+                     (loop for s in (externals '#:cl)
+                           unless
+                           (eq :external
+                               (nth-value 1 (find-symbol (symbol-name s)
+                                                         '#:3bgl-glsl)))
+                           collect s)))))
 
