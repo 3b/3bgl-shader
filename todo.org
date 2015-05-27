@@ -109,6 +109,11 @@
 ** clear bindings-used-by of interface-binding on redefinition
 ** fix type inference of optional args?
    ex (return)
+** fix type inference of uninitialized LET bindings
+   ex
+  (let ((translation))
+    (setf translation 1.0))
+** allow (let (foo) ...) syntax for uninitialized binding
 * 'beta'
 ** assign priorities to constraints, process worklist in priority order?
    priority of type = 1+ highest priority of constraint with that type as 'output' or 0
@@ -147,6 +152,22 @@
 ** make sure -1 derives type in instead of uint?
 ** support some subset of CL array/vector types for declarations
    currently expects something like (:float 32)
+** figure out better way to handle package <-> environment association
+   possibly should define things in an environment corresponding to
+   symbol-package, or else require specifying an environment?
+   ? alternately, require some explicit list of environments current
+   package imports from, either from :use list in associated package,
+   or explicit function linking them?
+   - specific use case = defining things like (input color ...) and
+     (input position ...) once and reusing it (where POSITION is
+     probably CL:POSITION)
+   - POSITION in particular will pretty commonly conflict, since it is in CL
+     but not sure how often different things will want different definitions?
+     (possibly a 2d lib would want vec2 or something would want ivec?)
+** figure out multidimensional array syntax?
+   ((:foo dim) dim)?
+   (:foo (dim dim))?
+   (:foo dim dim)?
 * 'done'
 ** cache glsl from compiled shaders, add option to remove intermediate data
    for use in final release, don't need to retain all the type
@@ -200,4 +221,6 @@
 ** check for more places where :cast nil can be set for built-in functions
    also make sure the existing ones are right
    (either no cast allowed, or all types fully specified already)
+
+
 

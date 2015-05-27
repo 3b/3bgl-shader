@@ -53,7 +53,15 @@
     (setf (gethash name *check-conflict-vars*) :conflict))
   (and env
        (or (gethash name (variable-bindings env))
-           (get-variable-binding name :env (parent-scope env)))))
+           (get-variable-binding name :env (parent-scope env))
+           (let ((symbol-env (gethash (symbol-package name)
+                                      3bgl-glsl::*package-environments*))
+                 (*package* (find-package :keyword)))
+             ;; fixme: don't check this again for every parent if not found
+             (and symbol-env
+                  ;; not sure if this should recurse into parents or not?
+                  ;; need to flag not to try symbol-package again if so
+                  (gethash name (variable-bindings symbol-env)))))))
 
 (defun get-function-binding (name &key (env *environment*))
   ;; not sure if this should accept a function-binding object as a
@@ -379,7 +387,8 @@
       (typecase w
         ((cons (member progn)) w)
         ((cons T NULL) (car w))
-        (t (cons 'progn w))))))
+        ;; fixme: why doesn't 'implicit-progn work here?
+        (t (make-instance 'explicit-progn :body w))))))
 
 (defwalker cl-walker (macrolet (&rest bindings) &rest body)
   ;; not sure if there is any reason to preserve the macrolet, so
@@ -396,7 +405,7 @@
       (typecase w
         ((cons (member progn)) w)
         ((cons T NULL) (car w))
-        (t (cons 'progn w))))))
+        (t (make-instance w))))))
 
 (defwalker cl-walker (tagbody &body body)
   ;; todo: probably should store go tags in environment

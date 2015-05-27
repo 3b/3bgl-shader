@@ -208,7 +208,7 @@
 (%glsl-macro incf (x &optional (inc 1))
   `(setf ,x (+ ,x ,inc)))
 
-(%glsl-macro unless (a b)
+(%glsl-macro unless (a &rest b)
   ;; not quite usual expansion, since we don't really have a "NIL" to return
   `(if (not ,a) (progn ,@b)))
 
@@ -442,6 +442,8 @@
                        (3bgl-shaders::get-variable-binding form)
                        form)))
       (typecase binding
+        (3bgl-shaders::symbol-macro
+         (3bgl-shaders::walk (3bgl-shaders::expansion binding) walker))
         (3bgl-shaders::binding
          (make-instance '3bgl-shaders::variable-read
                         :binding binding))

@@ -845,6 +845,11 @@
         for ret = (walk a walker)
         finally (return ret)))
 
+(defmethod walk ((form implicit-progn) (walker infer-build-constraints))
+  (loop for a in (body form)
+        for ret = (walk a walker)
+        finally (return ret)))
+
 (defmethod walk ((form binding-scope) (walker infer-build-constraints))
   (loop for binding in (bindings form)
         for declared-type = (if (eq t (declared-type binding))
