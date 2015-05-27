@@ -5,6 +5,13 @@
 ;; print shaders as compiled for debugging
 (defparameter *print-shaders* nil)
 
+(defparameter *default-recompilation-callback* nil)
+
+;; this API's idea of what shader is currently active, so we know to
+;; update uniforms directly (probably wrong if gl:use-shader is called
+;; directly)
+(defparameter *bound-program* nil)
+
 (defclass shader-program ()
   ((program :reader program :initform nil)
    ;; shader stage (as in gl:create-shader) -> name of function
@@ -20,7 +27,11 @@
    ;; identifying a uniform, allowing both for now...)
    (name-map :reader name-map :initform (make-hash-table :test 'equal))
    ;; target glsl version
-   (version :accessor version :initform 450 :initarg :version)))
+   (version :accessor version :initform 450 :initarg :version)
+   ;; list of functions to call after successful shader recompilation
+   ;; shader object is passed as only argument
+   (recompilation-callbacks :initform *default-recompilation-callback*
+                            :accessor recompilation-callbacks)))
 
 (defun flag-shader (shader-program function)
   ;; only flag it if in use, otherwise hash could accumulate lots of
@@ -92,6 +103,13 @@
       (when (consp new-value)
         (setf new-value (coerce new-value 'vector)))
       (setf (getf (gethash name (uniforms program)) :value) new-value))
+    (when (eq *bound-program* program)
+      (let* ((u (gethash name (uniforms program)))
+             (i (getf u :index))
+             (f (getf u :function)))
+        (when (and i f)
+          (funcall f i new-value)))
+)
     new-value))
 
 ;; to be replaced with better version...
@@ -258,7 +276,9 @@
                       (declare (ignore v))
                       (setf (gethash k (dirty shader-program)) nil))
                     (dirty shader-program))
-           ;; recompile succeeded, return T
+           ;; recompile succeeded, call recompilation callback and return T
+           (map nil (lambda (c) (funcall c shader-program))
+                (recompilation-callbacks shader-program))
            t)
       ;; unwind-protect cleanup: delete any created shaders, delete
       ;; any program in PROGRAM (if compile/link was successul, it
@@ -289,3 +309,15 @@
             when (and function value index)
               do (funcall function index value))
       t)))
+
+(defmacro with-program ((program &key (error-p nil)) &body body)
+  ;; not sure if iter is better to UNWIND-PROTECT and risk errors in
+  ;; the cleanup or to risk not resetting program on NLX...
+  (alexandria:once-only (program)
+    `(let ((*bound-program* (and (use-program ,program) ,program)))
+       ,@(when error-p `((assert *bound-program*)))
+       (prog1
+           (progn ,@body)
+         (gl:use-program 0)))))
+
+
