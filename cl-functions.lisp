@@ -862,6 +862,11 @@
                                      ,@gen-type ,@gen-dtype
                                      ,@gen-itype ,@gen-utype ,@gen-btype)
                                    `(:float
+                                     ,@vec ,@vec
+                                     :double ,@dvec ,@dvec
+                                     ,@gen-type ,@gen-dtype
+                                     ,@gen-itype ,@gen-utype ,@gen-btype)
+                                   `(:float
                                      ,@vec ,@fxv
                                      :double ,@dvec ,@dxv
                                      ,@gen-btype ,@gen-btype
