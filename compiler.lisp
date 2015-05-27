@@ -265,7 +265,6 @@
            (lambda (f)
              (when (and (not (eq f *tree-shaker-current-object*))
                         (typep f 'binding-with-dependencies))
-               (format t "add ~s ~s~%" f *tree-shaker-current-object*)
                (setf (gethash f (bindings-used-by *tree-shaker-current-object*))
                      f)
                (setf (gethash *tree-shaker-current-object* (bindings-using f))
