@@ -579,7 +579,7 @@
                                      b))))
     (cond
       ((or (interface-block b) (typep (binding b) 'bindings))
-       (format t "~{~a ~}~a {~%~<  ~@;~@{~a;~^~%~}~:>~%}~@[ ~a~]~@[~a~];~%"
+       (format t "~{~a ~}~a {~%~<  ~@;~@{~a;~^~%~}~:>~%}~@[ ~a~]~@[~a~]"
                (mapcar ' translate-name (alexandria:ensure-list
                                          (interface-qualifier b)))
                (translate-name b)
@@ -587,12 +587,20 @@
                (unless (interface-block b) (translate-name o))
                (array-suffix  b)))
       (t
-       (format t "~{~a~^ ~} ~a ~a~@[~a~];~%"
+       (format t "~{~a~^ ~} ~a ~a~@[~a~]"
                (mapcar #'translate-name (alexandria:ensure-list
                                          (interface-qualifier b)))
                (translate-name (value-type b))
                (translate-name o)
-               (array-suffix (value-type b)))))))
+               (array-suffix (value-type b)))))
+    (let ((d (default b)))
+     (cond
+       ((not d))
+       ((symbolp d)
+        (format t " = ~a" (translate-name d)))
+       (t
+        (format t " = ~a" d))))
+    (format t ";~%")))
 
 (defprint constant-binding (o)
   (call-next-method)

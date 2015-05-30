@@ -200,10 +200,9 @@ active attributes in same format as third value."
   `(3bgl-shaders::compile-form '(output ,name ,type ,@args)))
 
 (cl:defmacro uniform (name type &rest args &key  stage location internal layout
-                                             qualifiers
+                                             qualifiers default
                       &allow-other-keys)
-
-  (declare (ignore location stage internal layout qualifiers))
+  (declare (ignore location stage internal layout qualifiers default))
   `(3bgl-shaders::compile-form '(uniform ,name ,type ,@args)))
 
 (cl:defmacro shared (name type &rest args &key  stage layout qualifiers

@@ -130,7 +130,8 @@
    (interface-qualifier :accessor interface-qualifier :initarg :interface-qualifier)
    (layout-qualifier :accessor layout-qualifier :initarg :layout-qualifier :initform nil)
    (interface-block :accessor interface-block :initform nil :initarg :interface-block)
-   (array-size :accessor array-size :initform nil :initarg :array-size)))
+   (array-size :accessor array-size :initform nil :initarg :array-size)
+   (default :accessor default :initform nil :initarg :default)))
 
 (defparameter *current-shader-stage* nil)
 
@@ -261,10 +262,9 @@
 
 (defun in/out/uniform/attrib (qualifier %name type
                               &key location internal stage index layout
-                                qualifiers)
+                                qualifiers default)
   (format t "in/out/uniform/attrib: ~@{ ~s~}~%"  qualifier %name type
-           location internal stage index layout
-          qualifiers)
+           location internal stage index layout qualifiers default)
   ;; possibly should have generic '&rest args' instead of enumerating options?
   (let ((vb (variable-bindings *environment*))
         (name (if (consp %name) (car %name) %name))
@@ -293,7 +293,8 @@
                          :stage stage
                          :interface-qualifier (cons qualifier qualifiers)
                          :layout-qualifier layout-qualifier
-                         :binding (or (get-type-binding type) type)))))
+                         :binding (or (get-type-binding type) type)
+                         :default default))))
 
 (%glsl-macro 3bgl-glsl::attribute (%name type &key location internal)
   (in/out/uniform/attrib :attribute %name type :location location :internal internal :stage :vertex)
@@ -312,11 +313,12 @@
   nil)
 
 (%glsl-macro 3bgl-glsl::uniform (%name type &key location (stage t)
-                                       internal layout qualifiers)
+                                       internal layout qualifiers default)
   (in/out/uniform/attrib :uniform %name type
                          :location location :internal internal :stage stage
                          :layout layout
-                         :qualifiers qualifiers)
+                         :qualifiers qualifiers
+                         :default default)
   nil)
 
 (%glsl-macro 3bgl-glsl::shared (%name type &key (stage t) layout
