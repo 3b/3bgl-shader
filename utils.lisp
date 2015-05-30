@@ -205,6 +205,12 @@
                                  (:vec2 #'gl:uniformfv)
                                  (:vec3 #'gl:uniformfv)
                                  (:vec4 #'gl:uniformfv)
+                                 (:bool (lambda (x)
+                                          (if (numberp x)
+                                              (%gl:uniform-1i x)
+                                              (if x
+                                                  (%gl:uniform-1i 1)
+                                                  (%gl:uniform-1i 0)))))
                                  (:int '%gl:uniform-1i)
                                  (:uint '%gl:uniform-1ui)
                                  (:ivec2 #'gl:uniformiv)
