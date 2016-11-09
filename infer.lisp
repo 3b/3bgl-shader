@@ -378,7 +378,20 @@
 (defmethod2 unify ((a ref-type) b)
   (setf (equiv a) (unify (equiv a) b)))
 
-
+#++
+(defmethod unify :around (a b)
+  (let ((x (call-next-method)))
+       (format t "~s ~s ->~%  ~s~%" (type-of a) (type-of b)
+               (typecase x
+                 (concrete-type
+                  (name x))
+                 (constrained-type
+                  (mapcar 'name (alexandria:hash-table-keys (types x))))
+                 (t (type-of x))))
+       (when (and (typep x 'concrete-type)
+                  (eql x (get-type-binding :dmat4)))
+         (break "dmat4?" a b x))
+       x))
 
 (defclass infer-build-constraints (3bgl-glsl::glsl-walker)
   ())
@@ -712,9 +725,16 @@
        binding-type)
       (array-type
        (base-type binding-type))
+      (constrained-type
+       (let ((c (make-instance 'scalar-type-of-constraint
+                               :ctype (make-instance 'any-type)
+                               :other-type binding-type)))
+         (add-constraint binding-type c)
+         (add-constraint (ctype c) c)
+         (flag-modified-constraint c)
+         (ctype c)))
       (t ;; not sure this should happen?
-       (value-type binding-type)))
-    ))
+       (value-type binding-type)))))
 
 
 (defmethod walk ((form slot-access) (walker infer-build-constraints))
@@ -1249,7 +1269,8 @@
   (when (typep (other-type constraint) 'any-type)
     (error "don't know how to handle same-type-or-scalar-constraint from any-type?"))
   (labels ((scalar (type)
-             (aref (scalar/vector-set type) 1))
+             (or (base-type type)
+                 (aref (scalar/vector-set type) 1)))
            (handle-fixed-constraint ()
              ;; can't unify types since they might not have same
              ;; base type. once ctype is down to a single type we can
@@ -1319,7 +1340,8 @@
   (when (typep (other-type constraint) 'any-type)
     (error "don't know how to handle scalar-type-of-constraint from any-type?"))
   (labels ((scalar (type)
-             (aref (scalar/vector-set type) 1))
+             (or (base-type type)
+                 (aref (scalar/vector-set type) 1)))
            (handle-fixed-constraint ()
              ;; can't unify types since they might not have same
              ;; base type. once ctype is down to a single type we can
@@ -1338,9 +1360,18 @@
                     (zerop (hash-table-count (types (other-type constraint)))))
                 (error "can't resolve s constraint?")))))
     (cond
-      ((typep (other-type constraint) 'concrete-type)
-       ;; expand any-type when other-type is concrete
+      ((and (typep (other-type constraint) 'concrete-type)
+            (typep (ctype constraint) 'concrete-type))
        (error "not done yet..."))
+      ((typep (other-type constraint) 'concrete-type)
+       (let* ((o (other-type constraint))
+              (c (ctype constraint)))
+         (unless (or (gethash o (types c))
+                     (gethash (base-type o) (types c)))
+           (error "couldn't resolve constraint ~s/~s"
+                  (glsl-name o)
+                  (map 'list 'glsl-name
+                       (alexandria:hash-table-keys(types c)))))))
       ;; expand any-type when other-type is constrained
       ((typep (ctype constraint) 'any-type)
        (change-class (ctype constraint) 'constrained-type)
