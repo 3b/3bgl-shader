@@ -90,9 +90,39 @@ itself). "
          *modified-function-hook*)
     nil))
 
+(defmethod generate-output (objects inferred-types (backend (eql :glsl))
+                            &key version &allow-other-keys)
+  (with-output-to-string (*standard-output*)
+    (format t "#version ~a~%" version)
+    (loop with dumped = (make-hash-table)
+          for object in objects
+          for stage-binding = (stage-binding object)
+          for interface-block = (when stage-binding
+                                  (interface-block stage-binding))
+          unless (and interface-block (gethash interface-block dumped))
+            do (etypecase object
+                 ((or generic-type interface-binding constant-binding)
+                  (unless (internal object)
+                    (pprint-glsl object)
+                    (when interface-block
+                      (setf (gethash interface-block dumped) t))))
+                 (global-function
+                  (let ((overloads (gethash object inferred-types)))
+                    (assert overloads)
+                    (loop for overload in overloads
+                          for *binding-types*
+                            = (gethash overload
+                                       (final-binding-type-cache
+                                        object))
+                          do (assert *binding-types*)
+                             (pprint-glsl object))))))))
+
+(defparameter *default-backend* :glsl)
+
 ;; final pass of compilation
 ;; finish type inference for concrete types, generate glsl
-(defun generate-stage (stage main &key (version 450))
+(defun generate-stage (stage main &key (backend *default-backend*)
+                                    (version 450))
   "Generate GLSL shader for specified STAGE, using function named by
 MAIN as glsl 'main' function. ROOT and all functions/variables/etc it
 depends on should already have been successfully compiled with
@@ -135,30 +165,7 @@ active attributes in same format as third value."
                                      attributes :test 'equal)))))
             ;(break "shaken" shaken)
             (values
-             (with-output-to-string (*standard-output*)
-               (format t "#version ~a~%" version)
-               (loop with dumped = (make-hash-table)
-                     for object in shaken
-                     for stage-binding = (stage-binding object)
-                     for interface-block = (when stage-binding
-                                             (interface-block stage-binding))
-                     unless (and interface-block (gethash interface-block dumped))
-                       do (etypecase object
-                            ((or generic-type interface-binding constant-binding)
-                             (unless (internal object)
-                               (pprint-glsl object)
-                               (when interface-block
-                                 (setf (gethash interface-block dumped) t))))
-                            (global-function
-                             (let ((overloads (gethash object inferred-types)))
-                               (assert overloads)
-                               (loop for overload in overloads
-                                     for *binding-types*
-                                       = (gethash overload
-                                                  (final-binding-type-cache
-                                                   object))
-                                     do (assert *binding-types*)
-                                        (pprint-glsl object)))))))
+             (generate-output shaken inferred-types backend :version version)
              uniforms
              attributes)))))))
 
