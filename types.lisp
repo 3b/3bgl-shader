@@ -401,56 +401,160 @@
 (defun add-concrete-type (name glsl-name &key (env *environment*) type)
   (setf (gethash name (types env))
         (or type
-            (make-instance 'concrete-type
-                           :name name
-                           :glsl-name glsl-name))))
+            (if (symbolp glsl-name)
+                ;; allow aliases to already defined types
+                (let ((a (gethash glsl-name (types env))))
+                  (assert a)
+                  a)
+                (make-instance 'concrete-type
+                               :name name
+                               :glsl-name glsl-name)))))
 
 (let ((*environment* 3bgl-glsl::*glsl-base-environment*))
+  ;; not sure all of these types are valid for actual GLSL shaders
+  ;; and some might have wrong names (or need multiple names depending
+  ;; on which extension is providing them)
+
+  ;; partial extension list: ARB_gpu_shader_int64
+  ;; EXT_vertex_attrib_64bit
+  ;; AMD_gpu_shader_half_float
+  ;; AMD_gpu_shader_int64
+  ;; NV_gpu_shader5
+  ;; NV_vertex_attrib_integer_64bit
   (add-concrete-type :void "void")
   (add-concrete-type :bool "bool")
   (add-concrete-type :int "int")
+  (add-concrete-type :int8 "int8_t")
+  (add-concrete-type :int16 "int16_t")
+  (add-concrete-type :int32 :int)
+  (add-concrete-type :int64 "int64_t")
   (add-concrete-type :uint "uint")
+  (add-concrete-type :uint8 "uint8_t")
+  (add-concrete-type :uint16 "uint16_t")
+  (add-concrete-type :uint32 :uint)
+  (add-concrete-type :uint64 "uint64_t")
   (add-concrete-type :float "float")
   (add-concrete-type :double "double")
+  (add-concrete-type :float16 "float16_t")
+  (add-concrete-type :float32 :float)
+  (add-concrete-type :float64 :double)
+  (add-concrete-type :f16vec2 "f16vec2")
+  (add-concrete-type :f16vec3 "f16vec3")
+  (add-concrete-type :f16vec4 "f16vec4")
   (add-concrete-type :vec2 "vec2")
   (add-concrete-type :vec3 "vec3")
   (add-concrete-type :vec4 "vec4")
+  (add-concrete-type :f32vec2 :vec2)
+  (add-concrete-type :f32vec3 :vec3)
+  (add-concrete-type :f32vec4 :vec4)
   (add-concrete-type :dvec2 "dvec2")
   (add-concrete-type :dvec3 "dvec3")
   (add-concrete-type :dvec4 "dvec4")
+  (add-concrete-type :f64vec2 :dvec2)
+  (add-concrete-type :f64vec3 :dvec3)
+  (add-concrete-type :f64vec4 :dvec4)
   (add-concrete-type :bvec2 "bvec2")
   (add-concrete-type :bvec3 "bvec3")
   (add-concrete-type :bvec4 "bvec4")
   (add-concrete-type :ivec2 "ivec2")
   (add-concrete-type :ivec3 "ivec3")
   (add-concrete-type :ivec4 "ivec4")
+  (add-concrete-type :i8vec2 "i8vec2")
+  (add-concrete-type :i8vec3 "i8vec3")
+  (add-concrete-type :i8vec4 "i8vec4")
+  (add-concrete-type :i16vec2 "i16vec2")
+  (add-concrete-type :i16vec3 "i16vec3")
+  (add-concrete-type :i16vec4 "i16vec4")
+  (add-concrete-type :i32vec2 :ivec2)
+  (add-concrete-type :i32vec3 :ivec3)
+  (add-concrete-type :i32vec4 :ivec4)
+  (add-concrete-type :i64vec2 "i64vec2")
+  (add-concrete-type :i64vec3 "i64vec3")
+  (add-concrete-type :i64vec4 "i64vec4")
   (add-concrete-type :uvec2 "uvec2")
   (add-concrete-type :uvec3 "uvec3")
   (add-concrete-type :uvec4 "uvec4")
+  (add-concrete-type :uvec2 "uvec2")
+  (add-concrete-type :uvec3 "uvec3")
+  (add-concrete-type :uvec4 "uvec4")
+  (add-concrete-type :u8vec2 "u8vec2")
+  (add-concrete-type :u8vec3 "u8vec3")
+  (add-concrete-type :u8vec4 "u8vec4")
+  (add-concrete-type :u16vec2 "u16vec2")
+  (add-concrete-type :u16vec3 "u16vec3")
+  (add-concrete-type :u16vec4 "u16vec4")
+  (add-concrete-type :u32vec2 :uvec2)
+  (add-concrete-type :u32vec3 :uvec3)
+  (add-concrete-type :u32vec4 :uvec4)
+  (add-concrete-type :u64vec2 "u64vec2")
+  (add-concrete-type :u64vec3 "u64vec3")
+  (add-concrete-type :u64vec4 "u64vec4")
+
+  (add-concrete-type :f16mat2 "f16mat2")
+  (add-concrete-type :f16mat3 "f16mat3")
+  (add-concrete-type :f16mat4 "f16mat4")
+  (add-concrete-type :f16mat2x2 :f16mat2)
+  (add-concrete-type :f16mat2x3 "f16mat2x3")
+  (add-concrete-type :f16mat2x4 "f16mat2x4")
+  (add-concrete-type :f16mat3x2 "f16mat3x2")
+  (add-concrete-type :f16mat3x3 :f16mat3)
+  (add-concrete-type :f16mat3x4 "f16mat3x4")
+  (add-concrete-type :f16mat4x2 "f16mat4x2")
+  (add-concrete-type :f16mat4x3 "f16mat4x3")
+  (add-concrete-type :f16mat4x4 :f16mat4)
+
   (add-concrete-type :mat2 "mat2")
   (add-concrete-type :mat3 "mat3")
   (add-concrete-type :mat4 "mat4")
-  (add-concrete-type :mat2x2 "mat2x2")
+  (add-concrete-type :mat2x2 :mat2) ;; not sure which way these should alias?
   (add-concrete-type :mat2x3 "mat2x3")
   (add-concrete-type :mat2x4 "mat2x4")
   (add-concrete-type :mat3x2 "mat3x2")
-  (add-concrete-type :mat3x3 "mat3x3")
+  (add-concrete-type :mat3x3 :mat3)
   (add-concrete-type :mat3x4 "mat3x4")
   (add-concrete-type :mat4x2 "mat4x2")
   (add-concrete-type :mat4x3 "mat4x3")
-  (add-concrete-type :mat4x4 "mat4x4")
+  (add-concrete-type :mat4x4 :mat4)
+
+  (add-concrete-type :f32mat2 :mat2)
+  (add-concrete-type :f32mat3 :mat3)
+  (add-concrete-type :f32mat4 :mat4)
+  (add-concrete-type :f32mat2x2 :mat2)
+  (add-concrete-type :f32mat2x3 :mat2x3)
+  (add-concrete-type :f32mat2x4 :mat2x4)
+  (add-concrete-type :f32mat3x2 :mat3x2)
+  (add-concrete-type :f32mat3x3 :mat3)
+  (add-concrete-type :f32mat3x4 :mat3x4)
+  (add-concrete-type :f32mat4x2 :mat4x2)
+  (add-concrete-type :f32mat4x3 :mat4x3)
+  (add-concrete-type :f32mat4x4 :mat4)
+
   (add-concrete-type :dmat2 "dmat2")
   (add-concrete-type :dmat3 "dmat3")
   (add-concrete-type :dmat4 "dmat4")
-  (add-concrete-type :dmat2x2 "dmat2x2")
+  (add-concrete-type :dmat2x2 :dmat2)
   (add-concrete-type :dmat2x3 "dmat2x3")
   (add-concrete-type :dmat2x4 "dmat2x4")
   (add-concrete-type :dmat3x2 "dmat3x2")
-  (add-concrete-type :dmat3x3 "dmat3x3")
+  (add-concrete-type :dmat3x3 :dmat3)
   (add-concrete-type :dmat3x4 "dmat3x4")
   (add-concrete-type :dmat4x2 "dmat4x2")
   (add-concrete-type :dmat4x3 "dmat4x3")
-  (add-concrete-type :dmat4x4 "dmat4x4")
+  (add-concrete-type :dmat4x4 :dmat4)
+
+  (add-concrete-type :f64mat2 :dmat2)
+  (add-concrete-type :f64mat3 :dmat3)
+  (add-concrete-type :f64mat4 :dmat4)
+  (add-concrete-type :f64mat2x2 :dmat2)
+  (add-concrete-type :f64mat2x3 :dmat2x3)
+  (add-concrete-type :f64mat2x4 :dmat2x4)
+  (add-concrete-type :f64mat3x2 :dmat3x2)
+  (add-concrete-type :f64mat3x3 :dmat3)
+  (add-concrete-type :f64mat3x4 :dmat3x4)
+  (add-concrete-type :f64mat4x2 :dmat4x2)
+  (add-concrete-type :f64mat4x3 :dmat4x3)
+  (add-concrete-type :f64mat4x4 :dmat4)
+
   (add-concrete-type :sampler-1d "sampler1D")
   (add-concrete-type :image-1d "image1D")
   (add-concrete-type :sampler-2d "sampler2D")
@@ -534,24 +638,89 @@
 
 ;; add implicit casts to types
 (let ((*environment* 3bgl-glsl::*glsl-base-environment*))
-  (flet ((c (&rest types)
-           (loop for (.type . to) on types
-                 for type = (get-type-binding .type)
-                 do ;; (format t "~s -> ~s ->~s~%" from .type to)
-                    (setf (implicit-casts-to type)
-                          (print (mapcar 'get-type-binding to)))
-                    (setf (implicit-casts-from type)
-                          (print (mapcar 'get-type-binding from)))
-                 collect .type into from)))
+  (flet ((c (conversions)
+           (let ((to (make-hash-table))    ;; types key casts to
+                 (from (make-hash-table))) ;; types that can cast to key
+             (loop for (from-type . to-types) in conversions
+                   do (setf (gethash from-type to) to-types)
+                      (loop for x in to-types
+                            do (pushnew from-type (gethash x from))))
+             (maphash (lambda (k v)
+                        (setf (implicit-casts-to (get-type-binding k))
+                              (mapcar 'get-type-binding v)))
+                      to)
+             (maphash (lambda (k v)
+                        (setf (implicit-casts-from (get-type-binding  k))
+                              (mapcar 'get-type-binding v)))
+                      from))))
     (macrolet ((add-implicit-conversions (&rest conversions)
-                 `(progn
-                    ,@(mapcar (lambda (a) (cons 'c a))
-                              conversions))))
+                 `(c ',conversions)))
       (add-implicit-conversions
-       (:int :uint :float :double)
-       (:ivec2 :uvec2 :vec2 :dvec2)
-       (:ivec3 :uvec3 :vec3 :dvec3)
-       (:ivec4 :uvec4 :vec4 :dvec4)
+       (:int8 :int :int64 :uint :uint64 :float :double) ;; no 8->16
+       (:int16 :int :int64 :uint :uint64 :float :double)
+
+       (:uint8 :uint :uint64 :float :double) ;; no 8->16
+       (:uint16 :uint :uint64 :float :double)
+
+       (:int :uint :int64 :uint64 :float :double)
+       (:uint :uint64 :float :double)
+
+       (:int64 :uint64 :double)
+       (:uint64 :double)
+
+       (:float16 :float :double)
+       (:float :double)
+
+       (:i8vec2 :ivec2 :i64vec2 :uvec2 :u64vec2 :vec2 :dvec2)
+       (:i8vec3 :ivec3 :i64vec3 :uvec3 :u64vec3 :vec3 :dvec3)
+       (:i8vec4 :ivec4 :i64vec4 :uvec4 :u64vec4 :vec4 :dvec4)
+
+       (:i16vec2 :ivec2 :i64vec2 :uvec2 :u64vec2 :vec2 :dvec2)
+       (:i16vec3 :ivec3 :i64vec3 :uvec3 :u64vec3 :vec3 :dvec3)
+       (:i16vec4 :ivec4 :i64vec4 :uvec4 :u64vec4 :vec4 :dvec4)
+
+       (:ivec2 :i64vec2 :uvec2 :u64vec2 :vec2 :dvec2)
+       (:ivec3 :i64vec3 :uvec3 :u64vec3 :vec3 :dvec3)
+       (:ivec4 :i64vec4 :uvec4 :u64vec4 :vec4 :dvec4)
+
+       (:i64vec2 :u64vec2 :dvec2)
+       (:i64vec3 :u64vec3 :dvec3)
+       (:i64vec4 :u64vec4 :dvec4)
+
+       (:u8vec2 :uvec2 :u64vec2 :vec2 :dvec2)
+       (:u8vec3 :uvec3 :u64vec3 :vec3 :dvec3)
+       (:u8vec4 :uvec4 :u64vec4 :vec4 :dvec4)
+
+       (:u16vec2 :uvec2 :u64vec2 :vec2 :dvec2)
+       (:u16vec3 :uvec3 :u64vec3 :vec3 :dvec3)
+       (:u16vec4 :uvec4 :u64vec4 :vec4 :dvec4)
+
+       (:uvec2 :u64vec2 :vec2 :dvec2)
+       (:uvec3 :u64vec3 :vec3 :dvec3)
+       (:uvec4 :u64vec4 :vec4 :dvec4)
+
+       (:u64vec2 :dvec2)
+       (:u64vec3 :dvec3)
+       (:u64vec4 :dvec4)
+
+       (:f16vec2 :vec2 :dvec2)
+       (:f16vec3 :vec3 :dvec3)
+       (:f16vec4 :vec4 :dvec4)
+
+       (:vec2 :dvec2)
+       (:vec3 :dvec3)
+       (:vec4 :dvec4)
+
+       (:f16mat2 :mat2 :dmat2)
+       (:f16mat3 :mat3 :dmat3)
+       (:f16mat4 :mat4 :dmat4)
+       (:f16mat2x3 :mat2x3 :dmat2x3)
+       (:f16mat2x4 :mat2x4 :dmat2x4)
+       (:f16mat3x2 :mat3x2 :dmat3x2)
+       (:f16mat3x4 :mat3x4 :dmat3x4)
+       (:f16mat4x2 :mat4x2 :dmat4x2)
+       (:f16mat4x3 :mat4x3 :dmat4x3)
+
        (:mat2 :dmat2)
        (:mat3 :dmat3)
        (:mat4 :dmat4)
@@ -575,16 +744,19 @@
                               conversions))))
       (add-explicit-conversions
        ;; scalar types
-       (:bool :int :uint :float :double)
+       (:uint8 :uint16 :int8 :int16 :bool :int :uint :float16 :float :double)
        ;; non-scalar types with same number of elements
-       (:bvec2 :ivec2 :uvec2 :vec2 :dvec2) ;; 2
-       (:bvec3 :ivec3 :uvec3 :vec3 :dvec3) ;; 3
-       (:bvec4 :ivec4 :uvec4 :vec4 :dvec4 :mat2 :dmat2) ;; 4
-       (:mat2x3 :dmat2x3 :mat3x2 :dmat3x2) ;; 6
-       (:mat2x4 :dmat2x4 :mat4x2 :dmat4x2) ;; 8
-       (:mat3 :dmat3) ;; 9
-       (:mat3x4 :dmat3x4 :mat4x3 :dmat4x3);; 12
-       (:mat4 :dmat4))))) ;; 16
+       (:i8vec2 :u8vec2 :i16vec2 :u16vec2 :f16vec2
+                :bvec2 :ivec2 :uvec2 :vec2 :dvec2) ;; 2
+       (:i8vec3 :u8vec3 :i16vec3 :u16vec3 :f16vec3
+                :bvec3 :ivec3 :uvec3 :vec3 :dvec3) ;; 3
+       (:i8vec4 :u8vec4 :i16vec4 :u16vec4 :f16vec4
+                :bvec4 :ivec4 :uvec4 :vec4 :dvec4 :mat2 :dmat2)  ;; 4
+       (:f16mat2x3 :mat2x3 :dmat2x3 :f16mat3x2 :mat3x2 :dmat3x2) ;; 6
+       (:f16mat2x4 :mat2x4 :dmat2x4 :f16mat4x2 :mat4x2 :dmat4x2) ;; 8
+       (:f16mat3 :mat3 :dmat3)                                   ;; 9
+       (:f16mat3x4 :mat3x4 :dmat3x4 :f16mat4x3 :mat4x3 :dmat4x3) ;; 12
+       (:f16mat4 :mat4 :dmat4)))))                               ;; 16
 
 ;;; add scalar/vector set/size to types
 (let ((*environment* 3bgl-glsl::*glsl-base-environment*))
@@ -603,18 +775,33 @@
                               conversions))))
       (add-explicit-conversions
        (:bool :bvec2 :bvec3 :bvec4)
+       (:i8 :i8vec2 :i8vec3 :i8vec4)
+       (:u8 :u8vec2 :u8vec3 :u8vec4)
+       (:i16 :i16vec2 :i16vec3 :i16vec4)
+       (:u16 :u16vec2 :u16vec3 :u16vec4)
        (:int :ivec2 :ivec3 :ivec4)
        (:uint :uvec2 :uvec3 :uvec4)
+       (:i64 :i64vec2 :i64vec3 :i64vec4)
+       (:u64 :u64vec2 :u64vec3 :u64vec4)
+       (:f16 :f16vec2 :f16vec3 :f16vec4)
        (:float :vec2 :vec3 :vec4)
        (:double :dvec2 :dvec3 :dvec4)))))
 
 ;; add sizes and base type for matrix types
 (let ((*environment* 3bgl-glsl::*glsl-base-environment*))
-  (loop for f in '(:mat2 :mat2x3 :mat2x4 :mat3x2 :mat3 :mat3x4
+  (loop for f16 in '(:f16mat2 :f16mat2x3 :f16mat2x4
+                     :f16mat3x2 :f16mat3 :f16mat3x4
+                     :f16mat4x2 :f16mat4x3 :f16mat4)
+        for f in '(:mat2 :mat2x3 :mat2x4
+                   :mat3x2 :mat3 :mat3x4
                    :mat4x2 :mat4x3 :mat4)
-        for d in '(:dmat2 :dmat2x3 :dmat2x4 :dmat3x2 :dmat3 :dmat3x4
+        for d in '(:dmat2 :dmat2x3 :dmat2x4
+                   :dmat3x2 :dmat3 :dmat3x4
                    :dmat4x2 :dmat4x3 :dmat4)
         ;; todo: make sure these are right...
+        for f16b in '(:f16vec2 :f16vec3 :f16vec4
+                      :f16vec2 :f16vec3 :f16vec4
+                      :f16vec2 :f16vec3 :f16vec4)
         for fb in '(:vec2 :vec3 :vec4
                     :vec2 :vec3 :vec4
                     :vec2 :vec3 :vec4)
@@ -623,7 +810,9 @@
                     :dvec2 :dvec3 :dvec4)
 
         for c in '(4 6 8 6 9 12 8 12 16)
-        do (setf (scalar/vector-size (get-type-binding f)) c)
+        do (setf (scalar/vector-size (get-type-binding f16)) c)
+           (setf (base-type (get-type-binding f16)) (get-type-binding f16b))
+           (setf (scalar/vector-size (get-type-binding f)) c)
            (setf (base-type (get-type-binding f)) (get-type-binding fb))
            (setf (scalar/vector-size (get-type-binding d)) c)
            (setf (base-type (get-type-binding d)) (get-type-binding db))))
