@@ -596,12 +596,12 @@
                                   ((:uint :uint) :uint)
                                   ((:float :float) :float)
                                   ((:double :double) :double)
-                                  ,@(make-ftype (append vec mat ivec
-                                                        vec mat ivec)
-                                                (append fxv fxm ixv vec
-                                                        mat ivec)
-                                                (append vec mat ivec
-                                                        fxv fxm ixv))))
+                                  ,@(make-ftype (append vec mat ivec uvec
+                                                        vec mat ivec uvec)
+                                                (append fxv fxm ixv uxv
+                                                        vec mat ivec uvec)
+                                                (append vec mat ivec uvec
+                                                        fxv fxm ixv uxv))))
     ;; glsl % operator (no 2nd value from CL operator for now)
     ;; combined with glsl 'mod' function below
     #++
