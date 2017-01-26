@@ -20,7 +20,7 @@
 (defgeneric dump-spirv (object))
 
 (defmethod dump-spirv (object)
-  #++(cerror "dumping unknown object ~s?" object)
+  (cerror "continue" "dumping unknown object ~s?" object)
   (format t "dumping unknown object ~s?~%" object)
   nil)
 
@@ -84,8 +84,45 @@
                                  ,(name v)))
     tmp))
 
+(defun cast (x from to)
+  (format t "~&!!!cast ~s: ~s -> ~s~%"
+          x from to)
+  ;; possibly should assert vectors have same size?
+  (let ((tmp (spv-tmp)))
+    (with-matcher m (from to)
+      ;; int -> float = convert-s-to-f
+      ;; uint -> float = convert-u-to-f
+      ;; float -> float = f-convert
+      ;; int/uint -> int/uint = [us]-convert
+      ;; not sure if needed since no implicit casts?
+      ;; float -> int/uint = convert-f-to-[su]
+      (cond
+        ((or (m signed floating)
+             (m signed-vector floating-vector))
+         (add-spirv `(spirv-core:convert-s-to-f ,tmp ,to ,x)))
+        ((or (m unsigned floating)
+             (m unsigned-vector floating-vector))
+         (add-spirv `(spirv-core:convert-u-to-f ,tmp ,to ,x)))
+        ((or (m floating floating)
+             (m floating-vector floating-vector))
+         (add-spirv `(spirv-core:f-convert ,tmp ,to ,x)))
+        ((or (m signed integral)
+             (m signed-vector integral-vector))
+         (add-spirv `(spirv-core:s-convert ,tmp ,to ,x)))
+        ((or (m unsigned integral)
+             (m unsigned-vector integral-vector))
+         (add-spirv `(spirv-core:u-convert ,tmp ,to ,x)))
+        (t (error "can't cast ~s to ~s?" from to))))
+    tmp))
+
 (defmethod dump-spirv ((o variable-write))
-  (let ((tmp (dump-spirv (value o))))
+  (let ((tmp (dump-spirv (value o)))
+        (from (if (typep (value o) 'function-call)
+                  (name (first (gethash (value o) *binding-types*)))
+                  (name (value-type (value o)))))
+        (to (name (value-type (binding o)))))
+    (unless (eq from to)
+      (setf tmp (cast tmp from to)))
     (add-spirv `(spirv-core:store ,(name  (binding (binding o))) ,tmp)))
   nil)
 
@@ -109,6 +146,18 @@
           ,@body-spv))))
   nil)
 
+
+(defmethod dump-spirv ((o function-call))
+  (let ((args (mapcar 'dump-spirv (arguments o)))
+        (function-types (gethash o *binding-types*)))
+    (setf
+     args (loop for a in args
+                for vt in (mapcar 'value-type (arguments o))
+                for ft in (cdr function-types)
+                when (eq (name vt) (name ft))
+                  collect a
+                else collect (cast a (name vt) (name ft))))
+    (dump-spirv-call (called-function o) o args)))
 
 
 (defmethod generate-output (objects inferred-types
@@ -165,3 +214,8 @@
 (3b-spirv/hl::assemble-to-file
  "/tmp/3bgl-shader.spv"
  (3bgl-shaders::generate-stage :fragment '3bgl-shader-example-shaders::fragment :backend :spirv))
+
+#++
+(3bgl-shaders::generate-stage :fragment
+                              '3bgl-shader-spirv-test-shaders::fragment
+                              :backend :spirv)
