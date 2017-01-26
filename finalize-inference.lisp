@@ -173,6 +173,23 @@
                         (when (flatten-type v)
                           (run-type-inference)))))
 
+      ;; flatten called function arguments
+      ;; (mostly needed for spirv, since it doesn't have implicit casts)
+      (loop for k in (alexandria:hash-table-keys local-types)
+            for .v = (gethash k local-types)
+            for v = (get-equiv-type .v)
+            do (unless (eq v .v)
+                 (setf (gethash k local-types) v))
+               (when (typep k '(or function-call))
+                 (when *verbose*
+                   (format t "update function-call arguments ~s (~s)~%"
+                           (name (called-function k))
+                           (debug-type-names v)))
+                 (when (plusp (loop for arg in v
+                                    when arg
+                                    count (flatten-type arg)))
+                   (run-type-inference))))
+
       ;; flatten return type of function
       (flatten-type (gethash :return local-types))
       (when (typep (gethash :return local-types) 'any-type)
@@ -182,18 +199,19 @@
       ;; combination of arguments
       (let ((cache (make-hash-table)))
         (maphash (lambda (k v)
-                   (if (typep k 'inference-call-site)
+                   (if (typep k '(or function-call inference-call-site))
                        (progn
                          (when *verbose*
                            (format t "use function ~s: ~s~%"
                                    (name (called-function k))
                                    (debug-type-names v)))
-                         (pushnew (mapcar (lambda (a)
+                         (assert (not (gethash k cache nil)))
+                         (setf (gethash k cache nil)
+                                  (mapcar (lambda (a)
                                             (when a
                                               (flatten-type a)
                                               (get-concrete-type a)))
-                                          (cdr v))
-                                  (gethash k cache nil) :test 'equal)
+                                          v))
                          (when *verbose*
                            (format t "-> ~s~%"
                                    (debug-type-names (gethash k cache :?)))))
@@ -213,7 +231,7 @@
   (maphash (lambda (k v)
              (when (and (typep k 'inference-call-site)
                         (typep (called-function k) 'global-function))
-               (flatten-function (called-function k) (car v))))
+               (flatten-function (called-function k) (cdr v))))
            (gethash argument-types (final-binding-type-cache function)))
   (unless (gethash function *instantiated-overloads*)
     (setf (gethash function *instantiated-overloads*)

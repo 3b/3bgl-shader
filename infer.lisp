@@ -808,8 +808,9 @@
               (setf *current-function-return-type* r)))
         ;; normal function, just copy the return values as usual
         (let ((vt (copy-constraints (value-type called))))
-          (when call-site
-            (push vt (gethash call-site *current-function-local-types*)))
+          (if call-site
+              (push vt (gethash call-site *current-function-local-types*))
+              (push vt (gethash form *current-function-local-types*)))
           vt))))
 
 (defmethod walk ((form variable-read) (walker infer-build-constraints))

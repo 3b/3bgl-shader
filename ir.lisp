@@ -334,6 +334,8 @@
   ((binding :accessor binding :initarg :binding)))
 (defmethod name ((o variable-read))
   (name (binding o)))
+(defmethod value-type ((o variable-read))
+  (value-type (binding o)))
 
 (defclass variable-write ()
   ;; possibly should store some type info as well?
