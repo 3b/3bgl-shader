@@ -47,7 +47,9 @@
                :f16mat3x4 :f16mat4x2 :f16mat4x3 :mat2 :mat3 :mat4
                :mat2x3 :mat2x4 :mat3x2 :mat3x4 :mat4x2 :mat4x3
                :dmat2 :dmat3 :dmat4 :dmat2x3 :dmat2x4 :dmat3x2
-               :dmat3x4 :dmat4x2 :dmat4x3))))
+               :dmat3x4 :dmat4x2 :dmat4x3)
+       bool-vector (:bvec2 :bvec3 :bvec4)
+       nil (nil))))
 
   (defun expand-type (type)
     (or (gethash type *type-abbreviations*)
@@ -62,19 +64,34 @@
           expanded
           (expand-type-set expanded)))))
 
-(defmacro with-matcher (name (type1 type2) &body body)
+(defmacro with-matcher (name (type1 &optional (type2 nil type2p)) &body body)
   (alexandria:once-only (type1 type2)
-    `(macrolet ((,name (set1 set2)
+    `(macrolet ((,name (set1 ,@(when type2p '(set2)))
                   (let ((set1 (expand-type-set set1))
-                        (set2 (expand-type-set set2)))
+                        ,@(when type2p
+                            '((set2 (expand-type-set set2)))))
                     `(progn
                        (format t "~&matching: ~s in ~s~%           ~s in ~s~%"
                                ,',type1 ',set1
-                               ,',type2 ',set2)
-                       (and (member ,',type1 ',set1)
-                            (member ,',type2 ',set2))))))
+                               ,',type2 ',,(when type2p 'set2))
+                       ,,(if (not type2p)
+                             ``(member ,',type1 ',set1)
+                             `(if set2
+                                  `(and (member ,',type1 ',set1
+                                                )
+                                        (member ,',type2 ',set2))
+                                  `(and (member ,',type1 ',set1)
+                                        (eql ,',type2 nil))))))))
        ,@body)))
 
+(defun vcast (t1 t2 v)
+  (let* ((tmp (spv-tmp))
+         (size (scalar/vector-size t2))
+         (cast (name (aref (scalar/vector-set t1) size))))
+    (add-spirv `(spirv-core:composite-construct
+                 ,tmp ,cast ,@ (loop repeat size
+                                     collect v)))
+    (values tmp cast)))
 
 (defint * (a b)
   (let* ((ret (spv-tmp))
@@ -85,22 +102,14 @@
     (assert (and type1 type2))
     ;; most casts are handled by caller, but add special case for
     ;; int*ivec and ivec*int, since vector-times-scalar is float only
-    (flet ((icast (t1 t2 v)
-             (let* ((tmp (spv-tmp))
-                    (size (scalar/vector-size t2))
-                    (cast (name (aref (scalar/vector-set t1) size))))
-               (add-spirv `(spirv-core:composite-construct
-                            ,tmp ,cast ,@ (loop repeat size
-                                                collect v)))
-               (values tmp cast))))
-      (with-matcher m (type1 type2)
-        (cond
-          ((m integral integral-vector)
-           (setf (values a type1)
-                 (icast (second types) (third types) a)))
-          ((m integral-vector integral)
-           (setf (values b type2)
-                 (icast (third types) (second types) b))))))
+    (with-matcher m (type1 type2)
+      (cond
+        ((m integral integral-vector)
+         (setf (values a type1)
+               (vcast (second types) (third types) a)))
+        ((m integral-vector integral)
+         (setf (values b type2)
+               (vcast (third types) (second types) b)))))
     ;; normal rules: (check after expanding casts)
     ;;  if int*int or ivec*ivec use i-mul
     ;;  if float*float or fvec*fvec use f-mul
@@ -109,8 +118,6 @@
     ;;  if mat * fvec use matrix-times-vector
     ;;  if fvec * mat use vector-times-matrix
     ;;  if mat * mat use matrix-times-matrix
-    ;;  if ivec * int or int * ivec make temp ivec from int and use i-mul
-    ;;
     (with-matcher m (type1 type2)
       (cond
         ((or (m integral integral)
@@ -123,5 +130,312 @@
          (add-spirv `(spirv-core:vector-times-scalar ,ret ,rtype ,a ,b)))
         ((m floating floating-vector)
          (add-spirv `(spirv-core:vector-times-scalar ,ret ,rtype ,b ,a)))
-        (t (error "can't multiply ~s by ~s yet" type1 type2))))
+        ((m matrix floating)
+         (add-spirv `(spirv-core:matrix-times-scalar ,ret ,rtype ,a ,b)))
+        ((m floating matrix)
+         (add-spirv `(spirv-core:matrix-times-scalar ,ret ,rtype ,b ,a)))
+        ((m matrix floating-vector)
+         (add-spirv `(spirv-core:matrix-times-vector ,ret ,rtype ,a ,b)))
+        ((m floating-vector matrix)
+         (add-spirv `(spirv-core:vector-times-matrix ,ret ,rtype ,a ,b)))
+        ((m matrix matrix)
+         (add-spirv `(spirv-core:matrix-times-matrix ,ret ,rtype ,a ,b)))
+        (t (error "can't multiply ~s by ~s" type1 type2))))
     ret))
+
+
+(defint + (a b)
+  (let* ((ret (spv-tmp))
+         (types (gethash *current-call* *binding-types*))
+         (rtype (name (first types)))
+         (type1 (name (second types)))
+         (type2 (name (third types))))
+    (assert (and type1 type2))
+    ;; most casts are handled by caller, but add special case for
+    ;; scalar+vec and vec+scalar, since they need expanded to vec+vec
+    (with-matcher m (type1 type2)
+      (cond
+        ((or (m integral integral-vector)
+             (m floating floating-vector))
+         (setf (values a type1)
+               (vcast (second types) (third types) a)))
+        ((or (m integral-vector integral)
+             (m floating-vector floating))
+         (setf (values b type2)
+               (vcast (third types) (second types) b)))))
+    ;; normal rules: (check after expanding casts)
+    ;;  if int+int or ivec+ivec use i-add
+    ;;  if float+float or fvec+fvec use f-add
+    (with-matcher m (type1 type2)
+      (cond
+        ((or (m integral integral)
+             (m integral-vector integral-vector))
+         (add-spirv `(spirv-core:i-add ,ret ,rtype ,a ,b)))
+        ((or (m floating floating)
+             (m floating-vector floating-vector))
+         (add-spirv `(spirv-core:f-add ,ret ,rtype ,a ,b)))
+        (t (error "can't add ~s to ~s" type1 type2))))
+    ret))
+
+
+(defint - (a &optional b)
+  (let* ((ret (spv-tmp))
+         (types (gethash *current-call* *binding-types*))
+         (rtype (name (first types)))
+         (type1 (name (second types)))
+         (type2 (name (third types))))
+    (assert type1)
+    ;; most casts are handled by caller, but add special case for
+    ;; scalar-vec and vec-scalar, since they need expanded to vec-vec
+    (with-matcher m (type1 type2)
+      (cond
+        ((or (m integral integral-vector)
+             (m floating floating-vector))
+         (setf (values a type1)
+               (vcast (second types) (third types) a)))
+        ((or (m integral-vector integral)
+             (m floating-vector floating))
+         (setf (values b type2)
+               (vcast (third types) (second types) b)))))
+    ;; normal rules: (check after expanding casts)
+    ;;  int-int or ivec-ivec use i-sub
+    ;;  float-float or fvec-fvec use f-sub
+    ;;  int-NIL use s-negate
+    ;;  float-NIL use f-negate
+    (with-matcher m (type1 type2)
+      (cond
+        ((or (m integral integral)
+             (m integral-vector integral-vector))
+         (add-spirv `(spirv-core:i-sub ,ret ,rtype ,a ,b)))
+        ((or (m floating floating)
+             (m floating-vector floating-vector))
+         (add-spirv `(spirv-core:f-sub ,ret ,rtype ,a ,b)))
+        ;; negate
+        ((or (m integral nil)
+             (m integral-vector nil))
+         (add-spirv `(spirv-core:s-negate ,ret ,rtype ,a)))
+        ((or (m floating nil)
+             (m floating-vector nil))
+         (add-spirv `(spirv-core:f-negate ,ret ,rtype ,a)))
+        (t (error "can't subtract ~s from ~s" type1 type2))))
+    ret))
+
+(defint 1+ (a)
+  (let* ((ret (spv-tmp))
+         (types (gethash *current-call* *binding-types*))
+         (rtype (name (first types)))
+         (tt (second types))
+         (type1 (name tt)))
+    (assert type1)
+    (with-matcher m (type1)
+      (cond
+        ((m integral)
+         (add-spirv `(spirv-core:i-add ,ret ,rtype ,a (the ,type1 1))))
+        ((m floating)
+         (add-spirv `(spirv-core:f-add ,ret ,rtype ,a (the ,type1 1.0))))
+        ((m integral-vector)
+         (add-spirv
+          `(spirv-core:i-add ,ret ,rtype ,a
+                             (,type1 ,@ (loop repeat (scalar/vector-size tt)
+                                              collect 1)))))
+        ((m floating-vector)
+         (add-spirv
+          `(spirv-core:f-add ,ret ,rtype ,a
+                             (,type1 ,@ (loop repeat (scalar/vector-size tt)
+                                              collect 1.0)))))
+        (t (error "can't add 1 to ~s" type1))))
+    ret))
+
+(defint 1- (a)
+  (let* ((ret (spv-tmp))
+         (types (gethash *current-call* *binding-types*))
+         (rtype (name (first types)))
+         (tt (second types))
+         (type1 (name tt)))
+    (assert type1)
+    (with-matcher m (type1)
+      (cond
+        ((m integral)
+         (add-spirv `(spirv-core:i-sub ,ret ,rtype ,a (the ,type1 1))))
+        ((m floating)
+         (add-spirv `(spirv-core:f-sub ,ret ,rtype ,a (the ,type1 1.0))))
+        ((m integral-vector)
+         (add-spirv
+          `(spirv-core:i-sub ,ret ,rtype ,a
+                             (,type1 ,@ (loop repeat (scalar/vector-size tt)
+                                              collect 1)))))
+        ((m floating-vector)
+         (add-spirv
+          `(spirv-core:f-sub ,ret ,rtype ,a
+                             (,type1 ,@ (loop repeat (scalar/vector-size tt)
+                                              collect 1.0)))))
+        (t (error "can't subtract 1 from ~s" type1))))
+    ret))
+
+
+(defint / (a b)
+  (let* ((ret (spv-tmp))
+         (types (gethash *current-call* *binding-types*))
+         (rtype (name (first types)))
+         (type1 (name (second types)))
+         (type2 (name (third types))))
+    (assert (and type1 type2))
+    ;; most casts are handled by caller, but add special case for
+    ;; scalar/vec and vec/scalar, since they need expanded to vec/vec
+    (with-matcher m (type1 type2)
+      (cond
+        ((or (m integral integral-vector)
+             (m floating floating-vector))
+         (setf (values a type1)
+               (vcast (second types) (third types) a)))
+        ((or (m integral-vector integral)
+             (m floating-vector floating))
+         (setf (values b type2)
+               (vcast (third types) (second types) b)))))
+    ;; normal rules: (check after expanding casts)
+    ;;  if int-int or ivec-ivec use i-sub
+    ;;  if float-float or fvec-fvec use f-sub
+    (with-matcher m (type1 type2)
+      (cond
+        ((or (m signed signed)
+             (m signed-vector signed-vector))
+         (add-spirv `(spirv-core:s-div ,ret ,rtype ,a ,b)))
+        ((or (m unsigned unsigned)
+             (m unsigned-vector unsigned-vector))
+         (add-spirv `(spirv-core:u-div ,ret ,rtype ,a ,b)))
+        ((or (m floating floating)
+             (m floating-vector floating-vector))
+         (add-spirv `(spirv-core:f-sub ,ret ,rtype ,a ,b)))
+        (t (error "can't divide ~s by ~s" type1 type2))))
+    ret))
+
+(defint mod (a b)
+  (let* ((ret (spv-tmp))
+         (types (gethash *current-call* *binding-types*))
+         (rtype (name (first types)))
+         (type1 (name (second types)))
+         (type2 (name (third types))))
+    (assert (and type1 type2))
+    ;; most casts are handled by caller, but add special case for
+    ;; scalar/vec and vec/scalar, since they need expanded to vec/vec
+    (with-matcher m (type1 type2)
+      (cond
+        ((or (m integral integral-vector)
+             (m floating floating-vector))
+         (setf (values a type1)
+               (vcast (second types) (third types) a)))
+        ((or (m integral-vector integral)
+             (m floating-vector floating))
+         (setf (values b type2)
+               (vcast (third types) (second types) b)))))
+    ;; normal rules: (check after expanding casts)
+    ;;  if int-int or ivec-ivec use i-sub
+    ;;  if float-float or fvec-fvec use f-sub
+    (with-matcher m (type1 type2)
+      (cond
+        ((or (m signed signed)
+             (m signed-vector signed-vector))
+         (add-spirv `(spirv-core:s-mod ,ret ,rtype ,a ,b)))
+        ((or (m unsigned unsigned)
+             (m unsigned-vector unsigned-vector))
+         (add-spirv `(spirv-core:u-mod ,ret ,rtype ,a ,b)))
+        ((or (m floating floating)
+             (m floating-vector floating-vector))
+         (add-spirv `(spirv-core:f-mod ,ret ,rtype ,a ,b)))
+        (t (error "can't compile (mod ~s ~s)" type1 type2))))
+    ret))
+
+(defint and (a b)
+  (let* ((ret (spv-tmp))
+         (types (gethash *current-call* *binding-types*))
+         (rtype (name (first types)))
+         (type1 (name (second types)))
+         (type2 (name (third types))))
+    (assert (and type1 type2))
+    ;; bool,bool -> bool
+    (with-matcher m (type1 type2)
+      (cond
+        ((or (m :bool :bool)
+             (m bool-vector bool-vector))
+         (add-spirv `(spirv-core:logical-and ,ret ,rtype ,a ,b)))
+        (t (error "can't compile (AND ~s ~s)" type1 type2))))
+    ret))
+
+
+(defint or (a b)
+  (let* ((ret (spv-tmp))
+         (types (gethash *current-call* *binding-types*))
+         (rtype (name (first types)))
+         (type1 (name (second types)))
+         (type2 (name (third types))))
+    (assert (and type1 type2))
+    ;; bool,bool -> bool
+    (with-matcher m (type1 type2)
+      (cond
+        ((or (m :bool :bool)
+             (m bool-vector bool-vector))
+         (add-spirv `(spirv-core:logical-or ,ret ,rtype ,a ,b)))
+        (t (error "can't compile (OR ~s ~s)" type1 type2))))
+    ret))
+
+(defint ^^ (a b)
+  (let* ((ret (spv-tmp))
+         (types (gethash *current-call* *binding-types*))
+         (rtype (name (first types)))
+         (type1 (name (second types)))
+         (type2 (name (third types))))
+    (assert (and type1 type2))
+    ;; bool,bool -> bool
+    (with-matcher m (type1 type2)
+      (cond
+        ((or (m :bool :bool)
+             (m bool-vector bool-vector))
+         (add-spirv `(spirv-core:logical-not-equal ,ret ,rtype ,a ,b)))
+        (t (error "can't compile (^^ ~s ~s)" type1 type2))))
+    ret))
+
+;; modf, matrix-comp-mult, dot, cross, outer-product
+;; incf,decf,++,--
+;; >,<,<=,>=,=,/
+;; less-than, less-than-equal, greater-than, greater-than-equal
+;; equal, not-equal
+;; any, all
+;; ^^,not
+;; lognot,logior,logand,logxor
+;; <<,>>,
+;; min, max, clamp
+;; sin,cos,tan,asin,acos,atan
+;; sinh,cosh,tanh,asinh,acosh,atanh
+;; pow,exp,log,exp2,log2,sqrt,inverse-sqrt
+;; abs, signum, sign
+;; floor, truncate, ceiling, trunc, round, round-even,  ceil, fract
+;; mix, step, smooth-step
+;; is-nan, is-inf
+;; fma, frexp, ldexp
+;; length, distance, normalize, transpose, determinant, inverse
+;; ftransform?
+;; face-forward, reflect, refract
+
+;; int,uint,bool,float,double?,*vec*,*mat* constructors
+;; uadd-carry, usub-borrow, umul-extended, imul-extended
+;; float-bits-to-int, float-bits-to-uint, int-bits-to-float, uint-bits-to-float
+;; pack-*, unpack-*
+;; bitfield-extract, bitfield-insert, bitfield-reverse, bit-count
+;; ldb, dpb
+;; find-lsb, find-msb
+
+;; emit-stream-vertex, end-stream-primitive, emit-vertex, end-primitive
+
+;; texture*
+;; image*
+;; atomic*
+;; dfdx*, dfdy*, fwidth*
+;; interpolate-at-*
+;; noise*?
+;; *barrier*
+
+;; aref, slot-value, @
+
+;; return
+;; :?,if
+
