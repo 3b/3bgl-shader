@@ -23,6 +23,18 @@
   (add-spirv `(spirv-core:control-barrier :workgroup :device ()))
   nil)
 
+(defint 3bgl-glsl:memory-barrier ()
+  ;; 1 4048
+  (add-spirv `(spirv-core:memory-barrier
+               :device (:sequentially-consistent
+                        :uniform-memory
+                        :subgroup-memory
+                        :workgroup-memory
+                        :cross-workgroup-memory
+                        :atomic-counter-memory
+                        :image-memory)))
+  nil)
+
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defparameter *type-abbreviations*
     ;; simple expansions for now, add/refactor as needed
@@ -323,6 +335,11 @@
            (m bool-vector bool-vector))
        (add-spirv `(spirv-core:logical-not-equal ,ret ,rtype ,a ,b)))
       (t (error "can't compile (^^ ~s ~s)" type1 type2)))))
+
+(defint* 3bgl-glsl:vec2 (a &rest args)
+  (if args
+      (add-spirv `(spirv-core:composite-construct ,ret ,rtype ,a ,@args))
+      (add-spirv `(spirv-core:composite-construct ,ret ,rtype ,a ,a))))
 
 ;; modf, matrix-comp-mult, dot, cross, outer-product
 ;; incf,decf,++,--
