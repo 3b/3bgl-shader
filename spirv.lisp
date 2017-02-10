@@ -21,7 +21,9 @@
 (defgeneric dump-spirv (object))
 
 (defmethod dump-spirv (object)
-  (cerror "continue" "dumping unknown object ~s?" object)
+  (cerror "continue" "dumping unknown object ~s (~s)?" object
+          (list *current-call* *binding-types*
+                (gethash *current-call* *binding-types*)))
   (format t "dumping unknown object ~s?~%" object)
   nil)
 
@@ -225,6 +227,13 @@
  "/tmp/3bgl-shader.spv"
  (3bgl-shaders::generate-stage :fragment '3bgl-shader-example-shaders::fragment :backend :spirv))
 
+#++
+(print
+ (3b-spirv::disasm
+  (3b-spirv/hl::assemble
+      (3bgl-shaders::generate-stage :fragment
+       '3bgl-shader-spirv-test-shaders::fragment
+                                    :backend :spirv))))
 #++
 (3bgl-shaders::generate-stage :fragment
                               '3bgl-shader-spirv-test-shaders::fragment
