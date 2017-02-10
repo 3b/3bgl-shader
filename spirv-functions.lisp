@@ -93,11 +93,11 @@
                  ,tmp ,cast-name ,@ (loop repeat size
                                           collect v)))
     (values tmp cast-name cast-type)))
-
-(defun ll-vars (x)
-  ;; todo: error on &key/&rest (or handle them if needed)
-  (multiple-value-bind (r o) (alexandria:parse-ordinary-lambda-list x)
-    (append r (mapcar 'first o))))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+ (defun ll-vars (x)
+   ;; todo: error on &key/&rest (or handle them if needed)
+   (multiple-value-bind (r o) (alexandria:parse-ordinary-lambda-list x)
+     (append r (mapcar 'first o)))))
 
 (defmacro defint* (name (&rest lambda-list) &body body)
   ;; seeing a bunch of verbose common parts, so wrapping it up in a macro
