@@ -2,6 +2,7 @@
 
 (defvar *spirv-output*)
 (defvar *used-globals*)
+(defvar *current-arg-type* nil)
 (defmacro with-spirv-output (() &body body)
   `(let ((*spirv-output* nil)
          (*used-globals* nil))
@@ -97,6 +98,7 @@
       ;; not sure if needed since no implicit casts?
       ;; float -> int/uint = convert-f-to-[su]
       (cond
+        ((numberp from)) ;; don't (or at least shouldn't?) need to cast literals
         ((or (m signed floating)
              (m signed-vector floating-vector))
          (add-spirv `(spirv-core:convert-s-to-f ,tmp ,to ,x)))
@@ -146,17 +148,25 @@
           ,@body-spv))))
   nil)
 
+(defmethod dump-spirv ((o number))
+  ;; just return a THE form as the name, and let assembler handle it
+  ;; todo: add COERCE if needed
+  `(the ,(name *current-arg-type*) ,o))
 
 (defmethod dump-spirv ((o function-call))
-  (let ((args (mapcar 'dump-spirv (arguments o)))
-        (function-types (gethash o *binding-types*)))
-    (setf
-     args (loop for a in args
-                for vt in (mapcar 'value-type (arguments o))
-                for ft in (cdr function-types)
-                when (eq (name vt) (name ft))
-                  collect a
-                else collect (cast a (name vt) (name ft))))
+  (let* ((function-types (gethash o *binding-types*))
+         (args
+           (loop for a in (arguments o)
+                 for *current-arg-type* in (cdr function-types)
+                 for vt = (etypecase a
+                            ((or number function-call)
+                             *current-arg-type*)
+                            (place (value-type a)))
+                 when (eq (name vt) (name *current-arg-type*))
+                   collect (dump-spirv a)
+                 else
+                   collect (cast (dump-spirv a)
+                                 (name vt) (name *current-arg-type*)))))
     (dump-spirv-call (called-function o) o args)))
 
 
