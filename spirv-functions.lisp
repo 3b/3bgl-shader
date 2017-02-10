@@ -139,6 +139,7 @@
                         for n from 1
                         collect  `(,type (nth ,n types))
                         collect `(,name (name ,type))))
+           (declare (ignorable ret rtype ,@type-name-vars))
            ,@body
            ret)))))
 
