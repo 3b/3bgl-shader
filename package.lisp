@@ -291,26 +291,62 @@
    #:memory-barrier-image
    #:group-memory-barrier
    ;; vector/matrix constructors
+   #:int8
+   #:int16
    #:int
+   #:int64
+   #:uint8
+   #:uint16
    #:uint
+   #:uint64
    #:bool
    #:float
    #:double
    #:bvec2
    #:bvec3
    #:bvec4
+   #:i8vec2
+   #:i8vec3
+   #:i8vec4
+   #:u8vec2
+   #:u8vec3
+   #:u8vec4
+   #:i16vec2
+   #:i16vec3
+   #:i16vec4
+   #:u16vec2
+   #:u16vec3
+   #:u16vec4
    #:ivec2
    #:ivec3
    #:ivec4
    #:uvec2
    #:uvec3
    #:uvec4
+   #:i64vec2
+   #:i64vec3
+   #:i64vec4
+   #:u64vec2
+   #:u64vec3
+   #:u64vec4
+   #:f16vec2
+   #:f16vec3
+   #:f16vec4
    #:vec2
    #:vec3
    #:vec4
    #:dvec2
    #:dvec3
    #:dvec4
+   #:f16mat2
+   #:f16mat2x3
+   #:f16mat2x4
+   #:f16mat3x2
+   #:f16mat3
+   #:f16mat3x4
+   #:f16mat4x2
+   #:f16mat4x3
+   #:f16mat4
    #:mat2
    #:mat2x3
    #:mat2x4
