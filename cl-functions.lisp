@@ -1604,13 +1604,37 @@
        (3bgl-glsl::bvec3 (a &optional b c) 3 :bvec3)
        (3bgl-glsl::bvec4 (a &optional b c d) 4 :bvec4)
 
+       (3bgl-glsl::i8vec2 (a &optional b) 2 :i8vec2)
+       (3bgl-glsl::i8vec3 (a &optional b c) 3 :i8vec3)
+       (3bgl-glsl::i8vec4 (a &optional b c d) 4 :i8vec4)
+       (3bgl-glsl::u8vec2 (a &optional b) 2 :u8vec2)
+       (3bgl-glsl::u8vec3 (a &optional b c) 3 :u8vec3)
+       (3bgl-glsl::u8vec4 (a &optional b c d) 4 :u8vec4)
+
+       (3bgl-glsl::i16vec2 (a &optional b) 2 :i16vec2)
+       (3bgl-glsl::i16vec3 (a &optional b c) 3 :i16vec3)
+       (3bgl-glsl::i16vec4 (a &optional b c d) 4 :i16vec4)
+       (3bgl-glsl::u16vec2 (a &optional b) 2 :u16vec2)
+       (3bgl-glsl::u16vec3 (a &optional b c) 3 :u16vec3)
+       (3bgl-glsl::u16vec4 (a &optional b c d) 4 :u16vec4)
+
        (3bgl-glsl::ivec2 (a &optional b) 2 :ivec2)
        (3bgl-glsl::ivec3 (a &optional b c) 3 :ivec3)
        (3bgl-glsl::ivec4 (a &optional b c d) 4 :ivec4)
-
        (3bgl-glsl::uvec2 (a &optional b) 2 :uvec2)
        (3bgl-glsl::uvec3 (a &optional b c) 3 :uvec3)
        (3bgl-glsl::uvec4 (a &optional b c d) 4 :uvec4)
+
+       (3bgl-glsl::i64vec2 (a &optional b) 2 :i64vec2)
+       (3bgl-glsl::i64vec3 (a &optional b c) 3 :i64vec3)
+       (3bgl-glsl::i64vec4 (a &optional b c d) 4 :i64vec4)
+       (3bgl-glsl::u64vec2 (a &optional b) 2 :u64vec2)
+       (3bgl-glsl::u64vec3 (a &optional b c) 3 :u64vec3)
+       (3bgl-glsl::u64vec4 (a &optional b c d) 4 :u64vec4)
+
+       (3bgl-glsl::f16vec2 (a &optional b) 2 :f16vec2)
+       (3bgl-glsl::f16vec3 (a &optional b c) 3 :f16vec3)
+       (3bgl-glsl::f16vec4 (a &optional b c d) 4 :f16vec4)
 
        (3bgl-glsl::vec2 (a &optional b) 2 :vec2)
        (3bgl-glsl::vec3 (a &optional b c) 3 :vec3)
