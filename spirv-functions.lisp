@@ -336,10 +336,96 @@
        (add-spirv `(spirv-core:logical-not-equal ,ret ,rtype ,a ,b)))
       (t (error "can't compile (^^ ~s ~s)" type1 type2)))))
 
+#++
 (defint* 3bgl-glsl:vec2 (a &rest args)
   (if args
       (add-spirv `(spirv-core:composite-construct ,ret ,rtype ,a ,@args))
       (add-spirv `(spirv-core:composite-construct ,ret ,rtype ,a ,a))))
+
+(macrolet ((defvec (name size &rest name+size*)
+             `(progn
+                ,@ (loop
+                     for (n s) on (list* name size name+size*) by #'cddr
+                     collect
+                     `(defint* ,n (a &rest args)
+                        (if args
+                            (add-spirv
+                             `(spirv-core:composite-construct
+                               ,ret ,rtype ,a ,@args))
+                            (add-spirv
+                             `(spirv-core:composite-construct
+                               ,ret ,rtype ,a ,@(loop repeat ,(1- s)
+                                                      collect a)))))))))
+  (defvec 3bgl-glsl:vec2 2
+    3bgl-glsl:vec3 3
+    3bgl-glsl:vec4 4
+
+    3bgl-glsl:dvec2 2
+    3bgl-glsl:dvec3 3
+    3bgl-glsl:dvec4 4
+
+    3bgl-glsl:f16vec2 2
+    3bgl-glsl:f16vec3 3
+    3bgl-glsl:f16vec4 4
+
+    3bgl-glsl:ivec2 2
+    3bgl-glsl:ivec3 3
+    3bgl-glsl:ivec4 4
+
+    3bgl-glsl:uvec2 2
+    3bgl-glsl:uvec3 3
+    3bgl-glsl:uvec4 4
+
+    3bgl-glsl:i8vec2 2
+    3bgl-glsl:i8vec3 3
+    3bgl-glsl:i8vec4 4
+
+    3bgl-glsl:u8vec2 2
+    3bgl-glsl:u8vec3 3
+    3bgl-glsl:u8vec4 4
+
+    3bgl-glsl:i16vec2 2
+    3bgl-glsl:i16vec3 3
+    3bgl-glsl:i16vec4 4
+
+    3bgl-glsl:u16vec2 2
+    3bgl-glsl:u16vec3 3
+    3bgl-glsl:u16vec4 4
+
+    3bgl-glsl:i64vec2 2
+    3bgl-glsl:i64vec3 3
+    3bgl-glsl:i64vec4 4
+
+    3bgl-glsl:u64vec2 2
+    3bgl-glsl:u64vec3 3
+    3bgl-glsl:u64vec4 4))
+
+(defun matrix-constructor/s (ret rtype s type)
+  (let* ((base (base-type rtype))
+         (rows (scalar/vector-size base))
+         (ncolumns (/ (scalar/vector-size rtype) rows))
+         (columns (loop for i below ncolumns
+                        for v = (make-list rows :initial-element
+                                           `(the ,(name type) 0))
+                        when (< i rows)
+                          do (setf (nth i v) s)
+                        collect (list* 'the (name base) v))))
+    (add-spirv `(spirv-core:composite-construct ,ret ,(name rtype)
+                                                ,@columns))))
+(defun matrix-constructor/m (ret rtype m type)
+  (error "not done"))
+
+(defun matrix-constructor/sv (ret rtype args arg-types)
+  (error "not done"))
+
+(defint* 3bgl-glsl:mat2x3 (a &rest args)
+  (cond
+    (args
+     (matrix-constructor/sv ret (first types) (cons a args) types))
+    ((< 1 (scalar/vector-size .type1))
+     (matrix-constructor/m ret (first types) a .type1))
+    (t
+     (matrix-constructor/s ret (first types) a .type1))))
 
 ;; modf, matrix-comp-mult, dot, cross, outer-product
 ;; incf,decf,++,--
