@@ -401,31 +401,191 @@
     3bgl-glsl:u64vec4 4))
 
 (defun matrix-constructor/s (ret rtype s type)
+  ;; matrix constructed from scalar: initialize diagonal to scalar, rest to 0
   (let* ((base (base-type rtype))
          (rows (scalar/vector-size base))
          (ncolumns (/ (scalar/vector-size rtype) rows))
+         (literal (typep s '(or number
+                             (cons (eql the) (cons t (cons number)))
+                             (cons (eql :literal)))))
+         (tmp (if literal
+                  s
+                  (spv-tmp)))
          (columns (loop for i below ncolumns
                         for v = (make-list rows :initial-element
                                            `(the ,(name type) 0))
                         when (< i rows)
-                          do (setf (nth i v) s)
-                        collect (list* 'the (name base) v))))
+                          do (setf (nth i v) tmp)
+                          and collect (list :construct (spv-tmp) v)
+                        else collect `(the ,(name base) ,@v))))
+    (format t "~&constructing ~sx~s mat from scalar ~s/~s(~s)~%"
+            ncolumns rows s (name type) type)
+    (format t "columns = ~s~%" columns)
+    (unless literal
+      (loop for i below rows
+            for (c s v) in columns
+            do (assert (eq c :construct))
+               (setf (nth i columns) s)
+               (add-spirv `(spirv-core:composite-construct ,s ,(name base)
+                                                           ,@v))))
     (add-spirv `(spirv-core:composite-construct ,ret ,(name rtype)
                                                 ,@columns))))
+
 (defun matrix-constructor/m (ret rtype m type)
-  (error "not done"))
+  ;; matrix constructed from matrix: copy corresponding elements, set
+  ;; rest to identity matrix
+  (let* ((base (base-type rtype))
+         (nrows (scalar/vector-size base))
+         (component-type (base-type base))
+         (zero `(the ,(name component-type) 0))
+         (one `(the ,(name component-type) 1))
+         (mbase (base-type type))
+         (mrows (scalar/vector-size mbase))
+         (mcols (/ (scalar/vector-size type) mrows))
+         (ncolumns (/ (scalar/vector-size rtype) nrows))
+         (columns (loop for i below ncolumns
+                        collect (spv-tmp))))
+    (format t "~&constructing ~sx~s mat from ~sx~s mat" ncolumns nrows
+            mcols mrows)
+    (flet ((comp (x y)
+             (cond
+               ((and (< -1 x mcols) (< -1 y mrows))
+                (let ((tmp (spv-tmp)))
+                  (add-spirv (print `(spirv-core:composite-extract
+                                      ,tmp ,(name component-type) ,m ,x ,y)))
+                  tmp))
+               ((= x y)
+                one)
+               (t
+                zero))))
+      (loop for x below ncolumns
+            for c in columns
+            do (add-spirv
+                `(spirv-core:composite-construct
+                  ,c ,(name base)
+                  ,@(loop for y below nrows
+                          collect (comp x y)))))
+      (add-spirv `(spirv-core:composite-construct ,ret ,(name rtype)
+                                                  ,@columns)))))
 
 (defun matrix-constructor/sv (ret rtype args arg-types)
-  (error "not done"))
+  ;; matrix constructed from multiple scalar/vector: initialize
+  ;; elements of matrix in column-major order from values in order ex
+  ;; (mat2 scalar1 vec2 scalar2) would be column1=(scalar1, vec2.x),
+  ;; column2=(vec2.y, scalar2)
+  (let* ((atmp args)
+         (attmp (cdr arg-types))
+         (base (base-type rtype))
+         (nrows (scalar/vector-size base))
+         (component-type (base-type base))
+         (ncolumns (/ (scalar/vector-size rtype) nrows))
+         (columns nil)
+         (i 0)
+         (comp (pop atmp))
+         (comptype (pop attmp)))
+    (format t "~&constructing ~sx~s mat from ~s" ncolumns nrows
+            (remove 'nil (mapcar 'name (cdr arg-types))))
+    (labels ((full-column ()
+               ;; use a vector for full column if we can
+               (when (and (zerop i)
+                          (eq base comptype)
+                          #++(= nrows (scalar/vector-size comptype)))
+                 (prog1
+                     comp
+                   (setf comp (pop atmp)
+                         comptype (pop attmp)))))
+             (next-comp ()
+               (cond
+                 ((not (and comp comptype))
+                  (error "ran out of components constructing ~s from ~s?"
+                         (name rtype)
+                         (mapcar 'name (cdr arg-types))))
+                 ((= 1 (scalar/vector-size comptype))
+                  (prog1
+                      comp
+                    (setf comp (pop atmp)
+                          comptype (pop attmp))))
+                 ((>= i (scalar/vector-size comptype))
+                  (setf comp (pop atmp)
+                        comptype (pop attmp)
+                        i 0)
+                  (next-comp))
+                 ((scalar/vector-set comptype)
+                  (let ((tmp (spv-tmp)))
+                    (add-spirv `(spirv-core:composite-extract ,tmp
+                                                              ,(name component-type)
+                                                              ,comp
+                                                              ,i))
+                    (incf i)
+                    tmp))
+                 (t
+                  (error "got type ~s in matrix constructor? (arg types=~s)"
+                         (name comptype)
+                         (mapcar 'name (cdr arg-types)))))))
+      (setf columns
+            (loop for x below ncolumns
+                  for c = (full-column)
+                  unless c
+                    do
+                       (setf c (spv-tmp))
+                       (add-spirv
+                        `(spirv-core:composite-construct
+                          ,c ,(name base)
+                          ,@(loop for y below nrows
+                                  collect (next-comp))))
+                  collect c))
+      (add-spirv `(spirv-core:composite-construct ,ret ,(name rtype)
+                                                  ,@columns))
+      (when (or (remove nil atmp) (remove nil attmp))
+        (error "extra arguments to ~s constructor? ~s/~s"
+               (name rtype)
+               atmp (mapcar 'name attmp))))))
 
-(defint* 3bgl-glsl:mat2x3 (a &rest args)
-  (cond
-    (args
-     (matrix-constructor/sv ret (first types) (cons a args) types))
-    ((< 1 (scalar/vector-size .type1))
-     (matrix-constructor/m ret (first types) a .type1))
-    (t
-     (matrix-constructor/s ret (first types) a .type1))))
+(macrolet ((defmat (&body names)
+             `(progn
+                ,@ (loop
+                     for name in names
+                     collect
+                     `(defint* ,name (a &rest args)
+                        (cond
+                          (args
+                           (matrix-constructor/sv ret
+                                                  (first types)
+                                                  (cons a args)
+                                                  types))
+                          ((< 1 (scalar/vector-size .type1))
+                           (matrix-constructor/m ret (first types) a .type1))
+                          (t
+                           (matrix-constructor/s ret (first types) a .type1))))))))
+  (defmat 3bgl-glsl:f16mat2
+    3bgl-glsl:f16mat2x3
+    3bgl-glsl:f16mat2x4
+    3bgl-glsl:f16mat3x2
+    3bgl-glsl:f16mat3
+    3bgl-glsl:f16mat3x4
+    3bgl-glsl:f16mat4x2
+    3bgl-glsl:f16mat4x3
+    3bgl-glsl:f16mat4
+
+    3bgl-glsl:mat2
+    3bgl-glsl:mat2x3
+    3bgl-glsl:mat2x4
+    3bgl-glsl:mat3x2
+    3bgl-glsl:mat3
+    3bgl-glsl:mat3x4
+    3bgl-glsl:mat4x2
+    3bgl-glsl:mat4x3
+    3bgl-glsl:mat4
+
+    3bgl-glsl:dmat2
+    3bgl-glsl:dmat2x3
+    3bgl-glsl:dmat2x4
+    3bgl-glsl:dmat3x2
+    3bgl-glsl:dmat3
+    3bgl-glsl:dmat3x4
+    3bgl-glsl:dmat4x2
+    3bgl-glsl:dmat4x3
+    3bgl-glsl:dmat4))
 
 ;; modf, matrix-comp-mult, dot, cross, outer-product
 ;; incf,decf,++,--
