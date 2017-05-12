@@ -59,7 +59,7 @@
                            (types type))
                       :key 'cdr))))
     (ref-type
-     (format nil "->~a" (get-equiv-type type)))
+     (format nil "->~a" (debug-type-names (get-equiv-type type))))
     (optional-arg-type
      (format nil "(or NIL ~s)" (debug-type-names (arg-type type))))
     (hash-table
@@ -68,6 +68,34 @@
        x))
     (t (error "foo!"))))
 
+(defun debug-local-binding-type-data (hash)
+  (labels ((d (x)
+           (typecase x
+             (symbol
+              x)
+             (number
+              x)
+             ((eql :return)
+              x)
+             (function-call
+              (format nil "(~a~{~^ ~a~})" (name (called-function x))
+                      (mapcar #'d (arguments x))))
+             (variable-read
+              (d (binding x)))
+             (local-variable
+              (name x))
+             (interface-binding
+              (name x))
+             (slot-access
+              (format nil "(@ ~a ~a)" (d (binding x)) (field x)))
+             (swizzle-access
+              (format nil "(.~a ~a)" (field x)
+                      (d (binding x))))
+             (t (debug-type-names x)))))
+   (loop for (k . v) in (alexandria:hash-table-alist hash)
+         do (format t "~a -> ~a~%"
+                    (d k)
+                    (d v)))))
 
 (defun print-bindings/ret (name bindings ret)
   (when name (format t "inferred ~s:~%" name))
