@@ -342,20 +342,91 @@
       (add-spirv `(spirv-core:composite-construct ,ret ,rtype ,a ,@args))
       (add-spirv `(spirv-core:composite-construct ,ret ,rtype ,a ,a))))
 
-(macrolet ((defvec (name size &rest name+size*)
-             `(progn
-                ,@ (loop
-                     for (n s) on (list* name size name+size*) by #'cddr
-                     collect
-                     `(defint* ,n (a &rest args)
-                        (if args
-                            (add-spirv
-                             `(spirv-core:composite-construct
-                               ,ret ,rtype ,a ,@args))
-                            (add-spirv
-                             `(spirv-core:composite-construct
-                               ,ret ,rtype ,a ,@(loop repeat ,(1- s)
-                                                      collect a)))))))))
+(macrolet
+    ((defvec (name size &rest name+size*)
+       `(progn
+          ,@ (loop
+               for (n s) on (list* name size name+size*) by #'cddr
+               collect
+               `(defint* ,n (arg1 &rest args)
+                  (cond
+                    ;; single scalar
+                    ((and (not args)
+                          (= 1 (scalar/vector-size .type1)))
+                     (add-spirv
+                      `(spirv-core:composite-construct
+                        ,ret ,rtype ,arg1 ,@(loop repeat ,(1- s)
+                                                  collect arg1))))
+                    ;; one or more vectors/scalars/matrix
+                    (t
+                     (break "construct ~s from ~s/~s(~s)~%" rtype
+                            (cons arg1 args)
+                            (mapcar 'name (cdr types))
+                            (cdr types))
+                     (let ((comps nil))
+                       (loop
+                         with n = (scalar/vector-size (first types))
+                         for a in (cons arg1 args)
+                         for at in (cdr types)
+                         for abase = (base-type at)
+                         do (cond
+                              ;; already filled the vector
+                              ;; but still have arguments
+                              ((not (plusp n))
+                               (error "too many arguments initializing ~s (~s/~s)~%"
+                                      (name rtype)
+                                      (cons a args)
+                                      (mapcar 'name (cdr types))))
+                              ;; scalar or vector small
+                              ;; enough to use directly
+                              ((and (scalar/vector-set at)
+                                    (<= (scalar/vector-size at)
+                                        n))
+                               (push a comps)
+                               (decf n (scalar/vector-size at)))
+                              ;; vector too large to use directly
+                              ;; extract comps
+                              ((scalar/vector-set at)
+                               (loop for i below n
+                                     for tmp = (spv-tmp)
+                                     do (add-spirv
+                                         `(spirv-core:composite-extract
+                                           ,tmp ,(name abase) ,a ,i))
+                                        (push tmp comps))
+                               (setf n 0))
+                              ;; matrix, use columns as needed
+                              ;; then comps
+                              (t
+                               (let* ((nrows (scalar/vector-size abase))
+                                      (ncols (/ (scalar/vector-size at)
+                                                nrows)))
+                                 (loop for c below ncols
+                                       ;; don't need any more
+                                       ;; components (too many in last
+                                       ;; arg isn't an error)
+                                       unless (plusp n)
+                                         return nil
+                                       if (<= nrows n) ;; use a whole column
+                                         do (let ((tmp (spv-tmp)))
+                                              (add-spirv
+                                               `(spirv-core:composite-extract
+                                                 ,tmp ,(name abase) ,a ,c))
+                                              (push tmp comps)
+                                              (decf n nrows))
+                                       else ;; use part of a column
+                                       do (loop
+                                            for i below n
+                                            for tmp = (spv-tmp)
+                                            do (add-spirv
+                                                `(spirv-core:composite-extract
+                                                  ,tmp ,(name (base-type abase))
+                                                  ,a ,c ,i))
+                                               (push tmp comps))
+                                          (setf n 0))))))
+                       (add-spirv
+                        `(spirv-core:composite-construct
+                          ,ret ,rtype
+                          ,@ (nreverse comps)))))))))))
   (defvec 3bgl-glsl:vec2 2
     3bgl-glsl:vec3 3
     3bgl-glsl:vec4 4
