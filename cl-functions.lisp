@@ -179,8 +179,10 @@
                       :name name
                       :return-type (get-type-binding return-type)
                       :function-types-by-arity arity-types))
-         (base-types '((:float 1) (:vec2 2) (:vec3 3) (:vec4 4) (:mat2x3 6)
-                       (:mat2x4 8) (:mat3 9) (:mat3x4 12) (:mat4 16))))
+         (base-types '((:float 1) (:vec2 2) (:vec3 3) (:vec4 4)
+                       (:mat2 4) (:mat2x3 6) (:mat2x4 8)
+                       (:mat3x2 6) (:mat3 9) (:mat3x4 12)
+                       (:mat4x2 8) (:mat4x3 12) (:mat4 16))))
     ;; accept any of the base types (or anything that casts to them)
     ;; for 1ary function
     (setf (aref arity-types 1)
