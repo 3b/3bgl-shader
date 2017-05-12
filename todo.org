@@ -149,10 +149,11 @@
 ** figure out if optional arguments are working properly
    particularly during recompilation of existing shaders
 ** handle unused arguments better during type inference
-** make sure -1 derives type in instead of uint?
+** make sure -1 derives type int instead of uint?
 ** support some subset of CL array/vector types for declarations
    currently expects something like (:float 32)
-** figure out better way to handle package <-> environment association
+** DONE figure out better way to handle package <-> environment association
+   CLOSED: [2017-05-12 Fri 08:02]
    possibly should define things in an environment corresponding to
    symbol-package, or else require specifying an environment?
    ? alternately, require some explicit list of environments current
@@ -187,6 +188,8 @@
    work to get correct type, and may end up extra instructions in
    spirv (for example if it loads constant integer, then casts to
    float instead of using a constant float)
+** fix vector/mat constructors to allow extra elements in last argument
+   ex: vec2(mat4) is allowed, but not vec2(mat4,scalar) etc
 * 'done'
 ** cache glsl from compiled shaders, add option to remove intermediate data
    for use in final release, don't need to retain all the type
@@ -228,6 +231,8 @@
 ** don't use reserved words as identifiers
    at a minimum, error, preferably rename
 * would be nice
+** add better ways to distinguish mat/vec/scalar types and mat dimensions
+   and refactor code to use them (spirv backend in particular)
 ** remove unused variables
 ** detect/remove dead code (after RETURN, etc)
 ** figure out if vec/mat constructors need a specific constraint type?
@@ -240,10 +245,35 @@
 ** check for more places where :cast nil can be set for built-in functions
    also make sure the existing ones are right
    (either no cast allowed, or all types fully specified already)
+** CSE/common subexpression optimizations?
 * spirv
+** names of globals in output spv?
 ** add single-op /
    make a temp 1 of appropriate type and use normal / ?
 ** add single-op versions of +,*,AND,OR,etc
 ** see if (- 1) does right thing?
    not sure if it should return a signed int, or unsigned #xff..ff?
    also check negation of larger unsigned values
+** check edge cases of constructor rules
+*** bool in int/float vec/mat should work
+*** construct vec from mat
+*** optimize mat/vec constructors that can use argument directly
+    ex. vec4 from mat4, use component 0 directly
+    or mat4 from vec4, store vec4 directly
+*** extra values passed to vec/mat constructors
+    (last argument can have extras, but can't have extra arguments)
+    ex: vec2(mat4) is allowed, but not vec2(mat4,scalar) etc
+** spirv optimizers?
+*** add a composite-construct -> composite-extract optimizer?
+    probably not common enough in real code to care, but things like
+    (mat4 (mat3 x)) and similar construct the mat3 then extract the
+    components to build the mat4. So could detect a
+    composite-construct that is only used by composite-extract and
+    use the original elements directly.
+
+*** possibly also composite-construct -> composite-construct for vec?
+    ex (vec4 (vec2 a) (vec2 b)) -> (vec4 a a b b)
+*** CSE/redundant loads/stores etc
+    need to figure out which loads can be dropped, probably at least
+    locals and inputs? not worgroup shared mem, maybe not SSBO?
+*** 
