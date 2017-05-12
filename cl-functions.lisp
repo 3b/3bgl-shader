@@ -339,7 +339,7 @@
            (if (consp x)
                x
                (make-list length :initial-element x)))
-         (expand-signature (ret args)
+         (expand-signature (ret args &key req)
            ;; ret args are either keywords or lists of keywords
            ;; all lists should be same length
            (let ((l 1))
@@ -348,12 +348,15 @@
                                when (listp x)
                                  collect (setf l (length x)) into ll
                                finally (return (or ll (list l))))))
-             (apply #'mapcar
-                    (lambda (r &rest a)
-                      (list a r))
-                    (ensure-list* ret l)
-                    (mapcar (lambda (a) (ensure-list* a l))
-                            args)))))
+             (loop for r in (ensure-list* ret l)
+                   for a in (apply #'mapcar
+                                   'list
+                                   (mapcar (lambda (a) (ensure-list* a l))
+                                           args))
+                   collect (list a r)
+                   append (loop with l = (length a)
+                                for i from (or req l) below l
+                                collect (list (subseq a 0 i) r))))))
   (let* ((*environment* 3bgl-glsl::*glsl-base-environment*)
          (*global-environment* 3bgl-glsl::*glsl-base-environment*)
          ;; meta-types for defining the overloads
@@ -773,22 +776,28 @@
                                                                  ,glsl-name
                                                                  ,@keys))))
                (add/m (&rest definitions)
-                 `(progn
-                    ,@(loop for (.name lambda-list count ret)
-                              in definitions
-                            for (name glsl-name) = (alexandria:ensure-list
-                                                    .name)
-                            collect `(add-internal-function/mat ',name
-                                                                ',lambda-list
-                                                                ,count
-                                                                ,ret
-                                                                :glsl-name
-                                                                ,glsl-name))))
+                 (print`(progn
+                     ,@(loop for (.name lambda-list count ret)
+                               in definitions
+                             for (name glsl-name) = (alexandria:ensure-list
+                                                     .name)
+                             collect `(add-internal-function/mat ',name
+                                                                 ',lambda-list
+                                                                 ,count
+                                                                 ,ret
+                                                                 :glsl-name
+                                                                 ,glsl-name)))))
                (expand-signatures (ret args &rest more-signatures)
                  (setf more-signatures (list* ret args more-signatures))
                  `(append
                    ,@(loop for (r a) on more-signatures by #'cddr
-                           collect `(expand-signature ,r ,(cons 'list a))))))
+                           collect `(expand-signature ,r ,(cons 'list a)))))
+               (expand-signatures/o ((req) ret args &rest more-signatures)
+                 (setf more-signatures (list* ret args more-signatures))
+                 `(append
+                   ,@(loop for (r a) on more-signatures by #'cddr
+                           collect `(expand-signature ,r ,(cons 'list a)
+                                                      :req ,req)))))
       (add/s
        ;; 8.1 angle and trigonometry functions
        (3bgl-glsl:radians (degrees) `((or ,@gen-type)) `(= 0))
@@ -877,7 +886,7 @@
       (add/s
        (3bgl-glsl:step (edge x) `((=s 1) (or ,@gen-type ,@gen-dtype)) '(= 1))
        ((3bgl-glsl:smooth-step "smoothstep") (edge0 edge1 x) `((=s 2)
-                                                                (=s 0)
+                                                                (= 0)
                                                                 (or ,@gen-type
                                                                     ,@gen-dtype))
         '(= 2))
@@ -1048,7 +1057,7 @@
       ;; 8.9 Texture Functions
       (add/f
        (3bgl-glsl::texture-size (sampler &optional lod)
-                                (expand-signatures
+                                (expand-signatures/o (1)
                                  :int (gsampler1D :int)
                                  :ivec2 (gsampler2D :int)
                                  :ivec3 (gsampler3D :int)
@@ -1106,7 +1115,7 @@
                                :int)
       (add/f
        (3bgl-glsl::texture (sampler p &optional bias/compare)
-                           (expand-signatures
+                           (expand-signatures/o (2)
                             gvec4 (gsampler1D :float :float)
                             gvec4 (gsampler2D :vec2 :float)
                             gvec4 (gsampler3D :vec3 :float)
@@ -1118,13 +1127,14 @@
                             gvec4 (gsampler2DArray :vec3 :float)
                             gvec4 (gsamplerCubeArray :vec4 :float)
                             :float (:sampler-1D-Array-Shadow :vec3 :float)
-                            :float (:sampler-2D-Array-Shadow :vec4)
+                            :float (:sampler-2D-Array-Shadow :vec4 :float)
+                            ;; no bias/compare for 2drect
                             gvec4 (gsampler2DRect :vec2)
                             :float (:sampler-2D-Rect-Shadow :vec3)
                             :float (gsamplerCubeArrayShadow :vec4 :float)))
 
        (3bgl-glsl::texture-proj (sampler p &optional bias)
-                                (expand-signatures
+                                (expand-signatures/o (2)
                                  gvec4 (gsampler1D :vec2 :float)
                                  gvec4 (gsampler1D :vec4 :float)
                                  gvec4 (gsampler2D :vec3 :float)
@@ -1150,7 +1160,7 @@
                                         :vec3 :float)
                                 gvec4 (gsamplerCubeArray :vec4 :float)))
        (3bgl-glsl::texture-offset (sampler p offset &optional bias)
-                                  (expand-signatures
+                                  (expand-signatures/o (3)
                                    gvec4 (gsampler1D :float :int :float)
                                    gvec4 (gsampler2D :vec2 :ivec2 :float)
                                    gvec4 (gsampler3D :vec3 :ivec3 :float)
@@ -1168,7 +1178,7 @@
 
 
        (3bgl-glsl::texel-fetch (sampler p &optional lod/sample)
-                               (expand-signatures
+                               (expand-signatures/o (2)
                                 gvec4 (gsampler1D :int :int)
                                 gvec4 (gsampler2D :ivec2 :int)
                                 gvec4 (gsampler3D :ivec3 :int)
@@ -1189,7 +1199,7 @@
                                        gvec4 (gsampler2DArray :ivec3 :int :ivec2)))
 
        (3bgl-glsl::texture-proj-offset (sampler p offset &optional bias)
-                                       (expand-signatures
+                                       (expand-signatures/o (3)
                                         gvec4 (gsampler1D :vec2 :int :float)
                                         gvec4 (gsampler1D :vec4 :int :float)
                                         gvec4 (gsampler2D :vec3 :ivec2 :float)
@@ -1519,13 +1529,13 @@
        ;; 8.13.1 derivative functions
        ((3bgl-glsl:dfdx "dFdx") (p) `((or ,@gen-type)) '(= 0))
        ((3bgl-glsl:dfdy "dFdy") (p) `((or ,@gen-type)) '(= 0))
-       ((3bgl-glsl:dfdx-fine "dFdxFine") (p) `((or ,gen-type)) '(= 0))
-       ((3bgl-glsl:dfdy-fine "dFdyFine") (p) `((or ,gen-type)) '(= 0))
-       ((3bgl-glsl:dfdx-coarse "dFdxCoarse") (p) `((or ,gen-type)) '(= 0))
-       ((3bgl-glsl:dfdy-coarse "dFdyCoarse") (p) `((or ,gen-type)) '(= 0))
-       (3bgl-glsl:fwidth (p) `((or ,gen-type)) '(= 0))
-       (3bgl-glsl:fwidth-fine (p) `((or ,gen-type)) '(= 0))
-       (3bgl-glsl:fwidth-coarse (p) `((or ,gen-type)) '(= 0))
+       ((3bgl-glsl:dfdx-fine "dFdxFine") (p) `((or ,@gen-type)) '(= 0))
+       ((3bgl-glsl:dfdy-fine "dFdyFine") (p) `((or ,@gen-type)) '(= 0))
+       ((3bgl-glsl:dfdx-coarse "dFdxCoarse") (p) `((or ,@gen-type)) '(= 0))
+       ((3bgl-glsl:dfdy-coarse "dFdyCoarse") (p) `((or ,@gen-type)) '(= 0))
+       (3bgl-glsl:fwidth (p) `((or ,@gen-type)) '(= 0))
+       (3bgl-glsl:fwidth-fine (p) `((or ,@gen-type)) '(= 0))
+       (3bgl-glsl:fwidth-coarse (p) `((or ,@gen-type)) '(= 0))
 
        ;; 8.13.2 interpolation functions
        ;; these specify float/vec2/vec3/vec4 explicitly instead of gentype?
