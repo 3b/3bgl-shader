@@ -3,8 +3,9 @@
 (defparameter *current-call* nil)
 
 (defmethod dump-internal-call (name args)
-  (cerror "continue" "don't know how to dump internal function call ~s? (~s)"
-          name *current-call*))
+  (let ((types (gethash *current-call* *binding-types*)))
+    (cerror "continue" "don't know how to dump internal function call ~s? (~s) ar types ~s"
+            name *current-call* types)))
 
 (defmethod dump-spirv-call (f call args)
   (cerror "continue" "don't know how to dump function call ~s?" f))
@@ -89,8 +90,7 @@
                        ,,(if (not type2p)
                              ``(member ,',type1 ',set1)
                              `(if set2
-                                  `(and (member ,',type1 ',set1
-                                                )
+                                  `(and (member ,',type1 ',set1)
                                         (member ,',type2 ',set2))
                                   `(and (member ,',type1 ',set1)
                                         (eql ,',type2 nil))))))))
