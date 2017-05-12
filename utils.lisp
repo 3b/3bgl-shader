@@ -231,6 +231,7 @@
                                  (:image-1d #'gl:uniformi)
                                  (:image-2d #'gl:uniformi)
                                  (:image-3d #'gl:uniformi)
+                                 (:sampler-2d-array #'gl:uniformi)
                                  (:atomic-uint
                                   ;; ignore atomic counter buffers for
                                   ;; now, since they behave differently...
