@@ -1,6 +1,8 @@
 (defpackage #:3bgl-shaders
   (:use :cl)
-  (:intern #:%glsl-macro)
+  (:intern #:%glsl-macro
+           #:*package-environments*
+           #:ensure-package-environment)
   (:export
    :layout
    :generate-stage
@@ -14,7 +16,9 @@
            #:defstruct)
   (:import-from #:3bgl-shaders
                 #:layout
-                #:%glsl-macro)
+                #:%glsl-macro
+                #:*package-environments*
+                #:ensure-package-environment)
   (:export
    ;; shadowed from CL
    #:defun

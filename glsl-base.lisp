@@ -488,16 +488,6 @@
   `(pow ,a ,b))
 
 
-;; fixme: this should probably use a weak hash table
-(cl:defvar *package-environments* (make-hash-table))
-
-(cl:defun ensure-package-environment (package)
-  (or (gethash package *package-environments*)
-      (setf (gethash package *package-environments*)
-            (make-instance '3bgl-shaders::environment
-                           ;; todo: make default parent environment
-                           ;; configurable?
-                           :parent *glsl-base-environment*))))
 
 (cl:defun call-with-package-environment (thunk &key (package *package*))
   (let ((3bgl-shaders::*environment* (ensure-package-environment package))

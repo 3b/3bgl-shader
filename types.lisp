@@ -1,11 +1,5 @@
 (in-package #:3bgl-shaders)
 
-;; fixme: rearrange stuff so this doesn't need eval-when
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (defvar 3bgl-glsl::*glsl-base-environment*
-    (make-instance 'environment
-                   :parent *cl-environment*)))
-
 (defclass generic-type ()
   ((name :accessor name :initarg :name)
    (glsl-name :accessor glsl-name :initarg :glsl-name :initform nil)
@@ -220,10 +214,12 @@
   ;; NAME means make aggregate visible as NAME in all stages
   ;; and VERTEX/FRAGMENT/ETC means make aggregate visible with specified name(s)
   ;;   in specified stage(s)
-  (let ((name (if (consp %name) (car %name) %name))
-        (glsl-name (if (consp %name) (cadr %name)))
-        (layout-qualifier (copy-list layout)))
-    (setf (gethash name (types *environment*))
+  (let* ((name (if (consp %name) (car %name) %name))
+         (env (default-env name))
+         (glsl-name (if (consp %name) (cadr %name)))
+         (layout-qualifier (copy-list layout)))
+    (check-locked env)
+    (setf (gethash name (types env))
           (make-instance 'interface-type
                          :name name
                          :glsl-name glsl-name
@@ -266,13 +262,15 @@
                               &key location internal stage index layout
                                 qualifiers default)
   (format t "in/out/uniform/attrib: ~@{ ~s~}~%"  qualifier %name type
-           location internal stage index layout qualifiers default)
+          location internal stage index layout qualifiers default)
   ;; possibly should have generic '&rest args' instead of enumerating options?
-  (let ((vb (variable-bindings *environment*))
-        (name (if (consp %name) (car %name) %name))
-        (glsl-name (if (consp %name) (cadr %name)))
-        (layout-qualifier (copy-list layout)))
+  (let* ((env (default-env %name))
+         (vb (variable-bindings env))
+         (name (if (consp %name) (car %name) %name))
+         (glsl-name (if (consp %name) (cadr %name)))
+         (layout-qualifier (copy-list layout)))
     (unless (typep (gethash name vb) 'interface-binding)
+      (check-locked env)
       (setf (gethash name vb) (make-instance 'interface-binding
                                              :internal internal
                                              :glsl-name glsl-name
@@ -290,13 +288,22 @@
       (setf (getf layout-qualifier :index) index))
     ;; just treating vs attributes and fs outputs like named interface
     ;; blocks for now
-    (setf (getf (stage-bindings (gethash name vb)) stage)
-          (make-instance 'interface-stage-binding
-                         :stage stage
-                         :interface-qualifier (cons qualifier qualifiers)
-                         :layout-qualifier layout-qualifier
-                         :binding (or (get-type-binding type) type)
-                         :default default))))
+    (let ((old (getf (stage-bindings (gethash name vb)) stage)))
+      (unless (and (typep old 'interface-stage-binding)
+                   (eql (stage old) stage)
+                   (equalp (interface-qualifier old)
+                           (cons qualifier qualifiers))
+                   (equalp (layout-qualifier old) layout-qualifier)
+                   (eql (binding old) (or (get-type-binding type) type))
+                   (eql (default old) default))
+        (check-locked env)
+        (setf (getf (stage-bindings (gethash name vb)) stage)
+              (make-instance 'interface-stage-binding
+                             :stage stage
+                             :interface-qualifier (cons qualifier qualifiers)
+                             :layout-qualifier layout-qualifier
+                             :binding (or (get-type-binding type) type)
+                             :default default))))))
 
 (%glsl-macro 3bgl-glsl::attribute (%name type &key location internal)
   (in/out/uniform/attrib :attribute %name type :location location :internal internal :stage :vertex)

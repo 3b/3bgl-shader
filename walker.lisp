@@ -34,6 +34,10 @@
 (defvar *environment* nil "current local environment")
 (defvar *global-environment* nil "current global environment")
 
+;; fixme: this should probably use a weak hash table
+(defvar *package-environments* (make-hash-table))
+
+
 ;; todo: store declarations somewhere in env, and parse them when walking code?
 (defclass environment ()
   ((parent-scope :reader parent-scope :initarg :parent :initform nil)
@@ -43,9 +47,50 @@
    (compiler-macro-bindings :reader compiler-macro-bindings :initform (make-hash-table))
    ;; map of name -> BINDING instance
    (variable-bindings :reader variable-bindings :initform (make-hash-table))
-   (types :reader types :initform (make-hash-table))))
+   (types :reader types :initform (make-hash-table))
+   (locked :accessor locked :initform nil)))
+
+;; fixme: rearrange stuff so this doesn't need eval-when
 
 (defvar *cl-environment* (make-instance 'environment))
+(setf (gethash (find-package :cl) *package-environments*)
+      *cl-environment*)
+
+(defvar 3bgl-glsl::*glsl-base-environment*
+  (make-instance 'environment
+                 :parent *cl-environment*))
+(setf (gethash (find-package :3bgl-glsl) *package-environments*)
+      3bgl-glsl::*glsl-base-environment*)
+
+(defun ensure-package-environment (package)
+  (or (gethash package *package-environments*)
+      (setf (gethash package *package-environments*)
+            (make-instance 'environment
+                           ;; todo: make default parent environment
+                           ;; configurable?
+                           :parent 3bgl-glsl::*glsl-base-environment*))))
+
+(defun check-locked (environment)
+  (assert (not (locked environment))))
+
+(defun global-env (name)
+  (when (eql name 'position)
+    (break "global position"
+           (ensure-package-environment (symbol-package name))))
+  (if (symbolp name)
+      (ensure-package-environment (symbol-package name))
+      *global-environment*))
+
+(defun default-env (name)
+  (cond
+    ;; use local environment if not at global scope
+    ((not (eql *environment* *global-environment*))
+     *environment*)
+    ;; otherwise try to use package environment
+    ((symbolp name)
+     (ensure-package-environment (symbol-package name)))
+    (t
+     *global-environment*)))
 
 (defun get-variable-binding (name &key (env *environment*))
   (when (and *check-conflict-vars*
@@ -68,18 +113,39 @@
   ;;   designator for itself?
   ;; or if accepting a function-binding, should it instead look up
   ;;   the current binding for that name?
-  (and env
-       (or (gethash name (function-bindings env))
-           (get-function-binding name :env (parent-scope env)))))
+  (or (when env
+        (or (gethash name (function-bindings env))
+            (get-function-binding name :env (parent-scope env))))
+      (and (symbolp name)
+           (let ((symbol-env (gethash (symbol-package name)
+                                      3bgl-glsl::*package-environments*))
+                 (*package* (find-package :keyword)))
+             ;; fixme: don't check this again for every parent if not found
+             (and symbol-env
+                  ;; not sure if this should recurse into parents or not?
+                  ;; need to flag not to try symbol-package again if so
+                  (gethash name (function-bindings symbol-env)))))))
 
 (defun get-compiler-macro-binding (name &key (env *environment*))
   ;; find a compiler macro in any env no deeper than current
   ;; function-binding
   ;; (function bindings shadow compiler macro bindings)
-  (and env
-       (or (gethash name (compiler-macro-bindings env))
-           (and (not (gethash name (function-bindings env)))
-                (get-compiler-macro-binding name :env (parent-scope env))))))
+  (or (when env
+        (or (gethash name (compiler-macro-bindings env))
+            (when (gethash name (function-bindings env))
+              ;; don't use a compiler macro from a parent scope if we have a
+              ;; function definition in this scope
+              (return-from get-compiler-macro-binding nil))
+            (get-compiler-macro-binding name :env (parent-scope env))))
+      (and (symbolp name)
+           (let ((symbol-env (gethash (symbol-package name)
+                                      3bgl-glsl::*package-environments*))
+                 (*package* (find-package :keyword)))
+             ;; fixme: don't check this again for every parent if not found
+             (and symbol-env
+                  ;; not sure if this should recurse into parents or not?
+                  ;; need to flag not to try symbol-package again if so
+                  (gethash name (compiler-macro-bindings symbol-env)))))))
 
 (defun get-type-binding (name &key (env *environment*))
   (if (consp name)
@@ -93,13 +159,15 @@
                (get-type-binding name :env (parent-scope env))))))
 
 
-(defun add-macro (name lambda &key (env *environment*))
+(defun add-macro (name lambda &key (env (default-env name)))
+  (check-locked env)
   (setf (gethash name (function-bindings env))
         (make-instance 'macro-definition
                        :name name
                        :expression lambda)))
 
-(defun add-compiler-macro (name lambda &key (env *environment*))
+(defun add-compiler-macro (name lambda &key (env (default-env name)))
+  (check-locked env)
   (setf (gethash name (compiler-macro-bindings env))
         (make-instance 'macro-definition
                        :name name
@@ -124,18 +192,21 @@
     (when (typep b 'symbol-macro)
       b)))
 
-(defun add-symbol-macro (name expansion &key (env *environment*))
+(defun add-symbol-macro (name expansion &key (env (default-env name)))
   (assert (not (gethash name (variable-bindings env))))
+  (check-locked env)
   (setf (gethash name (variable-bindings env))
         (make-instance 'symbol-macro
                        :name name
                        :value-type t
                        :expansion expansion)))
 
-(defun add-variable (name init &key (env *environment*) binding
+(defun add-variable (name init &key (env (default-env name)) binding
                                  (type 'variable-binding) value-type)
+  (check-locked env)
   (if binding
-      (setf (gethash name (variable-bindings env)) binding)
+      (progn
+        (setf (gethash name (variable-bindings env)) binding))
       (let ((old (gethash name (variable-bindings env))))
         (flet ((add-or-update (&rest args)
                  (etypecase old
@@ -237,10 +308,11 @@
          (list 'a 'b :d 'cc))
 
 (defun add-function (name lambda-list body
-                     &key declarations docs (env *global-environment*)
+                     &key declarations docs (env (global-env name))
                        (function-type 'global-function)
                        binding)
   (when *verbose* (format t "add function ~s~%" name))
+  (check-locked env)
   (if binding
       (setf (gethash name (function-bindings env)) binding)
       (multiple-value-bind (bindings expander)
@@ -294,8 +366,9 @@
         do (assert (not (gethash n v)))
            (setf (gethash n v) b)))
 
-(defun add-unknown-function (name &key (env *global-environment*))
+(defun add-unknown-function (name &key (env (global-env name)))
   (when *verbose* (format t "add unknown function to ~s (in ~s)~%" name env))
+  (check-locked env)
   (if (get-function-binding name :env env)
       (get-function-binding name :env env)
       (setf (gethash name (function-bindings env))
@@ -305,6 +378,9 @@
                            :declarations nil
                            :environment env))))
 
+(defun remove-function (name &key (env (default-env name)))
+  (check-locked env)
+  (remhash name (function-bindings env)))
 
 (defclass cl-walker (walker)
   ())

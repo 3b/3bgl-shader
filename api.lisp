@@ -224,3 +224,15 @@ active attributes in same format as third value."
 ;;; glsl versions for use when whole file is processed directly
 (%glsl-macro defun (name args &body body)
   `(cl:defun ,name ,args ,@body))
+
+
+
+;; define cl:position as a vec4 vertex attribute at location 0, since
+;; it is pretty common but can't be defined from user code with CL
+;; package locked
+(3bgl-glsl::glsl-input position :vec4 :location 0)
+
+;; lock CL abd GLSL packages, so user packages can't define
+;; conflicting globals with names in those packages
+(setf (3bgl-shaders::locked 3bgl-shaders::*cl-environment*) t
+      (3bgl-shaders::locked 3bgl-glsl::*glsl-base-environment*) t)
