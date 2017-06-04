@@ -919,7 +919,6 @@
                  (let ((u (unify declared-type initial-value-type)))
                    (setf (value-type binding) u)))
         else do (setf (value-type binding) declared-type)
-        ;;collect (value-type binding)
         do (setf (gethash binding *current-function-local-types*)
                  (value-type binding)))
   (loop for a in (body form)
