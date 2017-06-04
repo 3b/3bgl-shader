@@ -621,17 +621,19 @@
     ;; glsl ++ and -- are post-[in/de]crement for now (incf/decf are pre)
     ;; (incf/decf work on vec/mat also, so might want to shadow cl:
     ;;  versions at some point)
+    #++
     (add-internal-function/s '3bgl-glsl::incf '(a &optional b)
                              `((or ,@gen-type
                                    ,@gen-itype ,@gen-utype
                                    ,@gen-dtype ,@mat ,@dmat)
-                               (= 0))
+                               (=s 0))
                              '(= 0))
+    #++
     (add-internal-function/s '3bgl-glsl::decf '(a &optional b)
                              `((or ,@gen-type
                                    ,@gen-itype ,@gen-utype
                                    ,@gen-dtype ,@mat ,@dmat)
-                               (= 0))
+                               (=s 0))
                              '(= 0))
     (add-internal-function/s '3bgl-glsl::++ '(a)
                              `((or ,@gen-type
@@ -1687,3 +1689,10 @@
                 ,@(loop for i in r collect `(define-binop ,i)))))
   (define-binops + - / * and or logior logxor logand))
 
+;;; fixme: type inference isn't working properly for INCF/DECF
+;; R gets gets i8vec3 or something like that from (defun foo () (let
+;; (r) (incf r (vec3 1 2 3)))) so expanding to x=x+n for now...
+(%glsl-compiler-macro '3bgl-glsl::incf (a &optional b)
+  `(setf ,a (+ ,a ,(or b 1))))
+(%glsl-compiler-macro '3bgl-glsl::decf (a &optional b)
+  `(setf ,a (- ,a ,(or b 1))))
