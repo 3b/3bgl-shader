@@ -6,7 +6,8 @@
   (:export
    :layout
    :generate-stage
-   :compile-form))
+   :compile-form
+   :stage))
 
 (defpackage #:3bgl-glsl
   (:use :cl)
@@ -16,6 +17,7 @@
            #:defstruct)
   (:import-from #:3bgl-shaders
                 #:layout
+                #:stage
                 #:%glsl-macro
                 #:*package-environments*
                 #:ensure-package-environment)
@@ -46,6 +48,7 @@
    #:uniform
    #:shared
    #:bind-interface
+   #:stage
 
    ;; predefined constants
    #:gl-vertex-id

@@ -394,6 +394,9 @@
                                  ;; store first entry twice so we can treat
                                  ;; whole list relatively uniformly
                                  (cons (car cdr) cdr))))
+                 ((eql decl 'stage)
+                  (format t "")
+                  (setf (valid-stages scope) args))
                  ;; ignore any other known declarations for now
                  ((member decl *known-declarations*)
                   )
