@@ -549,7 +549,7 @@
 (defmethod array-suffix ((x array-type))
   (typecase (array-size x)
     (number (format nil "[~a]" (array-size x)))
-    (symbol (format nil "[~a]" (translate-name (array-size x))))
+    ((or symbol binding) (format nil "[~a]" (translate-name (array-size x))))
     (null nil)
     (t "[]")))
 

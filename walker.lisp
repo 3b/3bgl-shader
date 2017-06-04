@@ -149,10 +149,13 @@
 
 (defun get-type-binding (name &key (env *environment*))
   (if (consp name)
-      (let ((base-type (get-type-binding (car name) :env env)))
+      (let ((base-type (get-type-binding (car name) :env env))
+            (size (second name)))
         (assert base-type)
         (make-instance 'array-type :base-type base-type
-                                   :array-size (second name)
+                                   :array-size (if (numberp size)
+                                                   size
+                                                   (get-variable-binding size))
                                    :name name))
       (and env
            (or (gethash name (types env))
