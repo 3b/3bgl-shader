@@ -451,7 +451,6 @@
          form)
         (vector
          form)
-
         ((or 3bgl-shaders::variable-read 3bgl-shaders::variable-write
              3bgl-shaders::binding-scope
              3bgl-shaders::slot-access 3bgl-shaders::swizzle-access
@@ -460,7 +459,8 @@
              3bgl-shaders::explicit-progn 3bgl-shaders::for-loop
              3bgl-shaders::interface-type 3bgl-shaders::concrete-type
              3bgl-shaders::array-initialization
-             3bgl-shaders::interface-stage-binding)
+             3bgl-shaders::interface-stage-binding
+             3bgl-shaders::struct-type)
          form)
         (t (break "unknown binding ~s / ~s" form binding))))))
 
