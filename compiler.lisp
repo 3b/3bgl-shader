@@ -189,6 +189,11 @@
 (defclass tree-shaker (3bgl-glsl::glsl-walker)
   ())
 
+(defmethod walk ((form cons) (walker tree-shaker))
+  (flet ((w (x)
+           (walk x walker)))
+    (map nil #'w form)))
+
 (defmethod walk ((form function-call) (walker tree-shaker))
   (when (or (typep (called-function form) 'global-function)
             (typep (called-function form) 'unknown-function-binding))
@@ -199,7 +204,7 @@
   ;; for unspecified declared types
   form)
 (defmethod walk ((form (eql :*)) (walker tree-shaker))
-  ;; for unspeified array size
+  ;; for unspecified array size
   form)
 
 (defmethod walk ((form slot-access) (walker tree-shaker))
@@ -224,6 +229,7 @@
   (call-next-method))
 
 (defmethod walk ((form binding) (walker tree-shaker))
+  (walk (declared-type form) walker)
   (walk (value-type form) walker)
   (call-next-method))
 
@@ -249,6 +255,11 @@
 (defmethod walk ((form array-type) (walker tree-shaker))
   (walk (base-type form) walker)
   (walk (array-size form) walker))
+
+(defmethod walk ((form for-loop) (walker tree-shaker))
+  (walk (condition-forms form) walker)
+  (walk (step-forms form) walker)
+  (call-next-method))
 
 ;; todo: rewrite this to use pregenerated dependencies?
 (defun tree-shaker (root)
