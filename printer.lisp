@@ -578,6 +578,14 @@
                                (list (and (not (eq a b))  a)
                                      b))))
     (cond
+      ((typep (binding b) 'struct-type)
+       (format t "~{~a~^ ~} ~a ~a~@[~a~]"
+               (mapcar #'translate-name (alexandria:ensure-list
+                                         (interface-qualifier b)))
+               (translate-name
+                (name (or (interface-block b) (binding b))))
+               (translate-name o)
+               (array-suffix (value-type b))))
       ((or (interface-block b) (typep (binding b) 'bindings))
        (format t "~{~a ~}~a {~%~<  ~@;~@{~a;~^~%~}~:>~%}~@[ ~a~]~@[~a~]"
                (mapcar ' translate-name (alexandria:ensure-list
