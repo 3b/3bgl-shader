@@ -100,10 +100,11 @@
 ** DONE handle dependencies between types better
    CLOSED: [2015-01-04 Sun 20:43]
    ex SSBO using a struct type
-** handle dependencies between types and constants
+** DONE handle dependencies between types and constants
+   CLOSED: [2017-06-03 Sat 23:38]
    ex constant used as length of array in a struct
 ** document struct stuff
-** recopmile functions when a type changes?
+** recompile functions when a type changes?
 ** DONE use reinitialize-instance when redefining structs
    CLOSED: [2015-01-04 Sun 20:43]
 ** clear bindings-used-by of interface-binding on redefinition
@@ -113,6 +114,8 @@
    ex
   (let ((translation))
     (setf translation 1.0))
+  also
+  (let ((a)) (incf a (vec3 1 2 3))) with original INCF definition
 ** allow (let (foo) ...) syntax for uninitialized binding
 * 'beta'
 ** assign priorities to constraints, process worklist in priority order?
@@ -138,7 +141,8 @@
 *** split out cl:foo and glsl:foo definitions (or combine them?
 *** split out definitions of glsl macros from host utils for defining them
 *** reorganize code
-** add somewhere to mark functions as vertex/fragment/etc only
+** DONE add somewhere to mark functions as vertex/fragment/etc only
+   CLOSED: [2017-06-03 Sat 23:40]
    (declare (glsl:stage :vertex ...))?
 ** better handling for qualifiers for images (readonly, writeonly, etc)
    need to include in type so they can propagate from uniforms
@@ -190,6 +194,8 @@
    float instead of using a constant float)
 ** fix vector/mat constructors to allow extra elements in last argument
    ex: vec2(mat4) is allowed, but not vec2(mat4,scalar) etc
+** check for conflicts between in/out and uniforms used in same shader stage
+   probably needs to be after type inference
 * 'done'
 ** cache glsl from compiled shaders, add option to remove intermediate data
    for use in final release, don't need to retain all the type
