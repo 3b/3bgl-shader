@@ -901,9 +901,7 @@
 
 (defmethod walk ((form binding-scope) (walker infer-build-constraints))
   (loop for binding in (bindings form)
-        for declared-type = (if (eq t (declared-type binding))
-                                (make-instance 'any-type)
-                                (set-type (declared-type binding)))
+        for declared-type = (set-type (declared-type binding))
         for initial-value-type = (walk (initial-value-form binding) walker)
         when initial-value-type
           do (if (implicit-casts-to initial-value-type)
@@ -920,7 +918,8 @@
                    (setf (value-type binding) declared-type))
                  (let ((u (unify declared-type initial-value-type)))
                    (setf (value-type binding) u)))
-        collect (value-type binding)
+        else do (setf (value-type binding) declared-type)
+        ;;collect (value-type binding)
         do (setf (gethash binding *current-function-local-types*)
                  (value-type binding)))
   (loop for a in (body form)
