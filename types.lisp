@@ -309,13 +309,13 @@
   (in/out/uniform/attrib :attribute %name type :location location :internal internal :stage :vertex)
   nil)
 
-(%glsl-macro 3bgl-glsl::input (%name type &key location (stage :vertex)
+(%glsl-macro 3bgl-glsl::input (%name type &key location (stage t)
                                       internal)
   (in/out/uniform/attrib :in %name type
                          :location location :internal internal :stage stage)
   nil)
 
-(%glsl-macro 3bgl-glsl::output (%name type &key location (stage :fragment)
+(%glsl-macro 3bgl-glsl::output (%name type &key location (stage t)
                                        internal)
   (in/out/uniform/attrib :out %name type
                          :location location :internal internal :stage stage)

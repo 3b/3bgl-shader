@@ -48,12 +48,12 @@
 (defwalker extract-functions (defun name lambda-list &body body+d)
   (multiple-value-bind (body declare doc)
       (alexandria:parse-body body+d :documentation t)
-    (let ((3bgl-glsl::*current-function*
-            (process-type-declarations-for-scope
-             (add-function name lambda-list
-                           nil
-                           :declarations declare :docs doc)))
-          (*function-stages* t))
+    (let* ((3bgl-glsl::*current-function*
+             (process-type-declarations-for-scope
+              (add-function name lambda-list
+                            nil
+                            :declarations declare :docs doc)))
+           (*function-stages* (valid-stages 3bgl-glsl::*current-function*)))
       (clrhash (bindings-used-by 3bgl-glsl::*current-function*))
       (when (boundp '*new-function-definitions*)
         (pushnew 3bgl-glsl::*current-function* *new-function-definitions*))
@@ -106,7 +106,16 @@
 (defmethod check-stages (interface-binding)
   (let ((types
           (loop for (nil sb) on (stage-bindings interface-binding) by #'cddr
-                collect (binding sb))))
+                ;; don't check for conflicts in IN/OUT for now
+                for .iq = (interface-qualifier sb)
+                for iq = (if (consp .iq)
+                             (remove-if (lambda (a) (member a '(:in :out)))
+                                        .iq)
+                             (if (member .iq '(:in :out))
+                                 nil
+                                 .iq))
+                when iq
+                  collect (binding sb))))
     (unless (or (every (lambda (a) (typep a 'interface-type))
                        types)
                 (every (lambda (a) (eq a (car types)))
@@ -153,7 +162,11 @@
           (unless (getf stage-bindings t)
             (let ((stages (loop for s in stage-bindings by #'cddr
                                 collect s)))
-              (if (eq t *function-stages*)
+              (format t "function stages ~s ~s -> ~s~%@@ ~s~%"
+                      (name r)
+                      *function-stages* stages stage-bindings)
+              (if (or (eq t *function-stages*)
+                      (equalp '(t) *function-stages*))
                   (setf *function-stages* stages)
                   (setf *function-stages*
                         (intersection *function-stages* stages))))))))
