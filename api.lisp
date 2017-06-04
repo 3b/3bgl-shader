@@ -119,6 +119,13 @@ itself). "
 
 (defparameter *default-backend* :glsl)
 
+(defparameter *shader-type->stage*
+  (alexandria:plist-hash-table
+   '(:vertex-shader :vertex
+     :fragment-shader :fragment
+     :geometry-shader :geometry
+     :tess-control-shader :tess-control)))
+
 ;; final pass of compilation
 ;; finish type inference for concrete types, generate glsl
 (defun generate-stage (stage main &key (backend *default-backend*)
@@ -131,7 +138,9 @@ COMPILE-FORM. STAGE is :VERTEX, :FRAGMENT, :GEOMETRY, :TESS-EVAL,
 pragma in generated shader, but doesn't otherwise affect generated
 code currently. Returns a list of active uniforms in the
 form (LISP-NAME \"glslName\" type) as second value, and a list of
-active attributes in same format as third value."
+active attributes in same format as third value. (GL shader types
+like :VERTEX-SHADER are also accepted for STAGE)"
+  (setf stage (gethash stage *shader-type->stage* stage))
   (bordeaux-threads:with-lock-held (*compiler-lock*)
     (3bgl-glsl::with-package-environment (main)
       (let* ((*print-as-main* (get-function-binding main))
