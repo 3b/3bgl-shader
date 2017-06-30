@@ -152,12 +152,12 @@ itself). "
 (defun expand-uniforms (uniforms expand)
   (loop for u in uniforms
         for sb = (stage-binding u)
-        append (list* (name u) (translate-name u)
-                     (name (binding sb))
-                     (when expand
-                       (list :components
-                             (expand-uniform-slots (list (name u))
-                                                   (binding sb)))))))
+        collect (list* (name u) (translate-name u)
+                       (name (binding sb))
+                       (when expand
+                         (list :components
+                               (expand-uniform-slots (list (name u))
+                                                     (binding sb)))))))
 
 ;; final pass of compilation
 ;; finish type inference for concrete types, generate glsl
