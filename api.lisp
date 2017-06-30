@@ -126,10 +126,44 @@ itself). "
      :geometry-shader :geometry
      :tess-control-shader :tess-control)))
 
+(defmethod expand-uniform-slots (prefix (type struct-type))
+     (loop for slot in (bindings type)
+           for slot-name = (name slot)
+           for slot-type = (value-type slot)
+           append (expand-uniform-slots (cons slot-name prefix) slot-type)))
+
+(defmethod expand-uniform-slots (prefix (type concrete-type))
+  (list (reverse prefix)))
+
+(defmethod expand-uniform-slots (prefix (type array-type))
+  (let ((size (array-size type)))
+    (etypecase size
+      (number
+       (loop for i below size
+             append (expand-uniform-slots (cons i prefix) (base-type type))))
+      (constant-binding
+       (unless (numberp (initial-value-form size))
+         (error "can't expand constant ~s = ~s when generating uniforms"
+                (name size) (initial-value-form size)))
+       (loop for i below (initial-value-form size)
+             append (expand-uniform-slots (cons i prefix) (base-type type)))))))
+
+
+(defun expand-uniforms (uniforms expand)
+  (loop for u in uniforms
+        for sb = (stage-binding u)
+        append (list* (name u) (translate-name u)
+                     (name (binding sb))
+                     (when expand
+                       (list :components
+                             (expand-uniform-slots (list (name u))
+                                                   (binding sb)))))))
+
 ;; final pass of compilation
 ;; finish type inference for concrete types, generate glsl
 (defun generate-stage (stage main &key (backend *default-backend*)
-                                    (version 450))
+                                    (version 450)
+                                    (expand-uniforms))
   "Generate GLSL shader for specified STAGE, using function named by
 MAIN as glsl 'main' function. ROOT and all functions/variables/etc it
 depends on should already have been successfully compiled with
@@ -137,9 +171,22 @@ COMPILE-FORM. STAGE is :VERTEX, :FRAGMENT, :GEOMETRY, :TESS-EVAL,
 :TESS-CONTROL, or :COMPUTE. VERSION specifies the value of the version
 pragma in generated shader, but doesn't otherwise affect generated
 code currently. Returns a list of active uniforms in the
-form (LISP-NAME \"glslName\" type) as second value, and a list of
-active attributes in same format as third value. (GL shader types
-like :VERTEX-SHADER are also accepted for STAGE)"
+form (LISP-NAME \"glslName\" type . PROPERTIES) as second value, and a
+list of active attributes in same format as third value. (GL shader
+types like :VERTEX-SHADER are also accepted for STAGE)
+
+For uniforms, PROPERTIES is a plist containing 0 or more of:
+
+:COMPONENTS : (when EXPAND-UNIFORMS is true) for composite
+uniforms (structs, etc), a list containing a list of uniform name and
+slot names or array indices for each leaf uniform represented by the
+type, for example a struct uniform containing an array of structs
+might have entries that look like (foo bar 1 baz) corresponding to the
+uniform \"foo.bar[1].baz\".
+
+
+"
+  ;; todo: add location, layout, binding, UBO/SSBO, etc for uniforms
   (setf stage (gethash stage *shader-type->stage* stage))
   (bordeaux-threads:with-lock-held (*compiler-lock*)
     (3bgl-glsl::with-package-environment (main)
@@ -164,18 +211,19 @@ like :VERTEX-SHADER are also accepted for STAGE)"
                               (car (interface-qualifier i))
                               (interface-qualifier i))
                          (:uniform
-                          (pushnew (list (name s) (translate-name s)
+                          #++(pushnew (list (name s) (translate-name s)
                                          (name (binding i)))
-                                   uniforms :test 'equal))
+                                   uniforms :test 'equal)
+                          (pushnew s uniforms :test 'equal))
                          (:in
                           (when (eq stage :vertex)
                             (pushnew (list (name s) (translate-name s)
                                            (name (binding i)))
                                      attributes :test 'equal)))))
-            ;(break "shaken" shaken)
+                                        ;(break "shaken" shaken)
             (values
              (generate-output shaken inferred-types backend :version version)
-             uniforms
+             (expand-uniforms uniforms expand-uniforms)
              attributes)))))))
 
 
