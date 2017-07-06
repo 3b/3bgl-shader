@@ -109,6 +109,9 @@
 (defmethod get-concrete-type ((type struct-type))
   type)
 
+(defmethod get-concrete-type ((type any-type))
+  t)
+
 (defmethod get-concrete-type ((type constrained-type))
   (let ((ct))
     (maphash (lambda (k v) (when v (assert (not ct)) (setf ct k)))
