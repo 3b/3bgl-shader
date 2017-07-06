@@ -30,61 +30,63 @@ call a function defined/updated by FORM, and the (re)defined function
 itself). "
   (let ((modified-function-names nil))
     (bordeaux-threads:with-lock-held (*compiler-lock*)
-        (3bgl-glsl::with-package-environment ()
-       (let ((*new-function-definitions* nil)
-             (*new-type-definitions* nil)
-             (*new-global-definitions* nil))
-         ;; 'compile' forms
-         (walk form (make-instance 'extract-functions))
-         ;; update dependencies for any (re)defined functions
-         (loop for f in *new-function-definitions*
-               do (update-dependencies f))
-         (loop for (nil f) in *new-global-definitions*
-               do (update-dependencies f))
-         ;; if any functions' lambda list was changed, recompile any
-         ;; calls to those functions in their dependents
-         (let* ((changed-signatures (remove-if-not #'function-signature-changed
-                                                   *new-function-definitions*))
-                (deps (make-hash-table))
-                (update-calls (make-instance 'update-calls
-                                             :modified
-                                             (alexandria:alist-hash-table
-                                              (mapcar (lambda (a)
-                                                        (cons a nil))
-                                                      changed-signatures)))))
-           (loop for i in changed-signatures
-                 do (maphash (lambda (k v) (setf (gethash k deps) v))
-                             (bindings-using i))
-                    (setf (old-lambda-list i)
-                          (lambda-list i)))
-           (maphash (lambda (k v)
-                      (declare (ignore v))
-                      (walk k update-calls))
-                    deps))
-         (let ((modified-deps (make-hash-table)))
-           (loop for (nil i) in *new-type-definitions*
-                 for deps = (print (bindings-using i))
-                 do (loop for i being the hash-keys of deps
-                          when (typep (print i) 'global-function)
-                            do (setf (gethash i modified-deps) t)))
-           (loop for (nil i) in *new-global-definitions*
-                 for deps = (print (bindings-using i))
-                 do (loop for i being the hash-keys of deps
-                          when (print (typep (print i) 'global-function))
-                            do (setf (gethash i modified-deps) t)))
-           (loop for i in *new-function-definitions*
-                 do (setf (gethash i modified-deps) t))
-           (format t "deps = ~s~%" (mapcar 'name (alexandria:hash-table-keys modified-deps)))
-           (when (plusp (hash-table-count modified-deps))
-             (let ((modified (infer-modified-functions
-                              (alexandria:hash-table-keys modified-deps))))
-              (assert modified)
-              (loop for f in modified
-                    do (pushnew (name f) modified-function-names)))))
+      (3bgl-glsl::with-package-environment ()
+        (let ((*new-function-definitions* nil)
+              (*new-type-definitions* nil)
+              (*new-global-definitions* nil))
+          ;; 'compile' forms
+          (walk form (make-instance 'extract-functions))
+          ;; update dependencies for any (re)defined functions
+          (loop for f in *new-function-definitions*
+                do (update-dependencies f))
+          (loop for (nil f) in *new-global-definitions*
+                do (update-dependencies f))
+          ;; if any functions' lambda list was changed, recompile any
+          ;; calls to those functions in their dependents
+          (let* ((changed-signatures (remove-if-not #'function-signature-changed
+                                                    *new-function-definitions*))
+                 (deps (make-hash-table))
+                 (update-calls (make-instance 'update-calls
+                                              :modified
+                                              (alexandria:alist-hash-table
+                                               (mapcar (lambda (a)
+                                                         (cons a nil))
+                                                       changed-signatures)))))
+            (loop for i in changed-signatures
+                  do (maphash (lambda (k v) (setf (gethash k deps) v))
+                              (bindings-using i))
+                     (setf (old-lambda-list i)
+                           (lambda-list i)))
+            (maphash (lambda (k v)
+                       (declare (ignore v))
+                       (walk k update-calls))
+                     deps))
+          (let ((modified-deps (make-hash-table)))
+            (loop for (nil i) in *new-type-definitions*
+                  for deps = (bindings-using i)
+                  do (loop for i being the hash-keys of deps
+                           when (typep i 'global-function)
+                             do (setf (gethash i modified-deps) t)))
+            (loop for (nil i) in *new-global-definitions*
+                  for deps = (bindings-using i)
+                  do (loop for i being the hash-keys of deps
+                           when (typep i 'global-function)
+                             do (setf (gethash i modified-deps) t)))
+            (loop for i in *new-function-definitions*
+                  do (setf (gethash i modified-deps) t))
+            (when *verbose*
+              (format t "deps = ~s~%" (mapcar 'name (alexandria:hash-table-keys modified-deps))))
+            (when (plusp (hash-table-count modified-deps))
+              (let ((modified (infer-modified-functions
+                               (alexandria:hash-table-keys modified-deps))))
+                (assert modified)
+                (loop for f in modified
+                      do (pushnew (name f) modified-function-names)))))
 
-         (format t "modified functions: ~s~%" modified-function-names)
-         (format t "modified types: ~s~%" *new-type-definitions*)
-         (format t "modified globals: ~s~%" *new-global-definitions*))))
+          (when *verbose*
+            (format t "modified functions: ~s~%" modified-function-names)
+            (format t "modified types: ~s~%" *new-type-definitions*)
+            (format t "modified globals: ~s~%" *new-global-definitions*)))))
     ;; call hook outside lock in case it tries to call generate-stage
     (map nil (lambda (a) (funcall a modified-function-names))
          *modified-function-hook*)
@@ -248,7 +250,7 @@ uniform \"foo.bar[1].baz\".
 (cl:defmacro interface (name (&rest args &key in out uniform buffer
                                            layout)
                         &body slots)
-  (declare (ignore in out uniform layout))
+  (declare (ignore in out uniform buffer layout))
   `(3bgl-shaders::compile-form '(interface ,name ,args ,@slots)))
 
 (cl:defmacro attribute (name type &rest args &key location)

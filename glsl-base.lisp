@@ -410,7 +410,6 @@
                          (symbol-name car))
                   (every (lambda (a) (position a ".STPQ" :test #'char=))
                          (symbol-name car))))
-         (format t "swizzle: ~s / ~s~%  " car cdr)
          (make-instance '3bgl-shaders::swizzle-access
                         :binding (3bgl-shaders::walk (first cdr) walker)
                         :field (subseq (string car) 1)
@@ -420,7 +419,6 @@
                                                      (position c "XYZW")
                                                      (position c "STPQ")))))
         ((symbolp car)
-         (format t "unknown function ~s?~%" car)
          (make-instance '3bgl-shaders::function-call
                         :function (add-dependencies
                                    (3bgl-shaders::add-unknown-function car))
@@ -526,14 +524,14 @@
      (3bgl-shaders::walk '(attribute ,name ,type ,@args)
                          (make-instance '3bgl-shaders::extract-functions))))
 
-(cl:defmacro glsl-input (name type &rest args &key  stage location)
-  (declare (ignore location))
+(cl:defmacro glsl-input (name type &rest args &key stage location)
+  (declare (ignore location stage))
   `(with-package-environment ()
      (3bgl-shaders::walk '(input ,name ,type ,@args)
                          (make-instance '3bgl-shaders::extract-functions))))
 
 (cl:defmacro glsl-output (name type &rest args &key stage location)
-  (declare (ignore location))
+  (declare (ignore location stage))
   `(with-package-environment ()
      (3bgl-shaders::walk '(output ,name ,type ,@args)
                          (make-instance '3bgl-shaders::extract-functions))))

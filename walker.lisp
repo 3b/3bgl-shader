@@ -589,6 +589,7 @@
                     (mapcar 'first aux)))))
 
 (defwalker cl-walker (flet (&rest functions) &rest body)
+  (declare (ignore functions body))
   ;; walk function bodies (with local functions not in scope yet)
   (error "rewrite this...")
   #++
@@ -617,6 +618,7 @@
           (@@ body :declare t)))))
 
 (defwalker cl-walker (labels (&rest functions) &rest body)
+  (declare (ignore functions body))
   ;; walk function bodies and main body
   (error "rewrite this...")
   #++

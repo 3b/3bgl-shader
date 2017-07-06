@@ -73,27 +73,25 @@
                                     ,@body))))))
 
 (defmacro %glsl-compiler-macro (name lambda-list &body body)
-  (print
-   `(let ((3bgl-shaders::*environment* 3bgl-glsl::*glsl-base-environment*))
-      (3bgl-shaders::add-compiler-macro ',name
-                                        (lambda (form env)
-                                          (declare (ignore env))
-                                          (let (,@(when (eq '&whole
-                                                            (car lambda-list))
-                                                    (pop lambda-list)
-                                                    (list
-                                                     (list (pop lambda-list)
-                                                           'form))))
-                                            (destructuring-bind ,lambda-list
-                                                (cdr form)
-                                              ,@body)))))))
+  `(let ((3bgl-shaders::*environment* 3bgl-glsl::*glsl-base-environment*))
+     (3bgl-shaders::add-compiler-macro ',name
+                                       (lambda (form env)
+                                         (declare (ignore env))
+                                         (let (,@(when (eq '&whole
+                                                           (car lambda-list))
+                                                   (pop lambda-list)
+                                                   (list
+                                                    (list (pop lambda-list)
+                                                          'form))))
+                                           (destructuring-bind ,lambda-list
+                                               (cdr form)
+                                             ,@body))))))
 
 (%glsl-macro defstruct (name-and-options &body slots)
   ;; fixme: compile-time side effects of macros is a bit ugly
   ;; not completely sure it matters though for this sort of cross-compiler?
   ;; eval-when is sort of messy, not sure there will be much code that can
   ;; meaningfully run on host and target?
-  (format t "expand defstruct ~s  ~s~%" name-and-options slots)
   (destructuring-bind (name &rest ignore)
       (alexandria:ensure-list name-and-options)
     (declare (ignore ignore))
@@ -250,7 +248,6 @@
                    for bind = (if (consp %bind) (car %bind) %bind)
                    for glsl-bind = (if (consp %bind) (cadr %bind) nil)
                    for array = (if (consp %bind) (caddr %bind) nil)
-                   do (format t "bind ~s -> ~s (~s) int ~s~%" %bind bind name internal)
                    do (bind-interface stage name k bind :internal internal
                                                         :glsl-name glsl-bind
                                                         :array array
@@ -261,8 +258,6 @@
 (defun in/out/uniform/attrib (qualifier %name type
                               &key location internal stage index layout
                                 qualifiers default)
-  (format t "in/out/uniform/attrib: ~@{ ~s~}~%"  qualifier %name type
-          location internal stage index layout qualifiers default)
   ;; possibly should have generic '&rest args' instead of enumerating options?
   (let* ((env (default-env %name))
          (vb (variable-bindings env))
@@ -395,7 +390,6 @@
                                  ;; whole list relatively uniformly
                                  (cons (car cdr) cdr))))
                  ((eql decl 'stage)
-                  (format t "")
                   (setf (valid-stages scope) args))
                  ;; ignore any other known declarations for now
                  ((member decl *known-declarations*)

@@ -67,20 +67,19 @@
     nil))
 
 (macrolet ((track-globals (&rest forms)
-             (print
-              `(progn
-                 ,@(loop for form in forms
-                         collect
-                         `(defwalker extract-functions (,form name &rest rest)
-                            (declare (ignore rest))
-                            (prog1
-                                (call-next-method)
-                              (when (boundp '*new-global-definitions*)
-                                (when (consp name)
-                                  (setf name (car name)))
-                                (assert (get-variable-binding name))
-                                (pushnew (list name (get-variable-binding name))
-                                         *new-global-definitions*)))))))))
+             `(progn
+                ,@(loop for form in forms
+                        collect
+                        `(defwalker extract-functions (,form name &rest rest)
+                           (declare (ignore rest))
+                           (prog1
+                               (call-next-method)
+                             (when (boundp '*new-global-definitions*)
+                               (when (consp name)
+                                 (setf name (car name)))
+                               (assert (get-variable-binding name))
+                               (pushnew (list name (get-variable-binding name))
+                                        *new-global-definitions*))))))))
   (track-globals defconstant defparameter
                  3bgl-glsl:defconstant 3bgl-glsl::%defconstant
                  3bgl-glsl:attribute 3bgl-glsl:uniform
@@ -162,9 +161,6 @@
           (unless (getf stage-bindings t)
             (let ((stages (loop for s in stage-bindings by #'cddr
                                 collect s)))
-              (format t "function stages ~s ~s -> ~s~%@@ ~s~%"
-                      (name r)
-                      *function-stages* stages stage-bindings)
               (if (or (eq t *function-stages*)
                       (equalp '(t) *function-stages*))
                   (setf *function-stages* stages)

@@ -62,7 +62,6 @@ program OLD and return new program, otherwise return OLD"
         (program (gl:create-program)))
     (unwind-protect
          (flet ((try-shader (shader source)
-                  (format t "compiling shader:~% ~s~%" source)
                   (gl:shader-source shader source)
                   (gl:compile-shader shader)
                   (cond
@@ -71,7 +70,8 @@ program OLD and return new program, otherwise return OLD"
                     (errorp
                      (error "shader compile failed: ~s" (gl:get-shader-info-log shader)))
                     (t
-                     (format (or verbose t) "shader compile failed: ~s" (gl:get-shader-info-log shader))
+                     (when verbose
+                       (format verbose "shader compile failed: ~s" (gl:get-shader-info-log shader)))
                      (return-from reload-program old)))))
            (try-shader vs (3bgl-shaders::generate-stage :vertex v
                                                         :version version))
@@ -89,7 +89,8 @@ program OLD and return new program, otherwise return OLD"
               (error "program link failed ~s"
                      (gl:get-program-info-log program)))
              (t
-              (format (or verbose t) "program link failed: ~s" (gl:get-program-info-log program)))))
+              (when verbose
+                (format verbose "program link failed: ~s" (gl:get-program-info-log program))))))
       ;; clean up on exit
       (gl:delete-shader vs)
       (gl:delete-shader fs)

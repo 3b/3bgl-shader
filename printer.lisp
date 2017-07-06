@@ -396,9 +396,6 @@
                                     (value-type o)))
                 (translate-name o)
                 (initial-value-form o)))))
-(format nil "~{~(~a ~)~}~@[~a ~]~a[~a]~@[ = ~2:*~a[]~1*~a~]"
-        '(1) 2 3 4 5)
-
 
 (defprint binding (o)
   (assert-statement)

@@ -144,9 +144,10 @@
          (add-constraint (aref types (second return-type)) c)
          (add-constraint (value-type fn) c)))
       ((cons (eql =))
-       (format t "~&setting return type of ~s to ~s~%"
-               (name fn)
-               (aref types (second return-type)))
+       (when *verbose*
+         (format t "~&setting return type of ~s to ~s~%"
+                 (name fn)
+                 (aref types (second return-type))))
        (setf (value-type fn) (aref types (second return-type))))
       (symbol
        (setf (value-type fn) (get-type-binding return-type))))
@@ -457,6 +458,7 @@
          (gsampler2dms '(:sampler-2d-ms :isampler-2d-ms :usampler-2d-ms))
          (gsampler2dmsarray '(:sampler-2d-ms-array :isampler-2d-ms-array :usampler-2d-ms-array))
          (sampler-parameters (make-hash-table)))
+    (declare (ignorable usampler isampler sampler sampler-parameters))
     ;;
     ;; these are all assumed to be binary at this point, any n>2 -ary
     ;; uses should have been expanded to binary calls in earlier passes
@@ -778,17 +780,17 @@
                                                                  ,glsl-name
                                                                  ,@keys))))
                (add/m (&rest definitions)
-                 (print`(progn
-                     ,@(loop for (.name lambda-list count ret)
-                               in definitions
-                             for (name glsl-name) = (alexandria:ensure-list
-                                                     .name)
-                             collect `(add-internal-function/mat ',name
-                                                                 ',lambda-list
-                                                                 ,count
-                                                                 ,ret
-                                                                 :glsl-name
-                                                                 ,glsl-name)))))
+                 `(progn
+                    ,@(loop for (.name lambda-list count ret)
+                              in definitions
+                            for (name glsl-name) = (alexandria:ensure-list
+                                                    .name)
+                            collect `(add-internal-function/mat ',name
+                                                                ',lambda-list
+                                                                ,count
+                                                                ,ret
+                                                                :glsl-name
+                                                                ,glsl-name))))
                (expand-signatures (ret args &rest more-signatures)
                  (setf more-signatures (list* ret args more-signatures))
                  `(append

@@ -792,7 +792,8 @@
       (error "got call to unknown function ~s during type inference"
              (name called)))
     (unless (eq t (type-inference-state called))
-      (format t "got call to function ~s with incomplete or failed type inference ~s?" (name called) (type-inference-state called))
+      (when *verbose*
+            (format t "got call to function ~s with incomplete or failed type inference ~s?" (name called) (type-inference-state called)))
       (error 'incomplete-dependent))
     ;; make local copies of any types/constraints affected by function
     ;; args, and unify with actual arg types
@@ -1600,7 +1601,7 @@
         for i from 1
         when (zerop (mod i 100000))
           do (break "~a loops in inference?" i)
-        when (zerop (mod i 2000))
+        when (and *verbose* (zerop (mod i 2000)))
           do (format t "~a loops in inference?" i)
         do (assert (modified constraint))
         when *verbose*
