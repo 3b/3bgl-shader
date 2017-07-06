@@ -308,6 +308,14 @@
             (<= "<=")
             (>= ">=")))
 
+(defprinti (zerop x) (call)
+  (let ((*in-expression* t)
+        (type (gethash call *binding-types*)))
+    (assert type)
+    (if (integral-type (second type))
+        (format t "(0 == ~a)" x)
+        (format t "(0.0 == ~a)" x))))
+
 (defprinti (ash i c) ()
   (cond
     ((numberp c)

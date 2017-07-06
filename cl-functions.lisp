@@ -362,6 +362,7 @@
          (*global-environment* 3bgl-glsl::*glsl-base-environment*)
          ;; meta-types for defining the overloads
          (scalar (list :bool :int :uint :float :double))
+         (number (list ::int :uint :float :double))
          (vec (list :vec2 :vec3 :vec4))
          (ivec (list :ivec2 :ivec3 :ivec4))
          (uvec (list :uvec2 :uvec3 :uvec4))
@@ -662,6 +663,8 @@
     ;;  on aggregates and compares contents)
     (add-internal-function/s '= '(a b) '(T (= 0)) :bool)
     (add-internal-function/s '/= '(a b) '(T (= 0)) :bool)
+
+    (add-internal-function/s 'zerop '(a) `((or ,@number)) :bool)
 
     ;; || && ^^
     (add-internal-function/full 'or '(a b) '(((:bool :bool) :bool))
