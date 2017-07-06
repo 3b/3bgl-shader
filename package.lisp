@@ -7,7 +7,8 @@
    :layout
    :generate-stage
    :compile-form
-   :stage))
+   :stage
+   :*modified-function-hook*))
 
 (defpackage #:3bgl-glsl
   (:use :cl)
