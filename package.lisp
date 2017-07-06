@@ -372,6 +372,8 @@
    #:dmat4x2
    #:dmat4x3
    #:dmat4
+   ;; misc
+   #:discard
    ))
 
 ;;; package intended to be :USEd by shader code in place of :cl

@@ -341,6 +341,9 @@
     (let ((*in-expression* t))
       (format t "~a" x))))
 
+(defprinti (3bgl-glsl:discard) ()
+  (assert-statement)
+  (format t "discard"))
 
 
 (defmacro defprint (type (object) &body body)

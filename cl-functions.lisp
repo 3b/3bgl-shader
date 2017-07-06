@@ -149,6 +149,8 @@
                  (name fn)
                  (aref types (second return-type))))
        (setf (value-type fn) (aref types (second return-type))))
+      ((eql t)
+       (setf (value-type fn) (make-instance 'any-type)))
       (symbol
        (setf (value-type fn) (get-type-binding return-type))))
     (setf (gethash name (function-bindings *environment*))
@@ -1675,7 +1677,13 @@
       ;; todo :dmat*
 
       (add/s
-       (values (&optional v) '(t) '(= 0))))))
+       (values (&optional v) '(t) '(= 0)))
+      (add/s
+       ;; return type is listed as T here to simplify unifying
+       ;; branches of something like (if x (discard) (setf foo bar)).
+       ;; type inference treats it like (return), so only works in
+       ;; void functions
+       (3bgl-glsl::discard () '() t)))))
 
 ;; define compiler macros for binary ops like + which accept any
 ;; number of args in CL

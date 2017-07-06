@@ -824,23 +824,35 @@
           (setf (gethash form *current-function-local-types*) a)))
     ;; copy return type and any linked constraints
     ;; (may have already been copied if it depends on arguments)
-    (if (eq (called-function form)
-            (get-function-binding 'return
-                                  :env 3bgl-glsl::*glsl-base-environment*))
-        ;; if we are calling RETURN, unify return type with function
-        ;; return as well
-        (let* ((r (copy-constraints (value-type called))))
-          (if (boundp '*current-function-return-type*)
-              (setf *current-function-return-type*
-                    ;; don't need a cast, since input to RETURN already has one
-                    (unify r *current-function-return-type*))
-              (setf *current-function-return-type* r)))
-        ;; normal function, just copy the return values as usual
-        (let ((vt (copy-constraints (value-type called))))
-          (if call-site
-              (push vt (gethash call-site *current-function-local-types*))
-              (push vt (gethash form *current-function-local-types*)))
-          vt))))
+    (cond
+      ((eq (called-function form)
+           (get-function-binding 'return
+                                 :env 3bgl-glsl::*glsl-base-environment*))
+       ;; if we are calling RETURN, unify return type with function
+       ;; return as well
+       (let* ((r (copy-constraints (value-type called))))
+         (if (boundp '*current-function-return-type*)
+             (setf *current-function-return-type*
+                   ;; don't need a cast, since input to RETURN already has one
+                   (unify r *current-function-return-type*))
+             (setf *current-function-return-type* r))))
+      ((eq (called-function form)
+           (get-function-binding 'discard
+                                 :env 3bgl-glsl::*glsl-base-environment*))
+       ;; discard works like RETURN but always VOID type
+       ;; return as well
+       (let* ((r (get-type-binding :void
+                                   :env 3bgl-glsl::*glsl-base-environment*)))
+         (if (boundp '*current-function-return-type*)
+             (setf *current-function-return-type*
+                   (unify r *current-function-return-type*))
+             (setf *current-function-return-type* r))))
+      (t ;; normal function, just copy the return values as usual
+       (let ((vt (copy-constraints (value-type called))))
+         (if call-site
+             (push vt (gethash call-site *current-function-local-types*))
+             (push vt (gethash form *current-function-local-types*)))
+         vt)))))
 
 (defmethod walk ((form variable-read) (walker infer-build-constraints))
   (walk (binding form) walker))
