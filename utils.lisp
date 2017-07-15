@@ -232,6 +232,7 @@
                                  (:image-2d #'gl:uniformi)
                                  (:image-3d #'gl:uniformi)
                                  (:sampler-2d-array #'gl:uniformi)
+                                 (:sampler-buffer #'gl:uniformi)
                                  (:atomic-uint
                                   ;; ignore atomic counter buffers for
                                   ;; now, since they behave differently...
@@ -279,6 +280,9 @@
                                 :index)
                           index)
                     (pushnew name (live-uniforms shader-program)))
+           (when *print-shaders*
+             (format t "   = ~s~%" (alexandria:hash-table-alist
+                                    (uniforms shader-program))))
            (maphash (lambda (k v)
                       (declare (ignore v))
                       (setf (gethash k (dirty shader-program)) nil))
