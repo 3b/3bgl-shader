@@ -440,9 +440,12 @@
                        (loop for (a b) on v by #'cddr
                              ;; allow nil -> X or X -> X
                              ;; to mean single element without =
-                             collect (and a (not (eq a b))
-                                          (%translate-name a :lc-underscore t))
-                             collect b)
+                             for single = (or (not a) (eq a b))
+                             collect (unless single
+                                       (%translate-name a :lc-underscore t))
+                             collect (if single
+                                         (%translate-name b :lc-underscore t)
+                                         b))
                        (translate-name k)))
              (layout-qualifiers o)))
 
