@@ -17,6 +17,8 @@ file using the 3bgl-glsl:defun macro is recompiled, so probably should
 store names and only update shader programs at next frame rather
 than updating programs directly from hook function.")
 
+(defvar *default-version* 450)
+
 ;; compiler entry points
 
 ;; first pass of compilation for one or more forms
@@ -164,7 +166,7 @@ itself). "
 ;; final pass of compilation
 ;; finish type inference for concrete types, generate glsl
 (defun generate-stage (stage main &key (backend *default-backend*)
-                                    (version 450)
+                                    (version *default-version*)
                                     (expand-uniforms))
   "Generate GLSL shader for specified STAGE, using function named by
 MAIN as glsl 'main' function. ROOT and all functions/variables/etc it

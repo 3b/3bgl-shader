@@ -8,7 +8,8 @@
    :generate-stage
    :compile-form
    :stage
-   :*modified-function-hook*))
+   :*modified-function-hook*
+   :*default-version*))
 
 (defpackage #:3bgl-glsl
   (:use :cl)
