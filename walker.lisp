@@ -70,8 +70,11 @@
                            ;; configurable?
                            :parent 3bgl-glsl::*glsl-base-environment*))))
 
-(defun check-locked (environment)
-  (assert (not (locked environment))))
+(defun check-locked (environment name)
+  (when (locked environment)
+    ;; todo: describe operation, add ignore options?
+    (error "package ~a locked while modifying definition of ~s"
+           (package-name (symbol-package name)) name)))
 
 (defun global-env (name)
   (when (eql name 'position)
@@ -163,14 +166,14 @@
 
 
 (defun add-macro (name lambda &key (env (default-env name)))
-  (check-locked env)
+  (check-locked env name)
   (setf (gethash name (function-bindings env))
         (make-instance 'macro-definition
                        :name name
                        :expression lambda)))
 
 (defun add-compiler-macro (name lambda &key (env (default-env name)))
-  (check-locked env)
+  (check-locked env name)
   (setf (gethash name (compiler-macro-bindings env))
         (make-instance 'macro-definition
                        :name name
@@ -197,7 +200,7 @@
 
 (defun add-symbol-macro (name expansion &key (env (default-env name)))
   (assert (not (gethash name (variable-bindings env))))
-  (check-locked env)
+  (check-locked env name)
   (setf (gethash name (variable-bindings env))
         (make-instance 'symbol-macro
                        :name name
@@ -206,7 +209,7 @@
 
 (defun add-variable (name init &key (env (default-env name)) binding
                                  (type 'variable-binding) value-type)
-  (check-locked env)
+  (check-locked env name)
   (if binding
       (progn
         (setf (gethash name (variable-bindings env)) binding))
@@ -315,7 +318,7 @@
                        (function-type 'global-function)
                        binding)
   (when *verbose* (format t "add function ~s~%" name))
-  (check-locked env)
+  (check-locked env name)
   (if binding
       (setf (gethash name (function-bindings env)) binding)
       (multiple-value-bind (bindings expander)
@@ -371,7 +374,7 @@
 
 (defun add-unknown-function (name &key (env (global-env name)))
   (when *verbose* (format t "add unknown function to ~s (in ~s)~%" name env))
-  (check-locked env)
+  (check-locked env name)
   (if (get-function-binding name :env env)
       (get-function-binding name :env env)
       (setf (gethash name (function-bindings env))
@@ -382,7 +385,7 @@
                            :environment env))))
 
 (defun remove-function (name &key (env (default-env name)))
-  (check-locked env)
+  (check-locked env name)
   (remhash name (function-bindings env)))
 
 (defclass cl-walker (walker)

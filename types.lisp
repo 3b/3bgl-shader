@@ -216,7 +216,7 @@
          (env (default-env name))
          (glsl-name (if (consp %name) (cadr %name)))
          (layout-qualifier (copy-list layout)))
-    (check-locked env)
+    (check-locked env name)
     (setf (gethash name (types env))
           (make-instance 'interface-type
                          :name name
@@ -265,7 +265,7 @@
          (glsl-name (if (consp %name) (cadr %name)))
          (layout-qualifier (copy-list layout)))
     (unless (typep (gethash name vb) 'interface-binding)
-      (check-locked env)
+      (check-locked env name)
       (setf (gethash name vb) (make-instance 'interface-binding
                                              :internal internal
                                              :glsl-name glsl-name
@@ -291,7 +291,7 @@
                    (equalp (layout-qualifier old) layout-qualifier)
                    (eql (binding old) (or (get-type-binding type) type))
                    (eql (default old) default))
-        (check-locked env)
+        (check-locked env name)
         (setf (getf (stage-bindings (gethash name vb)) stage)
               (make-instance 'interface-stage-binding
                              :stage stage
