@@ -156,8 +156,11 @@ itself). "
 (defun expand-uniforms (uniforms expand)
   (loop for u in uniforms
         for sb = (stage-binding u)
+        for b = (binding sb)
         collect (list* (name u) (translate-name u)
-                       (name (binding sb))
+                       (name (if (typep b 'binding)
+                                 (value-type b)
+                                 b))
                        (when expand
                          (list :components
                                (expand-uniform-slots (list (name u))
