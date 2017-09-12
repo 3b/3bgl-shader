@@ -48,17 +48,19 @@
    ;; map of name -> BINDING instance
    (variable-bindings :reader variable-bindings :initform (make-hash-table))
    (types :reader types :initform (make-hash-table))
-   (locked :accessor locked :initform nil)))
+   (locked :accessor locked :initform nil)
+   (name :reader name :initform nil :initarg :name)))
 
 ;; fixme: rearrange stuff so this doesn't need eval-when
 
-(defvar *cl-environment* (make-instance 'environment))
+(defvar *cl-environment* (make-instance 'environment :name 'cl))
 (setf (gethash (find-package :cl) *package-environments*)
       *cl-environment*)
 
 (defvar 3bgl-glsl::*glsl-base-environment*
   (make-instance 'environment
-                 :parent *cl-environment*))
+                 :parent *cl-environment*
+                 :name 'base))
 (setf (gethash (find-package :3bgl-glsl) *package-environments*)
       3bgl-glsl::*glsl-base-environment*)
 
@@ -68,7 +70,8 @@
             (make-instance 'environment
                            ;; todo: make default parent environment
                            ;; configurable?
-                           :parent 3bgl-glsl::*glsl-base-environment*))))
+                           :parent 3bgl-glsl::*glsl-base-environment*
+                           :name package))))
 
 (defun check-locked (environment name)
   (when (locked environment)
