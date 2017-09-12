@@ -159,9 +159,13 @@
             (size (second name)))
         (assert base-type)
         (make-instance 'array-type :base-type base-type
-                                   :array-size (if (numberp size)
-                                                   size
-                                                   (get-variable-binding size))
+                                   :array-size (cond
+                                                 ((numberp size)
+                                                  size)
+                                                 ((eql size :*)
+                                                  :*)
+                                                 (t
+                                                  (get-variable-binding size)))
                                    :name name))
       (and env
            (or (gethash name (types env))
