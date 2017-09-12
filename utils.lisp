@@ -179,6 +179,7 @@
         (stages (alexandria:hash-table-alist (stages shader-program)))
         (program nil)
         (all-uniforms nil))
+    (clrhash (uniforms shader-program))
     (setf source
           (loop for (%stage . name) in stages
                 for stage = (gethash %stage *stage-name-map* %stage)
