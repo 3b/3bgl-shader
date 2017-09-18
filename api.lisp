@@ -18,6 +18,7 @@ store names and only update shader programs at next frame rather
 than updating programs directly from hook function.")
 
 (defvar *default-version* 450)
+(defvar *default-extensions* nil) ;; exact strings or like :arb-some-extension
 
 ;; compiler entry points
 
@@ -94,10 +95,23 @@ itself). "
          *modified-function-hook*)
     nil))
 
+(defun expand-extension-keyword (ext)
+  (if (stringp ext)
+      ext
+      (let* ((s (substitute #\_ #\- (symbol-name ext)))
+             (p (position #\_ s)))
+        (format nil "GL_~:@(~a~)~(~a~)" (subseq s 0 p) (subseq s p)))))
+
 (defmethod generate-output (objects inferred-types (backend (eql :glsl))
-                            &key version &allow-other-keys)
+                            &key version extensions &allow-other-keys)
   (with-output-to-string (*standard-output*)
     (format t "#version ~a~%" version)
+    (loop for .ext in extensions
+          for ext = (if (consp .ext) (first .ext) .ext)
+          for enable = (if (consp .ext) (second .ext) t)
+          do (format t "#extension ~a : ~a~%"
+                     (expand-extension-keyword ext)
+                     (if enable "enable" "disable")))
     (loop with dumped = (make-hash-table)
           for object in objects
           for stage-binding = (stage-binding object)
@@ -170,6 +184,7 @@ itself). "
 ;; finish type inference for concrete types, generate glsl
 (defun generate-stage (stage main &key (backend *default-backend*)
                                     (version *default-version*)
+                                    (extensions *default-extensions*)
                                     (expand-uniforms))
   "Generate GLSL shader for specified STAGE, using function named by
 MAIN as glsl 'main' function. ROOT and all functions/variables/etc it
@@ -229,7 +244,8 @@ uniform \"foo.bar[1].baz\".
                                      attributes :test 'equal)))))
                                         ;(break "shaken" shaken)
             (values
-             (generate-output shaken inferred-types backend :version version)
+             (generate-output shaken inferred-types backend
+                              :version version :extensions extensions)
              (expand-uniforms uniforms expand-uniforms)
              attributes)))))))
 
