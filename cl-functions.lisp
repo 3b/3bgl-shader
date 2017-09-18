@@ -724,6 +724,19 @@
                                                         ixv uxv uxv ixv)))
                                 :cast nil)
 
+    (add-internal-function/full '3bgl-glsl::ash '(integer count)
+                                `(((:int :int) :int)
+                                  ((:int :uint) :int)
+                                  ((:uint :int) :uint)
+                                  ((:uint :uint) :uint)
+                                  ,@(make-ftype (append ivec uvec ivec uvec
+                                                        ivec uvec ivec uvec)
+                                                (append ivec uvec ivec uvec
+                                                        ivec uvec ivec uvec)
+                                                (append ivec uvec uvec ivec
+                                                        ixv uxv uxv ixv)))
+                                :cast nil)
+
     ;; | & ^
     ;; fixme: do these allow casts?
     (add-internal-function/full 'logior '(a b) log* :cast nil)
@@ -737,8 +750,7 @@
                                 :cast nil)
     (add-internal-function/full '1+ '(number) unary-gentypes+mats
                                 :cast nil)
-    ;; todo ++, --, ash
-    ;;(add-internal-function/full 'ash '(integer count))
+    ;; todo ++, --
 
 
     (add-internal-function/s 'return '(value)
