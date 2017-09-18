@@ -513,12 +513,14 @@
 
 (defprint variable-write (o)
   (if *in-expression*
-      (format t "(~a = ~a)"
-              (translate-name (binding o))
-              (let ((*in-expression* t)) (value o)))
-      (format t "~a = ~a"
-              (translate-name (binding o))
-              (let ((*in-expression* t)) (value o)))))
+      (let ((*in-expression* t))
+        (format t "(~a = ~a)"
+                (translate-name (binding o))
+                (value o)))
+      (let ((*in-expression* t))
+        (format t "~a = ~a"
+                (translate-name (binding o))
+                (value o)))))
 
 (defprint if-form (o)
   (let ((cond (test-form o))
