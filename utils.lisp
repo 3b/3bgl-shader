@@ -20,6 +20,10 @@
    (dirty :reader dirty :initform (make-hash-table))
    ;; lisp name -> plist :glsl-name, :type, :dirty, :function, :value
    (uniforms :reader uniforms :initform (make-hash-table))
+   ;; lisp name -> lisp-name, "glsl-name", plist of :layout :components
+   (ssbos :reader ssbos :initform (make-hash-table))
+   ;; lisp name -> lisp-name, "glsl-name", plist of :components
+   (structs :reader structs :initform (make-hash-table))
    ;; list of names of live uniforms for currently compiled program
    (live-uniforms :accessor live-uniforms :initform nil)
    ;; glsl name -> lisp name
@@ -173,34 +177,44 @@
      (uniform-matrix-4x3-fv %gl:uniform-matrix-4x3-fv 12)
      (uniform-matrix-4fv %gl:uniform-matrix-4fv 16)
      ))
+
+(defun reset-program (shader-program)
+  (when (program shader-program)
+    (gl:delete-program (shiftf (slot-value shader-program 'program) nil)))
+  (setf (live-uniforms shader-program) nil)
+  (clrhash (uniforms shader-program))
+  (clrhash (dirty shader-program)))
+
 (defun %reload-program (shader-program)
   (let ((source nil)
         (shaders nil)
         (stages (alexandria:hash-table-alist (stages shader-program)))
         (program nil)
-        (all-uniforms nil))
-    (clrhash (uniforms shader-program))
+        (all-uniforms nil)
+        (uniform-hash (make-hash-table))
+        (ssbo-hash (make-hash-table))
+        (struct-hash (make-hash-table))
+        (name-map (make-hash-table :test 'equal)))
     (setf source
           (loop for (%stage . name) in stages
                 for stage = (gethash %stage *stage-name-map* %stage)
                 for source = nil
                 do (when *print-shaders*
                      (format t "generating shader ~s @ ~s~%" name stage))
-                   (multiple-value-bind (.source uniforms attributes)
+                   (multiple-value-bind (.source uniforms attributes
+                                         ssbos structs)
                        (3bgl-shaders::generate-stage
-                        stage name :version (version shader-program))
+                        stage name :version (version shader-program)
+                        :expand-uniforms t)
                      (declare (ignore attributes))
                      (setf source .source)
-                     (setf all-uniforms (union all-uniforms uniforms
-                                               :key 'car))
+                     (setf all-uniforms (union all-uniforms uniforms :key 'car))
                      (loop for (l g type) in uniforms
-                           do (setf (getf (gethash l (uniforms shader-program))
-                                          :glsl-name)
+                           do (setf (getf (gethash l uniform-hash) :glsl-name)
                                     g)
-                              (setf (gethash g (name-map shader-program)) l)
+                              (setf (gethash g name-map) l)
                               (setf
-                               (getf (gethash l (uniforms shader-program))
-                                     :function)
+                               (getf (gethash l uniform-hash) :function)
                                (ecase type
                                  (:float '%gl:uniform-1f)
                                  (:vec2 #'gl:uniformfv)
@@ -237,7 +251,13 @@
                                  (:atomic-uint
                                   ;; ignore atomic counter buffers for
                                   ;; now, since they behave differently...
-                                  (lambda (&rest r) (declare (ignore r))))))))
+                                  (lambda (&rest r) (declare (ignore r)))))))
+                     (loop for s in ssbos
+                           for n = (car s)
+                           do (setf (gethash n ssbo-hash) s))
+                     (loop for s in structs
+                           for n = (car s)
+                           do (setf (gethash n struct-hash) s)))
                 collect (list %stage source)))
     ;; assuming failed compile signalled an error so won't get here
     (unwind-protect
@@ -270,6 +290,11 @@
               (format t "program link failed: ~s"
                       (gl:get-program-info-log program))
               (return-from %reload-program nil)))
+           ;; update shader-program object
+           (setf (slot-value shader-program 'uniforms) uniform-hash)
+           (setf (slot-value shader-program 'ssbos) ssbo-hash)
+           (setf (slot-value shader-program 'structs) struct-hash)
+           (setf (slot-value shader-program 'name-map) name-map)
            ;; update uniforms in program
            (setf (live-uniforms shader-program) nil)
            (when *print-shaders*
@@ -300,8 +325,7 @@
       (when program
         (gl:delete-program program)))))
 
-
-(defmethod use-program ((program shader-program))
+(defun ensure-compiled (program)
   (let ((dirty nil))
     (alexandria:maphash-values (lambda (k) (setf dirty (or dirty k)))
                                (dirty program))
@@ -309,18 +333,23 @@
       (alexandria:maphash-keys (lambda (k)
                                  (setf (gethash k (dirty program)) nil))
                                (dirty program))
-      (%reload-program program))
-
-    (when (program program)
-      (gl:use-program (program program))
-      (loop for uniform-name in (live-uniforms program)
-            for uniform = (gethash uniform-name (uniforms program))
-            for function = (getf uniform :function)
-            for value = (getf uniform :value)
-            for index = (getf uniform :index)
-            when (and function value index)
-              do (funcall function index value))
+      (%reload-program program)
       t)))
+
+
+(defmethod use-program ((program shader-program))
+  (ensure-compiled program)
+
+  (when (program program)
+    (gl:use-program (program program))
+    (loop for uniform-name in (live-uniforms program)
+          for uniform = (gethash uniform-name (uniforms program))
+          for function = (getf uniform :function)
+          for value = (getf uniform :value)
+          for index = (getf uniform :index)
+          when (and function value index)
+            do (funcall function index value))
+    t))
 
 (defmacro with-program ((program &key (error-p nil)) &body body)
   ;; not sure if iter is better to UNWIND-PROTECT and risk errors in
