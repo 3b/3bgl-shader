@@ -329,7 +329,7 @@
   (let ((dirty nil))
     (alexandria:maphash-values (lambda (k) (setf dirty (or dirty k)))
                                (dirty program))
-    (when dirty
+    (when (or dirty (not (program program)))
       (alexandria:maphash-keys (lambda (k)
                                  (setf (gethash k (dirty program)) nil))
                                (dirty program))
