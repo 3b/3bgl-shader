@@ -144,6 +144,9 @@ itself). "
      :geometry-shader :geometry
      :tess-control-shader :tess-control)))
 
+(defmethod expand-uniform-slots (prefix (b binding))
+  (append (expand-uniform-slots prefix (value-type b))))
+
 (defmethod expand-uniform-slots (prefix (type struct-type))
      (loop for slot in (bindings type)
            for slot-name = (name slot)
@@ -164,7 +167,9 @@ itself). "
          (error "can't expand constant ~s = ~s when generating uniforms"
                 (name size) (initial-value-form size)))
        (loop for i below (initial-value-form size)
-             append (expand-uniform-slots (cons i prefix) (base-type type)))))))
+             append (expand-uniform-slots (cons i prefix) (base-type type))))
+      ((eql :*)
+       (cons '[] prefix)))))
 
 
 (defun expand-uniforms (uniforms expand)
@@ -179,6 +184,36 @@ itself). "
                          (list :components
                                (expand-uniform-slots (list (name u))
                                                      (binding sb)))))))
+
+(defun expand-buffers (buffers)
+  (let ((blocks (delete-duplicates
+                 (loop for b in buffers
+                       collect (stage-binding b))
+                 :test 'equalp
+                 :key 'interface-block)))
+    (loop for block in blocks
+          for ib = (interface-block block)
+          for lq = (layout-qualifier block)
+          collect (list* (name ib)
+                         (translate-name ib)
+                         (list :layout lq
+                               :components
+                               (loop for b in (bindings ib)
+                                     collect (list (name b)
+                                                   (name (if (typep b 'binding)
+                                                             (value-type b)
+                                                             b)))))))))
+
+(defun expand-structs (structs)
+  (loop for struct in structs
+        collect (list* (name struct)
+                       (translate-name struct)
+                       (list :components
+                             (loop for b in (bindings struct)
+                                   collect (list (name b)
+                                                 (name (if (typep b 'binding)
+                                                           (value-type b)
+                                                           b))))))))
 
 ;; final pass of compilation
 ;; finish type inference for concrete types, generate glsl
@@ -215,7 +250,9 @@ uniform \"foo.bar[1].baz\".
       (let* ((*print-as-main* (get-function-binding main))
              (*current-shader-stage* stage)
              (uniforms)
-             (attributes))
+             (buffers)
+             (attributes)
+             (structs))
         (let ((shaken (tree-shaker main)))
           (let ((inferred-types
                   (finalize-inference (get-function-binding main))))
@@ -224,6 +261,8 @@ uniform \"foo.bar[1].baz\".
             (loop for s in shaken
                   for i = (when (typep s 'interface-binding)
                             (stage-binding s))
+                  when (typep s 'struct-type)
+                    do (push s structs)
                   when i
                     do #++(format t " ~s binding ~s / ~s = ~s~%"
                                (interface-qualifier i)
@@ -237,6 +276,8 @@ uniform \"foo.bar[1].baz\".
                                          (name (binding i)))
                                    uniforms :test 'equal)
                           (pushnew s uniforms :test 'equal))
+                         (:buffer
+                          (pushnew s buffers :test 'equal))
                          (:in
                           (when (eq stage :vertex)
                             (pushnew (list (name s) (translate-name s)
@@ -247,7 +288,9 @@ uniform \"foo.bar[1].baz\".
              (generate-output shaken inferred-types backend
                               :version version :extensions extensions)
              (expand-uniforms uniforms expand-uniforms)
-             attributes)))))))
+             attributes
+             (expand-buffers buffers)
+             (expand-structs structs))))))))
 
 
 
