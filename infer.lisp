@@ -770,6 +770,8 @@
   ;; should check type of binding, and add constraint that it be a struct
   ;; with specified field (which will require tracking known structs, etc)
   (let ((struct-type (walk (binding form) walker)))
+    (when (typep struct-type 'constrained-type)
+      (setf struct-type (get-only-hash-key (types struct-type))))
     ;; fixme: should structs have a hash for O(1) access?
     ;; or should something earlier have already looked up the specific slot?
     (loop for binding in (bindings struct-type)
