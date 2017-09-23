@@ -305,15 +305,17 @@
   nil)
 
 (%glsl-macro 3bgl-glsl::input (%name type &key location (stage t)
-                                      internal)
+                                      internal qualifiers)
   (in/out/uniform/attrib :in %name type
-                         :location location :internal internal :stage stage)
+                         :location location :internal internal :stage stage
+                         :qualifiers qualifiers)
   nil)
 
 (%glsl-macro 3bgl-glsl::output (%name type &key location (stage t)
-                                       internal)
+                                       internal qualifiers)
   (in/out/uniform/attrib :out %name type
-                         :location location :internal internal :stage stage)
+                         :location location :internal internal :stage stage
+                         :qualifiers qualifiers)
   nil)
 
 (%glsl-macro 3bgl-glsl::uniform (%name type &key location (stage t)

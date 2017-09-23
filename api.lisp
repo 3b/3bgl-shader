@@ -321,11 +321,11 @@ uniform \"foo.bar[1].baz\".
   (declare (ignore location))
   `(3bgl-shaders::compile-form '(attribute ,name ,type ,@args)))
 
-(cl:defmacro input (name type &rest args &key  stage location)
+(cl:defmacro input (name type &rest args &key  stage location qualifiers)
   (declare (ignore location stage))
   `(3bgl-shaders::compile-form '(input ,name ,type ,@args)))
 
-(cl:defmacro output (name type &rest args &key stage location)
+(cl:defmacro output (name type &rest args &key stage location qualifiers)
   (declare (ignore location stage))
   `(3bgl-shaders::compile-form '(output ,name ,type ,@args)))
 
