@@ -1089,7 +1089,7 @@
                                  :ivec3 (gsamplerCubeArray :int)
                                  :ivec3 (:sampler-Cube-Array-Shadow :int)
                                  :ivec2 (gsampler2DRect)
-                                 :ivec2 (:sampler-2DRect-Shadow)
+                                 :ivec2 (:sampler-2D-Rect-Shadow)
                                  :ivec2 (gsampler1DArray :int)
                                  :ivec3 (gsampler2DArray :int)
                                  :ivec2 (:sampler-1D-Array-Shadow :int)
