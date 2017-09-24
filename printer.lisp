@@ -578,6 +578,39 @@
     (null nil)
     (t "[]")))
 
+(defparameter *interface-qualifier-order*
+  ;; ordering is relaxed in 4.2, but still need to get centroid before
+  ;; in/out as well, so might as well sort anyway
+  (alexandria:plist-hash-table
+   '(:precise 1
+     :invariant 2
+     :smooth 5 :flat 5 :noperspective 5 ;; interpolation
+     :no-perspective 5
+     ;; 4.x, unspecified order, so just picking one...
+     :coherent 7 :volatile 7 :restrict 7 :readonly 7 :writeonly 7
+     :read-only 7 :write-only 7
+     ;; centroid etc immediately before in/out (part of storage qual in spec)
+     :centroid 9 :patch 9 :sample 9
+     :in 10 :const 10 :out 10 :attribute 10 :uniform 10 ;; storage qualifier
+     :buffer 10 :shared 10
+     :varying 10                     ;; deprecated
+     :lowp 15 :mediump 15 :highp 15  ;; precision
+     )))
+
+(defun sort-interface-qualifiers (q)
+  (flet ((c (a b)
+           ;; possibly should default to something for unknown
+           ;; qualifiers, but probably would be wrong so just error
+           ;; here
+           (< (gethash a *interface-qualifier-order*)
+              (gethash b *interface-qualifier-order*))))
+    (sort (copy-list (alexandria:ensure-list q)) #'c)))
+
+(defun translate-interface-qualifiers (q)
+  (flet ((tx (n)
+           (string-downcase (remove #\- (symbol-name n)))))
+    (mapcar #'tx (sort-interface-qualifiers q))))
+
 (defprint interface-binding (o)
   (let ((b (stage-binding o)))
     (format t "~@[layout(~(~{~@[~a = ~]~a~^,~}~)) ~]"
@@ -593,34 +626,31 @@
     (cond
       ((typep (binding b) 'struct-type)
        (format t "~{~a~^ ~} ~a ~a~@[~a~]"
-               (mapcar #'translate-name (alexandria:ensure-list
-                                         (interface-qualifier b)))
+               (translate-interface-qualifiers (interface-qualifier b))
                (translate-name
                 (name (or (interface-block b) (binding b))))
                (translate-name o)
                (array-suffix (value-type b))))
       ((or (interface-block b) (typep (binding b) 'bindings))
        (format t "~{~a ~}~a {~%~<  ~@;~@{~a;~^~%~}~:>~%}~@[ ~a~]~@[~a~]"
-               (mapcar ' translate-name (alexandria:ensure-list
-                                         (interface-qualifier b)))
+               (translate-interface-qualifiers (interface-qualifier b))
                (translate-name b)
                (bindings (or (interface-block b) (binding b)))
                (unless (interface-block b) (translate-name o))
                (array-suffix  b)))
       (t
        (format t "~{~a~^ ~} ~a ~a~@[~a~]"
-               (mapcar #'translate-name (alexandria:ensure-list
-                                         (interface-qualifier b)))
+               (translate-interface-qualifiers (interface-qualifier b))
                (translate-name (value-type b))
                (translate-name o)
                (array-suffix (value-type b)))))
     (let ((d (default b)))
-     (cond
-       ((not d))
-       ((symbolp d)
-        (format t " = ~a" (translate-name d)))
-       (t
-        (format t " = ~a" d))))
+      (cond
+        ((not d))
+        ((symbolp d)
+         (format t " = ~a" (translate-name d)))
+        (t
+         (format t " = ~a" d))))
     (format t ";~%")))
 
 (defprint constant-binding (o)
