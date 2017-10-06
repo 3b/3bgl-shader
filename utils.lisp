@@ -31,7 +31,7 @@
    ;; identifying a uniform, allowing both for now...)
    (name-map :reader name-map :initform (make-hash-table :test 'equal))
    ;; target glsl version
-   (version :accessor version :initform 450 :initarg :version)
+   (version :accessor version :initform *default-version* :initarg :version)
    ;; list of functions to call after successful shader recompilation
    ;; shader object is passed as only argument
    (recompilation-callbacks :initform *default-recompilation-callback*
