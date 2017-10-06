@@ -39,6 +39,9 @@
     ;; vertex
     (input (gl-vertex-id "gl_VertexID") :int :vertex)
     (input (gl-instance-id "gl_InstanceID") :int :vertex)
+    (input (gl-draw-id "gl_DrawID") :int :vertex)
+    (input (gl-base-vertex "gl_BaseVertex") :int :vertex)
+    (input (gl-base-instance "gl_BaseInstance") :int :vertex)
     (interface (gl-per-vertex "gl_PerVertex")
         (:out (:vertex t
                :geometry t

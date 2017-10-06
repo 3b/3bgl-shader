@@ -55,6 +55,9 @@
    ;; predefined constants
    #:gl-vertex-id
    #:gl-instance-id
+   #:gl-draw-id
+   #:gl-base-vertex
+   #:gl-base-instance
    #:gl-per-vertex
    #:gl_out ;;?
    #:gl_in ;;?
