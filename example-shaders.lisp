@@ -2,12 +2,18 @@
   (:use #:3bgl-glsl/cl)
   (:export
    #:minimal-vertex
-   #:minimal-fragment))
+   #:minimal-fragment)
+  ;; 3bgl-shader doesn't let you define globals named by symbols from
+  ;; CL or 3bgl packages, so shadow TIME locally
+  (:shadow #:time))
 (in-package #:3bgl-shader-example-shaders)
 
 
-;; vertex shader inputs, we specify :location so we don't have to query the
-;; attributes from host code and can just use the specified locations
+;; vertex shader inputs, we specify :location so we don't have to
+;; query the attributes from host code and can just use the specified
+;; locations (CL:POSITION is predefined as :vec4 :location 0 since it
+;; is pretty common to want that, so we can re-specify that exact
+;; definition if we want to, but can't change it)
 (input position :vec4 :location 0)
 
 ;; if we were using modern GL, we would define some more vertex attributes
