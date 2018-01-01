@@ -381,8 +381,8 @@
     (t x)))
 
 (defprint array-initialization (o)
-  #++(format t "{~{~a~^, ~}}" (arguments o))
-  (format t "(~{~a~^, ~})" (arguments o)))
+  (format t "{~{~a~^, ~}}" (arguments o))
+  #++(format t "(~{~a~^, ~})" (arguments o)))
 
 (defprint initialized-binding (o)
   (assert-statement)
@@ -443,7 +443,7 @@
                              for single = (or (not a) (eq a b))
                              collect (unless single
                                        (%translate-name a :lc-underscore t))
-                             collect (if single
+                             collect (if (and single b)
                                          (%translate-name b :lc-underscore t)
                                          b))
                        (translate-name k)))

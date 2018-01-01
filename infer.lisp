@@ -376,6 +376,14 @@
   (change-class a 'ref-type :equiv b)
   b)
 
+(defmethod2 unify ((a array-type) (b array-initialization))
+  #++(loop for c being the hash-keys of (constraints a) using (hash-value v)
+        when v
+          do (flag-modified-constraint c))
+  #++(change-class a 'ref-type :equiv b)
+  ;; just assume it is OK?
+  a)
+
 (defmethod2 unify ((a any-type) (b struct-type))
   (loop for c being the hash-keys of (constraints a) using (hash-value v)
         when v

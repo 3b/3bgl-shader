@@ -382,6 +382,7 @@
                                              (3bgl-shaders::walk x walker))
                                            cdr)
                         :base-type t
+                        :array-size (length cdr)
                         :name (if (< (length cdr) 16)
                                   (cons car cdr)
                                   'vector)))
@@ -460,7 +461,7 @@
              3bgl-shaders::interface-stage-binding
              3bgl-shaders::struct-type)
          form)
-        (t (break "unknown binding ~s / ~s" form binding))))))
+        (t (break "unknown binding ~s / ~s (~s)" form binding 3bgl-shaders::*environment*))))))
 
 
 

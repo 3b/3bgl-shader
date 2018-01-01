@@ -198,11 +198,12 @@ itself). "
                          (translate-name ib)
                          (list :layout lq
                                :components
-                               (loop for b in (bindings ib)
-                                     collect (list (name b)
-                                                   (name (if (typep b 'binding)
-                                                             (value-type b)
-                                                             b)))))))))
+                               (when ib
+                                (loop for b in (bindings ib)
+                                      collect (list (name b)
+                                                    (name (if (typep b 'binding)
+                                                              (value-type b)
+                                                              b))))))))))
 
 (defun expand-structs (structs)
   (loop for struct in structs
