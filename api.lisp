@@ -355,6 +355,8 @@ uniform \"foo.bar[1].baz\".
 ;; it is pretty common but can't be defined from user code with CL
 ;; package locked
 (3bgl-glsl::glsl-input position :vec4 :location 0)
+;; and single-float pi as well
+(3bgl-glsl::glsl-defconstant pi #.(float pi 1.0) :float)
 
 ;; lock CL abd GLSL packages, so user packages can't define
 ;; conflicting globals with names in those packages
