@@ -76,8 +76,9 @@
 (defun check-locked (environment name)
   (when (locked environment)
     ;; todo: describe operation, add ignore options?
-    (error "package ~a locked while modifying definition of ~s"
-           (package-name (symbol-package name)) name)))
+    (cerror "Change it anyway"
+            "package ~a locked while modifying definition of ~s"
+            (package-name (symbol-package name)) name)))
 
 (defun global-env (name)
   (when (eql name 'position)
