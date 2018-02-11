@@ -182,7 +182,7 @@
 (defparameter *tree-shaker-type-hook* (lambda (&rest r) (declare (ignore r))))
 (defparameter *tree-shaker-current-object* nil)
 ;; fixme: rename this stuff, since tree-shaker doesn't use it anymore
-(defclass tree-shaker (3bgl-glsl::glsl-walker)
+(defclass tree-shaker ()
   ())
 
 (defmethod walk ((form cons) (walker tree-shaker))
@@ -201,6 +201,9 @@
   form)
 (defmethod walk ((form (eql :*)) (walker tree-shaker))
   ;; for unspecified array size
+  form)
+
+(defmethod walk ((form concrete-type) (walker tree-shaker))
   form)
 
 (defmethod walk ((form slot-access) (walker tree-shaker))
