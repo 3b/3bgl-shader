@@ -1508,17 +1508,23 @@
              (ctype-removed 0)
              (other-type-removed 0))
          (maphash (lambda (k v)
-                    (when v (setf (aref valid-counts (scalar/vector-size k)) t)))
+                    ;; only valid for vectors, drop matrix types
+                    (when (and v (<= (scalar/vector-size k) 4))
+                      (setf (aref valid-counts (scalar/vector-size k)) t)))
                   ctype-types)
          (maphash (lambda (k v)
-                    (if (and v (aref valid-counts (scalar/vector-size k)))
+                    (if (and v
+                             (<= (scalar/vector-size k) 4)
+                             (aref valid-counts (scalar/vector-size k)))
                         (setf (aref used-counts (scalar/vector-size k)) t)
                         (progn
                           (remhash k other-type-types)
                           (incf other-type-removed))))
                   other-type-types)
          (maphash (lambda (k v)
-                    (unless (and v (aref used-counts (scalar/vector-size k)))
+                    (unless (and v
+                                 (<= (scalar/vector-size k) 4)
+                                 (aref used-counts (scalar/vector-size k)))
                       (remhash k ctype-types)
                       (incf ctype-removed)))
                   ctype-types)
