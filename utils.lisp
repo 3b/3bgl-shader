@@ -246,6 +246,7 @@
                                  (:image-1d #'gl:uniformi)
                                  (:image-2d #'gl:uniformi)
                                  (:image-3d #'gl:uniformi)
+                                 (:image-cube #'gl:uniformi)
                                  (:sampler-2d-array #'gl:uniformi)
                                  (:sampler-buffer #'gl:uniformi)
                                  (:atomic-uint
