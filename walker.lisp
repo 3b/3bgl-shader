@@ -74,7 +74,7 @@
                            :name package))))
 
 (defun check-locked (environment name)
-  (when (locked environment)
+  (when (and (symbolp name) (locked environment))
     ;; todo: describe operation, add ignore options?
     (cerror "Change it anyway"
             "package ~a locked while modifying definition of ~s"
