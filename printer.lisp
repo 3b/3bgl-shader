@@ -430,24 +430,30 @@
 (defprint array-access (o)
   (format t "~a" (translate-name o)))
 
+(defun print-main-layout-qualifiers (q)
+  (maphash (lambda (k v)
+             (format t "layout(~{~@[~a=~]~@[~a~^,~]~}) ~a;~%"
+                     (loop for (a b) on v by #'cddr
+                           ;; allow nil -> X or X -> X
+                           ;; to mean single element without =
+                           for single = (or (not a) (eq a b))
+                           collect (unless single
+                                     (%translate-name a :lc-underscore t))
+                           collect (if (and single b)
+                                       (%translate-name b :lc-underscore t)
+                                       b))
+                     (translate-name k)))
+           q))
+
 (defprint global-function (o)
   (assert-statement)
   ;; fixme: clean this layout stuff up...
   ;; if function is "main", check for extra layout qualifiers
-  (when (and (string= (translate-name o) "main") (layout-qualifiers o))
-    (maphash (lambda (k v)
-               (format t "layout(~{~@[~a=~]~@[~a~^,~]~}) ~a;~%"
-                       (loop for (a b) on v by #'cddr
-                             ;; allow nil -> X or X -> X
-                             ;; to mean single element without =
-                             for single = (or (not a) (eq a b))
-                             collect (unless single
-                                       (%translate-name a :lc-underscore t))
-                             collect (if (and single b)
-                                         (%translate-name b :lc-underscore t)
-                                         b))
-                       (translate-name k)))
-             (layout-qualifiers o)))
+  (when (and (string= (translate-name o) "main") (layout-qualifiers o)
+             ;; compute layout qualifiers need printed earlier so
+             ;; other functions can use gl_WorkGroupSize etc
+             (not (eql *current-shader-stage* :compute)))
+    (print-main-layout-qualifiers (layout-qualifiers o)))
 
   ;; print function def
   (format t "~a ~a ~<(~;~@{~:_~a~#[~:;, ~]~}~;)~:> {~%"

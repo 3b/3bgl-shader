@@ -112,6 +112,11 @@ itself). "
           do (format t "#extension ~a : ~a~%"
                      (expand-extension-keyword ext)
                      (if enable "enable" "disable")))
+    ;; put layout() at beginning for compute stage
+    (when (and (eql *current-shader-stage* :compute)
+               (layout-qualifiers *print-as-main*))
+      (print-main-layout-qualifiers (layout-qualifiers *print-as-main*)))
+
     (loop with dumped = (make-hash-table)
           for object in objects
           for stage-binding = (stage-binding object)
