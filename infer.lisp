@@ -677,7 +677,8 @@
       (ref-type
        (setf (equiv type) (cast-to-boolean (equiv type))))
       (concrete-type
-       (assert (eq type bool))))))
+       (assert (eq type bool))
+       type))))
 
 (defmethod walk ((form if-form) (walker infer-build-constraints))
   ;; todo: unify test-form with types accepted by IF? (scalars? booleans?)
@@ -757,11 +758,9 @@
     ;; just returning array type for now...
     ;; fixme: add constraints on size
     (typecase binding-type
-      (any-type
-       binding-type)
       (array-type
        (base-type binding-type))
-      (constrained-type
+      ((or any-type constrained-type)
        (let ((c (make-instance 'scalar-type-of-constraint
                                :ctype (make-instance 'any-type)
                                :other-type binding-type)))
