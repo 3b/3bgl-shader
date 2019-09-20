@@ -59,9 +59,27 @@ program OLD and return new program, otherwise return OLD"
   (let ((vs (gl:create-shader :vertex-shader))
         (fs (gl:create-shader :fragment-shader))
         (gs (when geometry (gl:create-shader :geometry-shader)))
-        (program (gl:create-program)))
+        (program (gl:create-program))
+        (uniformh (make-hash-table)))
     (unwind-protect
-         (flet ((try-shader (shader source)
+         (flet ((c (stage entry)
+                  (multiple-value-bind (source uniforms attributes buffers
+                                        structs)
+                      (3bgl-shaders::generate-stage stage entry
+                                                    :version version)
+                    (declare (ignorable attributes buffers structs))
+                    (loop for u in uniforms
+                          for (l g tt) = u
+                          for o = (gethash l uniformh)
+                          when (and o (not (equalp u o)))
+                            do (format t "duplicate uniform ~s -> ~s~%?" o u)
+                          do (setf (gethash l uniformh)
+                                   (cons -1 u)))
+                    source))
+                (try-shader (shader source)
+                  (when *print-shaders*
+                    (format t "generating shader ~s~%" shader)
+                     (format t "~s~%" source))
                   (gl:shader-source shader source)
                   (gl:compile-shader shader)
                   (cond
@@ -73,13 +91,10 @@ program OLD and return new program, otherwise return OLD"
                      (when verbose
                        (format verbose "shader compile failed: ~s" (gl:get-shader-info-log shader)))
                      (return-from reload-program old)))))
-           (try-shader vs (3bgl-shaders::generate-stage :vertex v
-                                                        :version version))
-           (try-shader fs (3bgl-shaders::generate-stage :fragment f
-                                                        :version version))
+           (try-shader vs (c :vertex v))
+           (try-shader fs (c :fragment f))
            (when gs
-             (try-shader gs (3bgl-shaders::generate-stage :geometry geometry
-                                                          :version version)))
+             (try-shader gs (c :geometry geometry)))
            (gl:link-program program)
            (cond
              ((gl:get-program program :link-status)
@@ -98,4 +113,10 @@ program OLD and return new program, otherwise return OLD"
       ;; link succeeded
       (when program
         (gl:delete-program program)))
-    old))
+    (when old
+      (loop for u being the hash-keys of uniformh
+            for n = (third (gethash u uniformh))
+            do (setf (car (gethash u uniformh))
+                     (uniform-index old n))))
+    (values old uniformh)))
+
