@@ -360,7 +360,8 @@
                            :body body
                            :docs docs
                            :declarations declarations
-                           :value-type t)))))
+                           :value-type t
+                           :valid-stages t)))))
   (let ((f (gethash name (function-bindings env))))
     ;; mark binding as not using any other bindings since it might use
     ;; a different set, which will be added back later

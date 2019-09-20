@@ -5,6 +5,9 @@
            #:ensure-package-environment)
   (:export
    :layout
+   :in
+   :out
+   :inout
    :generate-stage
    :compile-form
    :stage
@@ -19,6 +22,9 @@
            #:defstruct)
   (:import-from #:3bgl-shaders
                 #:layout
+                #:in
+                #:out
+                #:inout
                 #:stage
                 #:%glsl-macro
                 #:*package-environments*
@@ -42,6 +48,9 @@
 
    ;; glsl-side API
    #:layout
+   #:in
+   #:out
+   #:inout
    #:interface
    #:attribute
    #:output

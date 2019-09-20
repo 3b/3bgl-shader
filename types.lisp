@@ -233,7 +233,11 @@
                                collect (make-instance 'binding
                                                       :name sname
                                                       :glsl-name glsl-sname
-                                                      :value-type (get-type-binding type)))))
+                                                      :value-type (get-type-binding type)
+                                                      :qualifiers
+                                                      (if (every 'keywordp args)
+                                                          args
+                                                          (break "todo: non-qualifier interface slot args? ~s ~s~% ~s" %sname type args))))))
     (loop
       for (k x) on (list :in in :out out :uniform uniform
                          :buffer buffer) by #'cddr
@@ -342,7 +346,9 @@
 
 (defparameter *known-declarations*
   '(declaration dynamic-extent ftype function ignore inline notinline
-    optimize special type))
+    optimize special type invariant))
+(defparameter *free-declarations*
+  '(invariant))
 
 (defmethod process-type-declarations-for-scope (scope)
   (flet ((process-declaration (d a)
@@ -351,18 +357,28 @@
                (warn "declared unknown type ~a for variables ~a?" d a))
              (loop for var in a
                    for b = (find var (bindings scope) :key 'name)
-                   for bt = (if (not b)
-                                ;; todo: possibly should add a constraint
-                                ;; on free but existing bindings?
-                                ;; for now just not allowing them, since
-                                ;; variables are always same type in glsl...
-                                (error "got declaration for free binding ~s?"
-                                       var)
-                              (declared-type b))
+                   for bt = (unless (and (not b)
+                                         (member d *free-declarations*))
+                              (if (not b)
+                                  ;; todo: possibly should add a constraint
+                                  ;; on free but existing bindings?
+                                  ;; for now just not allowing them, since
+                                  ;; variables are always same type in glsl...
+                                  (error "got declaration for free binding ~s?"
+                                         var)
+                                  (declared-type b)))
                    do (when (not (member bt (list type d t)))
                         (warn "changing type of ~a from ~a to ~a?"
                               var (declared-type b) type))
-                      (setf (declared-type b) type)))))
+                      (setf (declared-type b) type))))
+         (process-qualifier (d a)
+           (loop for var in a
+                 for b = (find var (bindings scope) :key 'name)
+                 when (not b)
+                   do (error "declared unknown variable ~s as ~s?"
+                             var d)
+                 else
+                   do (pushnew d (qualifiers b)))))
     (let ((declarations (declarations scope)))
       (loop for (decl . args) in (mapcan 'cdr declarations)
             do (cond
@@ -393,6 +409,8 @@
                                  (cons (car cdr) cdr))))
                  ((eql decl 'stage)
                   (setf (valid-stages scope) args))
+                 ((member decl '(in out inout))
+                  (process-qualifier decl args))
                  ;; ignore any other known declarations for now
                  ((member decl *known-declarations*)
                   )

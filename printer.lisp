@@ -167,7 +167,8 @@
 
 (defmacro assert-statement ()
   `(when *in-expression*
-     (error "trying to print statement in expression context")))
+     (with-standard-io-syntax
+       (error "trying to print statement in expression context"))))
 
 #++(set-pprint-dispatch 'symbol
                      (lambda (s o)
@@ -286,7 +287,8 @@
         (type (gethash call *binding-types*)))
     #++(with-standard-io-syntax
       (break "mod" a b call *binding-types*))
-    (assert type)
+    (with-standard-io-syntax
+      (assert type))
     (if (integral-type (first type))
         (format t "(~a % ~a)" a b)
         (format t "mod(~a, ~a)" a b))))
@@ -311,7 +313,8 @@
 (defprinti (zerop x) (call)
   (let ((*in-expression* t)
         (type (gethash call *binding-types*)))
-    (assert type)
+    (with-standard-io-syntax
+      (assert type))
     (if (integral-type (second type))
         (format t "(0 == ~a)" x)
         (format t "(0.0 == ~a)" x))))
@@ -384,6 +387,40 @@
   (format t "{~{~a~^, ~}}" (arguments o))
   #++(format t "(~{~a~^, ~})" (arguments o)))
 
+(defparameter *interface-qualifier-order*
+  ;; ordering is relaxed in 4.2, but still need to get centroid before
+  ;; in/out as well, so might as well sort anyway
+  (alexandria:plist-hash-table
+   '(:precise 1
+     :invariant 2
+     :smooth 5 :flat 5 :noperspective 5 ;; interpolation
+     :no-perspective 5
+     ;; 4.x, unspecified order, so just picking one...
+     :coherent 7 :volatile 7 :restrict 7 :readonly 7 :writeonly 7
+     :read-only 7 :write-only 7
+     ;; centroid etc immediately before in/out (part of storage qual in spec)
+     :centroid 9 :patch 9 :sample 9
+     :in 10 :const 10 :out 10 :attribute 10 :uniform 10 ;; storage qualifier
+     :buffer 10 :shared 10
+     :varying 10                     ;; deprecated
+     :lowp 15 :mediump 15 :highp 15  ;; precision
+     )))
+
+(defun sort-interface-qualifiers (q)
+  (flet ((c (a b)
+           ;; possibly should default to something for unknown
+           ;; qualifiers, but probably would be wrong so just error
+           ;; here
+           (< (gethash a *interface-qualifier-order*)
+              (gethash b *interface-qualifier-order*))))
+    (sort (copy-list (alexandria:ensure-list q)) #'c)))
+
+(defun translate-interface-qualifiers (q)
+  (flet ((tx (n)
+           (string-downcase (remove #\- (symbol-name n)))))
+    (mapcar #'tx (sort-interface-qualifiers q))))
+
+
 (defprint initialized-binding (o)
   (assert-statement)
   (let ((*in-expression* t))
@@ -392,7 +429,7 @@
                 ;; might need type for literal initializers? if so, figure
                 ;; out how to distinguish them...
                 #++"~{~(~a ~)~}~@[~a ~]~a[~a]~@[ = ~3:*~a[]~2*~a~]"
-                (qualifiers o)
+                (translate-interface-qualifiers (qualifiers o))
                 (translate-type (base-type
                                  (or (and (boundp '*binding-types*)
                                           (gethash o *binding-types*))
@@ -401,7 +438,7 @@
                 (array-size (value-type o))
                 (initial-value-form o))
         (format t "~{~(~a ~)~}~@[~a ~]~a~@[ = ~a~]"
-                (qualifiers o)
+                (translate-interface-qualifiers (qualifiers o))
                 (translate-type (or (and (boundp '*binding-types*)
                                          (gethash o *binding-types*))
                                     (value-type o)))
@@ -412,7 +449,7 @@
   (assert-statement)
   (let ((*in-expression* t))
     (format t "~{~a ~}~@[~a ~]~a~@[~a~]"
-            (qualifiers o)
+            (translate-interface-qualifiers (qualifiers o))
             (translate-type (or (and (boundp '*binding-types*)
                                      (gethash o *binding-types*))
                                 (value-type o)))
@@ -484,7 +521,7 @@
 
 (defprint progn-body (o)
   (if *in-expression*
-      (format t "~<(~@;~@{~a~^,~})~:>" (body o))
+      (format t "~<(~;~@{~a~^,~})~:>" (body o))
       (format t "~{~a~^;~%~}" (body o))))
 
 (defprint implicit-progn (o)
@@ -493,7 +530,7 @@
       (format t "~<  ~@;~@{~a;~^~%~}~:>" (body o))))
 
 (defprint binding-scope (o)
-  (assert-statement)
+  (with-standard-io-syntax (assert-statement))
   ;; fixme: avoid extra {} in LET at top level of a function
   ;; (bind a special when inside LET scope, clear it inside scopes
   ;;  that add a binding scope (like FOR, DEFUN, etc?))
@@ -583,39 +620,6 @@
     (number (format nil "[~a]" (array-size x)))
     (null nil)
     (t "[]")))
-
-(defparameter *interface-qualifier-order*
-  ;; ordering is relaxed in 4.2, but still need to get centroid before
-  ;; in/out as well, so might as well sort anyway
-  (alexandria:plist-hash-table
-   '(:precise 1
-     :invariant 2
-     :smooth 5 :flat 5 :noperspective 5 ;; interpolation
-     :no-perspective 5
-     ;; 4.x, unspecified order, so just picking one...
-     :coherent 7 :volatile 7 :restrict 7 :readonly 7 :writeonly 7
-     :read-only 7 :write-only 7
-     ;; centroid etc immediately before in/out (part of storage qual in spec)
-     :centroid 9 :patch 9 :sample 9
-     :in 10 :const 10 :out 10 :attribute 10 :uniform 10 ;; storage qualifier
-     :buffer 10 :shared 10
-     :varying 10                     ;; deprecated
-     :lowp 15 :mediump 15 :highp 15  ;; precision
-     )))
-
-(defun sort-interface-qualifiers (q)
-  (flet ((c (a b)
-           ;; possibly should default to something for unknown
-           ;; qualifiers, but probably would be wrong so just error
-           ;; here
-           (< (gethash a *interface-qualifier-order*)
-              (gethash b *interface-qualifier-order*))))
-    (sort (copy-list (alexandria:ensure-list q)) #'c)))
-
-(defun translate-interface-qualifiers (q)
-  (flet ((tx (n)
-           (string-downcase (remove #\- (symbol-name n)))))
-    (mapcar #'tx (sort-interface-qualifiers q))))
 
 (defprint interface-binding (o)
   (let ((b (stage-binding o)))

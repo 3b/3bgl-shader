@@ -109,7 +109,7 @@
    ;; matches an arg type)
    (declared-type :accessor declared-type :initarg :declared-type
                   :initform t)
-   (qualifiers :accessor qualifiers :initform nil)
+   (qualifiers :accessor qualifiers :initform nil :initarg :qualifiers)
    ;; set to true if variable needs renamed due to a scoping conflict
    ;; (for example shadows a variable used in initialization of
    ;; variable in same scope)
@@ -204,7 +204,7 @@
    ;;  used from a different stage)
    ;; used by type inference to decide which stages to run inference for
    ;; fixme: is this actually used/useful?
-   (valid-stages :initform t :accessor valid-stages)
+   (valid-stages :initform t :accessor valid-stages :initarg :valid-stages)
    ;; 'type' object for each local binding inside the function
    ;; including arguments (keyed by binding object)
    ;; and return value (keyed by :return)
