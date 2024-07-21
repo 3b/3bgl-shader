@@ -311,6 +311,11 @@
    #:memory-barrier-shared
    #:memory-barrier-image
    #:group-memory-barrier
+   ;; 8.19 Shader Invocation Group Functions
+   #:any-invocation
+   #:all-invocations
+   #:all-invocations-equal
+
    ;; vector/matrix constructors
    #:int8
    #:int16
