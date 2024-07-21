@@ -31,7 +31,7 @@
          (%gl:uniform-4f u (aref v 0) (aref v 1) (aref v 2) (aref v 3)))
         ;; convenient but slower cases
         ((vector * 4)
-         (%gl:uniform-3f u (float (elt v 0) 1.0) (float (elt v 1) 1.0)
+         (%gl:uniform-4f u (float (elt v 0) 1.0) (float (elt v 1) 1.0)
                          (float (elt v 2) 1.0) (float (elt v 3) 1.0)))
         ((vector * 3)
          (%gl:uniform-3f u (float (elt v 0) 1.0) (float (elt v 1) 1.0)
