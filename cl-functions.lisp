@@ -1599,6 +1599,11 @@
        (3bgl-glsl::memory-barrier-image () () :void)
        (3bgl-glsl::group-memory-barrier () () :void))
 
+      ;; 8.19 Shader Invocation Group Functions
+      (add/s
+       (3bgl-glsl::any-invocation (value) `(:bool) :bool)
+       (3bgl-glsl::all-invocations (value) `(:bool) :bool)
+       (3bgl-glsl::all-invocations-equal (value) `(:bool) :bool))
 
       ;; vector/matrix constructors
 
