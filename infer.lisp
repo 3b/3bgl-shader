@@ -66,7 +66,10 @@
      (let ((x))
        (maphash (lambda (k v) (when v (push (debug-type-names k) x))) type)
        x))
-    (t (error "tried to get name of unknown type ~s?" type))))
+    (t
+     #++(error "tried to get name of unknown type ~s?" type)
+     "<T>"
+     )))
 
 (defun debug-local-binding-type-data (hash)
   (labels ((d (x)

@@ -670,6 +670,7 @@
 (defun pprint-glsl (form)
   (let* ((*print-pprint-dispatch* *pprint-glsl*)
          (*print-pretty* t)
+         (*print-circle* nil)
          (old-debug *debugger-hook*)
          (*debugger-hook* (lambda (&rest r)
                             (with-standard-io-syntax

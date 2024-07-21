@@ -496,7 +496,7 @@
       (typecase w
         ((cons (member progn)) w)
         ((cons T NULL) (car w))
-        (t (make-instance w))))))
+        (t (make-instance 'implicit-progn :body w))))))
 
 (defwalker cl-walker (tagbody &body body)
   ;; todo: probably should store go tags in environment

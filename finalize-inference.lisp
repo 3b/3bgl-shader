@@ -85,7 +85,8 @@
          t)))))
 
 (defmethod flatten-type ((type array-type) &optional force-type)
-  (assert (not force-type)) ;; todo...
+  (declare (ignorable force-type))
+  #++(assert (not force-type)) ;; todo...
   (etypecase (base-type type)
     (concrete-type
      nil)
@@ -107,6 +108,9 @@
   type)
 
 (defmethod get-concrete-type ((type struct-type))
+  type)
+
+(defmethod get-concrete-type ((type array-type))
   type)
 
 (defmethod get-concrete-type ((type any-type))

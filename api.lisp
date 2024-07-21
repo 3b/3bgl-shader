@@ -112,6 +112,8 @@ itself). "
           do (format t "#extension ~a : ~a~%"
                      (expand-extension-keyword ext)
                      (if enable "enable" "disable")))
+    (when (eql *current-shader-stage* :vertex)
+      (format t "invariant gl_Position;~%"))
     ;; put layout() at beginning for compute stage
     (when (and (eql *current-shader-stage* :compute)
                (layout-qualifiers *print-as-main*))

@@ -71,24 +71,47 @@
 ;;; todo:
 
 (%glsl-macro case (form &body body)
-  ;(declare (ignore body))
-  (loop for (case) in body
-        do (assert (or (numberp case)
-                       (eql case t)
-                       (and (consp case) (every 'numberp case)))))
-  (labels ((c (x)
-             (etypecase x
-               (cons `(or ,@(loop for v in x collect `(= ,form ,v))))
-               (number `(= ,form ,x))))
-           (r (b)
-             (let ((a (first b)))
-               (if (eql (first a) t)
-                   `(progn ,@(rest a))
-                   `(if ,(c (first a))
-                        (progn ,@(rest a))
-                        ,@ (when (rest b)
-                             (list (r (rest b)))))))))
-    (r body)))
+  (flet ((numeric-constant (s)
+           (typecase s
+             (number s)
+             ;; accepting constants even though CL CASE doesn't, since
+             ;; that is annoying
+             (symbol
+              (let ((v (3bgl-shaders::get-variable-binding s)))
+                (and v
+                     ;; todo: factor this stuff out
+                     (typep v '3bgl-shaders::constant-binding)
+                     (typep (3bgl-shaders::value-type v)
+                            '3bgl-shaders::concrete-type)
+                     (member (3bgl-shaders::name
+                              (3bgl-shaders::value-type v))
+                             ;; glsl `switch` takes integers, so
+                             ;; limiting to that even though we
+                             ;; currently expand to nested IF which
+                             ;; could take floats too
+                             '(:int :int8 :int16 :int32 :int64
+                               :uint :uint8 :uint16 :uint32 :uint64)))))
+             (t s))))
+    (loop for (case) in body
+          do (assert (or (numeric-constant case)
+                         (eql case t)
+                         (and (consp case) (every #'numeric-constant case)))))
+    (labels ((c (x)
+               (etypecase x
+                 (cons `(or ,@(loop for v in x collect `(= ,form ,v))))
+                 (number `(= ,form ,x))
+                 (symbol
+                  (assert (numeric-constant x))
+                  `(= ,form ,x))))
+             (r (b)
+               (let ((a (first b)))
+                 (if (eql (first a) t)
+                     `(progn ,@(rest a))
+                     `(if ,(c (first a))
+                          (progn ,@(rest a))
+                          ,@ (when (rest b)
+                               (list (r (rest b)))))))))
+      (r body))))
 
 
 (%glsl-macro cond (&body body)
