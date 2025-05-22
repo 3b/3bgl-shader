@@ -667,6 +667,8 @@
     (add-internal-function/s '/= '(a b) '(T (= 0)) :bool)
 
     (add-internal-function/s 'zerop '(a) `((or ,@number)) :bool)
+    (add-internal-function/s 'plusp '(a) `((or ,@number)) :bool)
+    (add-internal-function/s 'minusp '(a) `((or ,@number)) :bool)
 
     ;; || && ^^
     (add-internal-function/full 'or '(a b) '(((:bool :bool) :bool))

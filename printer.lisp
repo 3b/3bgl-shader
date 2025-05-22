@@ -319,6 +319,24 @@
         (format t "(0 == ~a)" x)
         (format t "(0.0 == ~a)" x))))
 
+(defprinti (plusp x) (call)
+  (let ((*in-expression* t)
+        (type (gethash call *binding-types*)))
+    (with-standard-io-syntax
+      (assert type))
+    (if (integral-type (second type))
+        (format t "(~a > 0)" x)
+        (format t "(~a > 0.0)" x))))
+
+(defprinti (minusp x) (call)
+  (let ((*in-expression* t)
+        (type (gethash call *binding-types*)))
+    (with-standard-io-syntax
+      (assert type))
+    (if (integral-type (second type))
+        (format t "(~a < 0)" x)
+        (format t "(~a < 0.0)" x))))
+
 (defprinti (ash i c) ()
   (cond
     ((numberp c)
