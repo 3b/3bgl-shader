@@ -2,9 +2,6 @@
 
 ;;; newer attempt at 'nicer' interface, + helper for updating shaders
 
-;; print shaders as compiled for debugging
-(defparameter *print-shaders* nil)
-
 (defparameter *default-recompilation-callback* nil)
 
 ;; this API's idea of what shader is currently active, so we know to
