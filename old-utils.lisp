@@ -2,6 +2,8 @@
 ;;; some brain-dead utils for shader-related stuff (recompiling
 ;;; shaders, setting uniforms by name, etc)
 
+;; print shaders as compiled for debugging
+(defparameter *print-shaders* nil)
 
 (defun uniform-index (program name)
   (if program
